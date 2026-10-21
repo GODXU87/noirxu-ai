@@ -5,7 +5,9 @@ export class ToolRegistry {
 
   register(tool: ToolDefinition): this {
     if (this.tools.has(tool.name)) throw new Error(`Tool already registered: ${tool.name}`);
-    if (tool.kind !== 'read' && !tool.preview) throw new Error(`Write/send tool needs a preview: ${tool.name}`);
+    if (tool.kind === 'send' && tool.requiresConfirmation === false) throw new Error(`Send tools always need confirmation: ${tool.name}`);
+    if (tool.requiresConfirmation === false && tool.connection !== 'internal') throw new Error(`Only internal tools may skip confirmation: ${tool.name}`);
+    if (tool.kind !== 'read' && tool.requiresConfirmation !== false && !tool.preview) throw new Error(`Write/send tool needs a preview: ${tool.name}`);
     this.tools.set(tool.name, tool);
     return this;
   }

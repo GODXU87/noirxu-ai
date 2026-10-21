@@ -13,6 +13,10 @@ import { gmailTools } from '@/tools/gmail/tools';
 import { journalTools } from '@/tools/journal/tools';
 import { ledgerTools } from '@/tools/ledger/tools';
 import { RadarClient, radarTools } from '@/tools/radar/tools';
+import { MemoryAgendaStore, PgAgendaStore, type AgendaStore } from '@/agenda/store';
+import { PushService } from '@/push/service';
+import { agendaTools } from '@/tools/agenda/tools';
+import { ledgerAssetTools } from '@/tools/ledger/assets';
 import { loadConfig, type AppConfig } from './config';
 
 export interface Hub {
@@ -24,6 +28,8 @@ export interface Hub {
   journal: SupabaseUserConnection;
   radar: RadarClient;
   gmail: GmailService;
+  agenda: AgendaStore;
+  push: PushService;
   isConnected: (userId: string, connection: ConnectionId) => Promise<boolean>;
 }
 
@@ -32,22 +38,27 @@ function build(): Hub {
   let store: HubStore;
   let backend: CredentialBackend;
   let storageMode: Hub['storageMode'];
+  let agenda: AgendaStore;
 
   if (config.hubDatabaseUrl) {
     // Small pool: serverless instances each hold their own; the role is capped at 10 connections.
     const pool = new Pool({ connectionString: config.hubDatabaseUrl, max: 2, ssl: { rejectUnauthorized: false } });
     store = new PgHubStore(pool);
     backend = new PgCredentialBackend(pool);
+    agenda = new PgAgendaStore(pool);
     storageMode = 'database';
   } else if (process.env.NODE_ENV === 'production') {
     throw new Error('NOIRXU_AI_DATABASE_URL is required in production');
   } else {
     store = new MemoryHubStore();
     backend = new MemoryCredentialBackend();
+    agenda = new MemoryAgendaStore();
     storageMode = 'memory';
   }
 
-  const credentials = new CredentialStore(backend, new TokenVault(config.tokenEncryptionKey ?? undefined));
+  const vault = new TokenVault(config.tokenEncryptionKey ?? undefined);
+  const credentials = new CredentialStore(backend, vault);
+  const push = new PushService(agenda, vault);
   const ledger = new SupabaseUserConnection('ledger', config.ledger.supabase, credentials);
   const journal = new SupabaseUserConnection('journal', config.journal.supabase, credentials);
   const radar = new RadarClient(config.radar);
@@ -56,6 +67,8 @@ function build(): Hub {
   const registry = new ToolRegistry();
   for (const tool of [
     ...ledgerTools({ connection: ledger, appUrl: config.ledger.appUrl }),
+    ...ledgerAssetTools({ connection: ledger, appUrl: config.ledger.appUrl }),
+    ...agendaTools(agenda),
     ...journalTools({ connection: journal, appUrl: config.journal.appUrl }),
     ...radarTools(radar),
     ...gmailTools(gmail)
@@ -70,7 +83,7 @@ function build(): Hub {
     }
   };
 
-  return { config, storageMode, registry, executor: new Executor({ registry, store, isConnected }), ledger, journal, radar, gmail, isConnected };
+  return { config, storageMode, registry, executor: new Executor({ registry, store, isConnected }), ledger, journal, radar, gmail, agenda, push, isConnected };
 }
 
 const globalHub = globalThis as unknown as { __noirxuHub?: Hub };

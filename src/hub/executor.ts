@@ -11,7 +11,7 @@ export interface ExecutorOptions {
   registry: ToolRegistry;
   store: HubStore;
   /** Which connections the user has set up; tools on other connections fail with NOT_CONNECTED. */
-  isConnected: (userId: string, connection: ToolDefinition['connection']) => Promise<boolean>;
+  isConnected: (userId: string, connection: Exclude<ToolDefinition['connection'], 'internal'>) => Promise<boolean>;
 }
 
 function issuesMessage(error: z.ZodError): string {
@@ -34,6 +34,7 @@ export class Executor {
   }
 
   private async requireConnection(tool: ToolDefinition, ctx: ToolContext) {
+    if (tool.connection === 'internal') return;
     if (!(await this.options.isConnected(ctx.userId, tool.connection))) {
       throw new ToolError('NOT_CONNECTED', `尚未連接 ${tool.connection}，請先到 Connections 頁面設定。`);
     }
@@ -48,11 +49,11 @@ export class Executor {
       const input = this.parseInput(tool, rawInput);
       await this.requireConnection(tool, ctx);
 
-      if (tool.kind === 'read') {
+      if (tool.kind === 'read' || tool.requiresConfirmation === false) {
         const result = await tool.run(input, ctx, { idempotencyKey: randomUUID(), startedAt: ctx.now() });
         const output = tool.output.safeParse(result.data);
         if (!output.success) throw new ToolError('INVALID_OUTPUT', '來源系統回傳的資料格式不符，已停止處理。');
-        await this.options.store.appendAudit({ at: ctx.now().toISOString(), userId: ctx.userId, tool: tool.name, kind: tool.kind, event: 'read', durationMs: Date.now() - started });
+        await this.options.store.appendAudit({ at: ctx.now().toISOString(), userId: ctx.userId, tool: tool.name, kind: tool.kind, event: tool.kind === 'read' ? 'read' : 'executed', durationMs: Date.now() - started });
         return { status: 'ok', tool: tool.name, data: output.data, links: result.links ?? [] };
       }
 

@@ -40,6 +40,23 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: 'up
   return <div className="stat"><span>{label}</span><b className={tone ? `tone-${tone}` : undefined}>{value}</b></div>;
 }
 
+export interface AgendaView { id: string; title: string; notes: string; due_label: string; priority: 'urgent' | 'high' | 'normal' | 'low'; priority_label: string; status: string }
+
+export function AgendaList({ items, onDone }: { items: AgendaView[]; onDone?: (id: string) => void }) {
+  if (!items?.length) return <p className="hint">沒有待辦事項。</p>;
+  return (
+    <ul className="agenda">
+      {items.map(item => (
+        <li key={item.id} className={item.status !== 'open' ? 'is-done' : undefined}>
+          <span className={`prio prio-${item.priority}`}>{item.status === 'done' ? '完成' : item.priority_label}</span>
+          <span className="agenda-main"><b>{item.title}</b><small>{item.due_label}{item.notes ? ` · ${item.notes}` : ''}</small></span>
+          {onDone && item.status === 'open' && <button type="button" className="ghost check" aria-label={`完成：${item.title}`} onClick={() => onDone(item.id)}>✓</button>}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 const STATUS_TONE: Record<string, 'accent' | 'warn' | 'danger'> = { safe: 'accent', warning: 'warn', over: 'danger', unset: 'accent' };
 
 /** Readable views for the common tools; everything else falls back to the raw data. */
@@ -109,6 +126,30 @@ export function ToolData({ tool, data }: { tool: string; data: any }): ReactNode
           {data.messages.map((row: any) => <li key={row.id}><span className={row.unread ? '' : 'muted'}>{row.unread ? '● ' : ''}{row.from.replace(/<.*>/, '').trim()}</span><span>{row.subject || '（無主旨）'}</span></li>)}
           {!data.messages.length && <li className="muted">沒有符合的信件</li>}
         </ul>
+      );
+    case 'agenda.items.list':
+      return <AgendaList items={data.items} />;
+    case 'agenda.items.create':
+      return (
+        <div className="view">
+          <AgendaList items={[data.item]} />
+          {data.reminders?.length ? <p className="hint">會提醒：{data.reminders.map((r: any) => `${new Date(r.at).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}（${r.label}）`).join('、')}</p> : <p className="hint">沒有日期，不會自動提醒。</p>}
+        </div>
+      );
+    case 'agenda.items.update':
+      return <AgendaList items={[data.item]} />;
+    case 'ledger.assets.summary':
+      return (
+        <div className="view">
+          <div className="stats">
+            <Stat label="總資產 TWD" value={money(data.gross_assets)} />
+            <Stat label="負債 TWD" value={money(data.liabilities)} tone={data.liabilities > 0 ? 'down' : undefined} />
+            <Stat label="淨資產 TWD" value={money(data.net_worth)} tone={data.net_worth >= 0 ? 'up' : 'down'} />
+          </div>
+          {data.month_change?.percentage != null && <p className="hint">資產較上月 {data.month_change.delta >= 0 ? '增加' : '減少'} {money(Math.abs(data.month_change.delta))}（{Math.abs(data.month_change.percentage)}%）</p>}
+          {data.allocation?.slice(0, 6).map((row: any) => <div key={row.name} className="barrow"><span>{row.name}</span><Bar value={row.percentage} /><b>{row.percentage}%</b></div>)}
+          {!data.accounts?.length && <p className="hint">Ledger 還沒有資產帳戶。</p>}
+        </div>
       );
     case 'radar.status':
       return <div className="view"><p className="hint">最新資料交易日：<b>{data.publication?.trade_date ?? '—'}</b></p></div>;

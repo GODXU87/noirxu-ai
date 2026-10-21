@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { monthBounds, taipeiToday } from '@/lib/tool-labels';
-import { callTool, Links, ProposalCard, ToolData, type InvokeResult } from '../components/shared';
+import { Notifications } from '../components/Notifications';
+import { AgendaList, callTool, Links, ProposalCard, ToolData, type AgendaView, type InvokeResult } from '../components/shared';
 
 const EXPENSE_METHODS = ['信用卡', '現金', '轉帳', 'LINE Pay', 'Apple Pay', '悠遊卡'];
 const INCOME_METHODS = ['轉帳', '現金', 'LINE Pay', '其他'];
@@ -91,15 +92,64 @@ function QuickEntry({ onSaved }: { onSaved: () => void }) {
   );
 }
 
+function AgendaCard() {
+  const [items, setItems] = useState<AgendaView[] | null>(null);
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+
+  const load = useCallback(async () => {
+    const result = await callTool('agenda.items.list', { days: 60 });
+    if (result.status === 'ok') setItems((result.data as { items: AgendaView[] }).items);
+    else if (result.status === 'error') setMessage(result.message);
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  async function add(event: React.FormEvent) {
+    event.preventDefault();
+    if (!text.trim()) return;
+    setBusy(true); setMessage('');
+    const result = await callTool('agenda.items.create', { text });
+    setBusy(false);
+    if (result.status === 'ok') {
+      const data = result.data as { item: AgendaView; reminders: unknown[] };
+      setText('');
+      setMessage(`已記下「${data.item.title}」· ${data.item.due_label}${data.reminders.length ? ` · 會提醒 ${data.reminders.length} 次` : ''}`);
+      void load();
+    } else if (result.status === 'error') setMessage(result.message);
+  }
+
+  async function done(id: string) {
+    const result = await callTool('agenda.items.update', { id, status: 'done' });
+    if (result.status === 'ok') void load();
+    else if (result.status === 'error') setMessage(result.message);
+  }
+
+  return (
+    <section className="card span-2">
+      <h2>近期事項<small className="muted">依重要程度排序</small></h2>
+      <form className="quick-add" onSubmit={add}>
+        <input value={text} onChange={e => setText(e.target.value)} placeholder="例如：11/11 要教學演示 很重要" maxLength={300} />
+        <button className="primary" disabled={busy || !text.trim()}>記下</button>
+      </form>
+      {message && <p className="hint">{message}</p>}
+      {items === null ? <p className="hint">載入中…</p> : <AgendaList items={items} onDone={done} />}
+    </section>
+  );
+}
+
 export function Overview({ connected }: { connected: Record<string, boolean> }) {
   const month = taipeiToday().slice(0, 7);
   const [analytics, setAnalytics] = useState<InvokeResult | null>();
   const [budget, setBudget] = useState<InvokeResult | null>();
   const [performance, setPerformance] = useState<InvokeResult | null>();
   const [radar, setRadar] = useState<InvokeResult | null>();
+  const [assets, setAssets] = useState<InvokeResult | null>();
 
   const loadLedger = useCallback(() => {
-    if (!connected.ledger) { setAnalytics(null); setBudget(null); return; }
+    if (!connected.ledger) { setAnalytics(null); setBudget(null); setAssets(null); return; }
+    void callTool('ledger.assets.summary', {}).then(setAssets);
     void callTool('ledger.analytics.get', { month }).then(setAnalytics);
     void callTool('ledger.budget.summary', { month }).then(setBudget);
   }, [connected.ledger, month]);
@@ -114,11 +164,14 @@ export function Overview({ connected }: { connected: Record<string, boolean> }) 
     <main className="overview">
       <h1 className="page-title">{Number(month.slice(5))} 月總覽</h1>
       <div className="cards">
+        <AgendaCard />
         {connected.ledger ? <QuickEntry onSaved={loadLedger} /> : <section className="card"><h2>快速記帳</h2><p className="hint">先到 <a href="/connections">連線</a> 頁連接 Ledger。</p></section>}
         <Panel title="Ledger 本月收支" result={analytics} empty="尚未連接 Ledger。" />
         <Panel title="Ledger 本月預算" result={budget} empty="尚未連接 Ledger。" />
+        <Panel title="資產與淨資產" result={assets} empty="尚未連接 Ledger。" />
         <Panel title="Journal 本月績效" result={performance} empty="尚未連接 Trading Journal。" />
         <Panel title="RADAR 資料" result={radar} empty="RADAR 整合尚未設定。" />
+        <section className="card"><h2>通知</h2><Notifications compact /></section>
       </div>
     </main>
   );

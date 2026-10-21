@@ -1,0 +1,29 @@
+name: NOIRXU AI reminders
+
+# Calls the app every 10 minutes so due reminders and the 08:00 summary go out.
+# Authenticates with GitHub's OIDC identity token (no stored secret).
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: none
+
+concurrency:
+  group: noirxu-ai-tick
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Call /api/cron/tick
+        env:
+          APP_URL: https://noirxu-ai.vercel.app
+        run: |
+          set -euo pipefail
+          token=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=noirxu-ai" | jq -r '.value')
+          curl -sS --fail-with-body -X POST -H "Authorization: Bearer $token" "$APP_URL/api/cron/tick"

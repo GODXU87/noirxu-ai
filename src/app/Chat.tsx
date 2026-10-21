@@ -12,6 +12,9 @@ type Item =
 const STORAGE_KEY = 'noirxu-ai-chat-v1';
 
 const EXAMPLES = [
+  { label: '記下一件事', text: '11/11 要教學演示，很重要。' },
+  { label: '最近有什麼事', text: '最近有什麼事？依重要程度排給我。' },
+  { label: '我的資產', text: '幫我分析目前的資產配置和淨資產。' },
   { label: '記一筆午餐', text: '今天午餐 150 元，幫我記帳。' },
   { label: '這個月花費', text: '這個月花了多少錢？哪一類最多？' },
   { label: '新增交易紀錄', text: '今天買進一筆股票，幫我加入交易紀錄。' },

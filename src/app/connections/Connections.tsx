@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { ConnectionStatus } from '@/server/connections';
+import { Notifications } from '../components/Notifications';
 
 interface TestResult { ok: boolean; tool: string; code?: string; message?: string; tradeDate?: string | null }
 
@@ -112,7 +113,10 @@ export function Connections({ initial, gmailResult, redirectUri }: { initial: Co
   return (
     <>
       {gmailResult && GMAIL_MESSAGES[gmailResult] && <p className="banner">{GMAIL_MESSAGES[gmailResult]}</p>}
-      <div className="cards">{statuses.map(status => <Card key={status.id} status={status} onChange={refresh} />)}</div>
+      <div className="cards">
+        {statuses.map(status => <Card key={status.id} status={status} onChange={refresh} />)}
+        <section className="card"><h2>通知<span className="pill">這台裝置</span></h2><Notifications /></section>
+      </div>
       {redirectUri && <p className="hint">Gmail 重新導向 URI：<code>{redirectUri}</code></p>}
     </>
   );

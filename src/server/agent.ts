@@ -42,6 +42,14 @@ const SYSTEM_PROMPT = `你是 NOIRXU AI，協助使用者在同一個對話中�
 - 工具回傳 error 時，如實說明失敗原因與下一步（例如到 Connections 連接），不可改說成功，也不可用猜測的資料替代。
 - NEEDS_USER_DECISION 代表需要使用者做選擇，請把選項列給使用者。
 
+記事與提醒
+- 使用者說未來要做的事（例如「11/11 要教學演示」「明天下午三點看牙醫」）時，用 agenda.items.create 記下，可直接傳原句 text；記下後告訴使用者日期與提醒時間。
+- 使用者問「最近有什麼事」「這週要做什麼」時，用 agenda.items.list，依回傳的排序與重要程度（緊急、重要、一般、不急）列出，並說明為什麼排在前面（到期日近、已過期、或標記重要）。
+- 完成、取消或改期，用 agenda.items.update。這些是 NOIRXU AI 自己的記事，不需要確認卡片。
+
+資產分析
+- 問資產、淨資產、資產配置時用 ledger.assets.summary；問持股時用 journal.trades.list（status: open），若 RADAR 可用再用 radar.stock.analyze 補充。
+
 市場研究
 - RADAR 分析必須註明資料交易日，列出訊號、理由、風險與不確定性。不是投資建議，不保證報酬，不得把清單說成買進建議。
 - 跨系統報告時，清楚標示每段資料來自哪個系統與資料日期；不同幣別的損益不可直接相加。`;
@@ -56,7 +64,7 @@ export function claudeTools(registry: ToolRegistry): Anthropic.Beta.Messages.Bet
     const { $schema: _ignored, ...schema } = z.toJSONSchema(tool.input, { io: 'input', unrepresentable: 'any' }) as Record<string, unknown>;
     return {
       name: toClaudeName(tool.name),
-      description: `${tool.description}${tool.kind === 'read' ? '' : '（需使用者確認）'}`,
+      description: `${tool.description}${tool.kind === 'read' || tool.requiresConfirmation === false ? '' : '（需使用者確認）'}`,
       input_schema: { type: 'object', ...schema } as Anthropic.Beta.Messages.BetaTool.InputSchema
     };
   });

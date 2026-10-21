@@ -6,6 +6,10 @@ export const TOOL_LABELS: Record<string, string> = {
   'ledger.income.create': '新增 Ledger 收入',
   'ledger.budget.summary': 'Ledger 預算',
   'ledger.analytics.get': 'Ledger 月分析',
+  'ledger.assets.summary': 'Ledger 資產總覽',
+  'agenda.items.create': '記下事項',
+  'agenda.items.list': '近期事項',
+  'agenda.items.update': '更新事項',
   'journal.trades.list': 'Journal 交易紀錄',
   'journal.trade.create': '新增 Journal 交易紀錄',
   'journal.performance.summary': 'Journal 交易績效',
@@ -22,7 +26,7 @@ export const TOOL_LABELS: Record<string, string> = {
   'gmail.message.send': '寄出信件'
 };
 
-export const SYSTEM_OF: Record<string, string> = { ledger: 'Ledger', journal: 'Journal', radar: 'RADAR', gmail: 'Gmail' };
+export const SYSTEM_OF: Record<string, string> = { agenda: '記事', ledger: 'Ledger', journal: 'Journal', radar: 'RADAR', gmail: 'Gmail' };
 
 export function toolLabel(name: string): string {
   return TOOL_LABELS[name] ?? name;

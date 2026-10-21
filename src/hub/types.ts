@@ -43,8 +43,14 @@ export interface ToolRunResult<O> {
 export interface ToolDefinition<I extends z.ZodType = z.ZodType, O extends z.ZodType = z.ZodType> {
   name: string;
   description: string;
-  connection: ConnectionId;
+  /** 'internal' = NOIRXU AI's own data (agenda); always available. */
+  connection: ConnectionId | 'internal';
   kind: ToolKind;
+  /**
+   * Write tools create a proposal that the user must confirm. Only tools that change
+   * NOIRXU AI's own notes (never a source system or outgoing mail) may set this to false.
+   */
+  requiresConfirmation?: boolean;
   input: I;
   output: O;
   /** Required for write/send tools: what the user sees before approving. */
@@ -82,7 +88,7 @@ export interface AuditEntry {
   userId: string;
   tool: string;
   kind: ToolKind;
-  event: 'read' | 'proposed' | 'confirmed' | 'succeeded' | 'failed' | 'outcome_unknown' | 'rejected';
+  event: 'read' | 'executed' | 'proposed' | 'confirmed' | 'succeeded' | 'failed' | 'outcome_unknown' | 'rejected';
   proposalId?: string;
   recordId?: string;
   errorCode?: ToolErrorCode;
