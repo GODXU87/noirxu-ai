@@ -2,6 +2,7 @@
 
 import { Fragment, useState, type ReactNode } from 'react';
 import { money, toolLabel, toolSystem } from '@/lib/tool-labels';
+import { Icon } from './Icon';
 
 export interface Link { label: string; url: string }
 export interface Preview { title: string; fields: Array<{ label: string; value: string }>; body?: string; warnings?: string[] }
@@ -40,17 +41,66 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: 'up
   return <div className="stat"><span>{label}</span><b className={tone ? `tone-${tone}` : undefined}>{value}</b></div>;
 }
 
-export interface AgendaView { id: string; title: string; notes: string; due_label: string; priority: 'urgent' | 'high' | 'normal' | 'low'; priority_label: string; status: string }
+export interface AgendaView {
+  id: string; title: string; notes: string; due_label: string; due_date: string | null; due_time: string | null;
+  importance: 1 | 2 | 3; priority: 'urgent' | 'high' | 'normal' | 'low'; priority_label: string; status: string;
+}
 
-export function AgendaList({ items, onDone }: { items: AgendaView[]; onDone?: (id: string) => void }) {
-  if (!items?.length) return <p className="hint">沒有待辦事項。</p>;
+function AgendaEditor({ item, onClose, onChanged }: { item: AgendaView; onClose: () => void; onChanged: () => void }) {
+  const [form, setForm] = useState({ title: item.title, due_date: item.due_date ?? '', due_time: item.due_time ?? '', importance: item.importance, notes: item.notes });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  async function save(patch: Record<string, unknown>) {
+    setBusy(true); setError('');
+    const result = await callTool('agenda.items.update', { id: item.id, ...patch });
+    setBusy(false);
+    if (result.status === 'ok') { onClose(); onChanged(); }
+    else if (result.status === 'error') setError(result.message);
+  }
+
+  return (
+    <form className="agenda-edit" onSubmit={event => { event.preventDefault(); void save({ title: form.title, due_date: form.due_date || null, due_time: form.due_time || null, importance: form.importance, notes: form.notes }); }}>
+      <input className="full" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} maxLength={200} required aria-label="事項" />
+      <input type="date" value={form.due_date} onChange={e => setForm({ ...form, due_date: e.target.value })} aria-label="日期" />
+      <input type="time" value={form.due_time} onChange={e => setForm({ ...form, due_time: e.target.value })} aria-label="時間" />
+      <div className="full seg" role="group" aria-label="重要程度"><span className="seg-label">重要程度</span>
+        {([[3, '高'], [2, '中'], [1, '低']] as const).map(([value, label]) => (
+          <button key={value} type="button" className={form.importance === value ? 'on' : ''} onClick={() => setForm({ ...form, importance: value })}>{label}</button>
+        ))}
+      </div>
+      <input className="full" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} maxLength={1000} placeholder="備註（選填）" aria-label="備註" />
+      {error && <p className="full status-error">{error}</p>}
+      <div className="actions">
+        <button className="primary grow" disabled={busy}>儲存</button>
+        <button type="button" className="ghost" disabled={busy} onClick={onClose}>取消</button>
+        <button type="button" className="danger" disabled={busy} onClick={() => void save({ status: 'cancelled' })}>刪除</button>
+      </div>
+    </form>
+  );
+}
+
+/** Ranked agenda. With `onChanged`, items can be completed or edited in place. */
+export function AgendaList({ items, onChanged, emptyText = '目前沒有待辦事項。' }: { items: AgendaView[]; onChanged?: () => void; emptyText?: string }) {
+  const [editing, setEditing] = useState<string | null>(null);
+  if (!items?.length) return <p className="hint">{emptyText}</p>;
+  async function complete(id: string) {
+    const result = await callTool('agenda.items.update', { id, status: 'done' });
+    if (result.status === 'ok') onChanged?.();
+  }
   return (
     <ul className="agenda">
       {items.map(item => (
-        <li key={item.id} className={item.status !== 'open' ? 'is-done' : undefined}>
-          <span className={`prio prio-${item.priority}`}>{item.status === 'done' ? '完成' : item.priority_label}</span>
-          <span className="agenda-main"><b>{item.title}</b><small>{item.due_label}{item.notes ? ` · ${item.notes}` : ''}</small></span>
-          {onDone && item.status === 'open' && <button type="button" className="ghost check" aria-label={`完成：${item.title}`} onClick={() => onDone(item.id)}>✓</button>}
+        <li key={item.id}>
+          <div className={`agenda-row prio-${item.priority}${item.status !== 'open' ? ' is-done' : ''}`}>
+            <span className="rail" aria-hidden="true" />
+            <button type="button" className="agenda-main" disabled={!onChanged} onClick={() => setEditing(editing === item.id ? null : item.id)}>
+              <b>{item.title}</b>
+              <small><span className={`tag tag-${item.priority}`}>{item.status === 'done' ? '已完成' : item.priority_label}</span>{item.due_label}{item.notes ? ` · ${item.notes}` : ''}</small>
+            </button>
+            {onChanged && item.status === 'open' && <button type="button" className="check" aria-label={`完成：${item.title}`} onClick={() => void complete(item.id)}><Icon name="check" size={16} /></button>}
+          </div>
+          {editing === item.id && onChanged && <AgendaEditor item={item} onClose={() => setEditing(null)} onChanged={onChanged} />}
         </li>
       ))}
     </ul>

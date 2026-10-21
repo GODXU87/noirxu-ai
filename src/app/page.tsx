@@ -11,10 +11,10 @@ export default async function HomePage() {
   if (!userId) redirect('/login');
   const { connected, storageMode, problem } = await pageState(userId);
   return (
-    <div className="shell chat-shell">
+    <div className="shell chat-page">
       <TopBar current="chat" />
       {problem && <p className="banner danger">{problem}</p>}
-      {storageMode === 'memory' && <p className="banner">開發模式：連線與待確認操作只存在伺服器記憶體，重新啟動後會清空。</p>}
+      {storageMode === 'memory' && <p className="banner">開發模式：資料只存在伺服器記憶體，重新啟動後會清空。</p>}
       <Chat connected={connected} />
     </div>
   );

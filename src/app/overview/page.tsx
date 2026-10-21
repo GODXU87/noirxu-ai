@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 export default async function OverviewPage() {
   const userId = await currentUser();
   if (!userId) redirect('/login');
-  const { connected, storageMode, problem } = await pageState(userId);
+  const { connected, problem } = await pageState(userId);
   return (
     <div className="shell">
       <TopBar current="overview" />
