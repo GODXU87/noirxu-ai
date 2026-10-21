@@ -1,12 +1,12 @@
 import 'server-only';
-import { createClient } from '@supabase/supabase-js';
+import { Pool } from 'pg';
 import { CredentialStore, MemoryCredentialBackend, type CredentialBackend } from '@/connections/credentials';
 import { SupabaseUserConnection } from '@/connections/supabase-user';
 import { TokenVault } from '@/connections/vault';
 import { Executor } from '@/hub/executor';
 import { ToolRegistry } from '@/hub/registry';
 import { MemoryHubStore, type HubStore } from '@/hub/store';
-import { SupabaseCredentialBackend, SupabaseHubStore } from '@/hub/supabase-store';
+import { PgCredentialBackend, PgHubStore } from '@/hub/pg-store';
 import type { ConnectionId } from '@/hub/types';
 import { GmailService } from '@/tools/gmail/google';
 import { gmailTools } from '@/tools/gmail/tools';
@@ -33,13 +33,14 @@ function build(): Hub {
   let backend: CredentialBackend;
   let storageMode: Hub['storageMode'];
 
-  if (config.hubDatabase) {
-    const db = createClient(config.hubDatabase.url, config.hubDatabase.key, { auth: { persistSession: false, autoRefreshToken: false } });
-    store = new SupabaseHubStore(db);
-    backend = new SupabaseCredentialBackend(db);
+  if (config.hubDatabaseUrl) {
+    // Small pool: serverless instances each hold their own; the role is capped at 10 connections.
+    const pool = new Pool({ connectionString: config.hubDatabaseUrl, max: 2, ssl: { rejectUnauthorized: false } });
+    store = new PgHubStore(pool);
+    backend = new PgCredentialBackend(pool);
     storageMode = 'database';
   } else if (process.env.NODE_ENV === 'production') {
-    throw new Error('NOIRXU_AI_SUPABASE_URL / NOIRXU_AI_SUPABASE_SECRET_KEY are required in production');
+    throw new Error('NOIRXU_AI_DATABASE_URL is required in production');
   } else {
     store = new MemoryHubStore();
     backend = new MemoryCredentialBackend();

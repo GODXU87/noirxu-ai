@@ -22,7 +22,10 @@
 ```bash
 npm install --legacy-peer-deps
 cp .env.example .env.local   # 填入值
-npm run dev                  # 未設定 NOIRXU_AI_SUPABASE_* 時使用記憶體儲存（僅限開發）
+npm run dev                  # 未設定 NOIRXU_AI_DATABASE_URL 時使用記憶體儲存（僅限開發）
 npm test && npm run typecheck && npm run build
 ```
-正式環境需先在 NOIRXU AI 自己的 Supabase 專案執行 `supabase/migrations/`。
+## 儲存
+NOIRXU AI 自己的狀態（加密憑證、待確認操作、稽核紀錄）放在 Loki 專案的獨立 schema `noirxu_ai`，
+由專用角色 `noirxu_ai_app` 存取。這個角色只能讀寫 `noirxu_ai`，看不到 Loki 其他任何表或函式；
+NOIRXU AI 不持有任何 service role key。見 `supabase/migrations/`。

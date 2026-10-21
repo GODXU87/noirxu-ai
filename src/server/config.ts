@@ -8,9 +8,8 @@ export function loadConfig() {
     ownerPassword: env('NOIRXU_AI_OWNER_PASSWORD'),
     sessionSecret: env('NOIRXU_AI_SESSION_SECRET'),
     tokenEncryptionKey: env('NOIRXU_TOKEN_ENCRYPTION_KEY'),
-    hubDatabase: env('NOIRXU_AI_SUPABASE_URL') && env('NOIRXU_AI_SUPABASE_SECRET_KEY')
-      ? { url: env('NOIRXU_AI_SUPABASE_URL')!, key: env('NOIRXU_AI_SUPABASE_SECRET_KEY')! }
-      : null,
+    /** Postgres URL that logs in as the limited `noirxu_ai_app` role (see supabase/migrations). */
+    hubDatabaseUrl: env('NOIRXU_AI_DATABASE_URL'),
     anthropicModel: env('NOIRXU_AI_MODEL') ?? 'claude-opus-5-5',
     ledger: {
       supabase: env('LEDGER_SUPABASE_URL') && env('LEDGER_SUPABASE_ANON_KEY') ? { url: env('LEDGER_SUPABASE_URL')!, anonKey: env('LEDGER_SUPABASE_ANON_KEY')! } : null,
