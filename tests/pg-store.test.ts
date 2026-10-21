@@ -1,5 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { PgHubStore } from '@/hub/pg-store';
+
+vi.mock('server-only', () => ({}));
+const { assertLimitedDatabaseRole } = await import('@/server/hub');
 
 describe('PgHubStore', () => {
   it('transitions with a single compare-and-set statement scoped to noirxu_ai', async () => {
@@ -17,5 +20,14 @@ describe('PgHubStore', () => {
   it('returns null when another request already moved the proposal', async () => {
     const store = new PgHubStore({ query: async () => ({ rows: [] }) } as any);
     expect(await store.transitionProposal('p1', 'pending', 'executing')).toBeNull();
+  });
+});
+
+describe('assertLimitedDatabaseRole', () => {
+  it('accepts only the noirxu_ai_app role', () => {
+    expect(() => assertLimitedDatabaseRole('postgresql://noirxu_ai_app.pvvkuygggzvgspbstiwu:pw@pooler.example.com:6543/postgres')).not.toThrow();
+    expect(() => assertLimitedDatabaseRole('postgresql://postgres.pvvkuygggzvgspbstiwu:pw@pooler.example.com:6543/postgres')).toThrow(/noirxu_ai_app/);
+    expect(() => assertLimitedDatabaseRole('postgresql://postgres:pw@db.example.com:5432/postgres')).toThrow();
+    expect(() => assertLimitedDatabaseRole('not a url')).toThrow();
   });
 });

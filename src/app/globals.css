@@ -168,3 +168,4 @@ details pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; m
 .check { padding: 4px 10px; }
 .notify { display: grid; gap: 10px; }
 .card .agenda { padding: 0; color: var(--text); }
+.banner.danger { border-color: var(--danger); color: var(--danger); }

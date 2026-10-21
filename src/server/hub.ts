@@ -33,6 +33,29 @@ export interface Hub {
   isConnected: (userId: string, connection: ConnectionId) => Promise<boolean>;
 }
 
+/**
+ * The hub must log in as the limited noirxu_ai_app role, never as postgres or another
+ * broad account, so a misconfigured URL fails loudly instead of running with admin rights.
+ */
+export function assertLimitedDatabaseRole(url: string) {
+  let user = '';
+  try {
+    user = decodeURIComponent(new URL(url).username);
+  } catch {
+    throw new HubConfigError('NOIRXU_AI_DATABASE_URL 格式不正確。');
+  }
+  if (user !== 'noirxu_ai_app' && !user.startsWith('noirxu_ai_app.')) {
+    throw new HubConfigError(`NOIRXU_AI_DATABASE_URL 的使用者必須是 noirxu_ai_app（目前是 ${user.split('.')[0] || '空白'}）。請把網址裡的「postgres.」改成「noirxu_ai_app.」。`);
+  }
+}
+
+export class HubConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'HubConfigError';
+  }
+}
+
 function build(): Hub {
   const config = loadConfig();
   let store: HubStore;
@@ -41,6 +64,7 @@ function build(): Hub {
   let agenda: AgendaStore;
 
   if (config.hubDatabaseUrl) {
+    assertLimitedDatabaseRole(config.hubDatabaseUrl);
     // Small pool: serverless instances each hold their own; the role is capped at 10 connections.
     const pool = new Pool({ connectionString: config.hubDatabaseUrl, max: 2, ssl: { rejectUnauthorized: false } });
     store = new PgHubStore(pool);
