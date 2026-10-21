@@ -25,8 +25,9 @@ function equal(a: string, b: string) {
 }
 
 export function passwordMatches(supplied: string): boolean {
-  const expected = process.env.NOIRXU_AI_OWNER_PASSWORD ?? '';
-  return Boolean(expected) && equal(supplied, expected);
+  // Trim both sides: pasted values often carry a stray space or newline.
+  const expected = (process.env.NOIRXU_AI_OWNER_PASSWORD ?? '').trim();
+  return Boolean(expected) && equal(supplied.trim(), expected);
 }
 
 export function issueSessionToken(): string {
