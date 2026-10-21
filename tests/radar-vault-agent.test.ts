@@ -28,6 +28,14 @@ describe('TokenVault', () => {
   it('refuses a missing or short key', () => {
     expect(() => new TokenVault('')).toThrow();
     expect(() => new TokenVault(Buffer.alloc(16).toString('base64'))).toThrow();
+    expect(() => new TokenVault('too short passphrase')).toThrow();
+  });
+
+  it('accepts a long typed passphrase and derives a stable key from it', () => {
+    const phrase = 'my noirxu ai vault passphrase 2026 typed by hand';
+    const sealed = new TokenVault(phrase).seal('secret', 'aad');
+    expect(new TokenVault(phrase).open(sealed, 'aad')).toBe('secret');
+    expect(() => new TokenVault(`${phrase}!`).open(sealed, 'aad')).toThrow();
   });
 });
 

@@ -1,11 +1,15 @@
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
+import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'node:crypto';
 
 const VERSION = 'v1';
+const MIN_PASSPHRASE_LENGTH = 32;
 
+/** Accepts 32 random bytes in base64, or a long typed passphrase that is stretched into a key. */
 function loadKey(raw: string | undefined): Buffer {
-  const key = Buffer.from(String(raw || ''), 'base64');
-  if (key.length !== 32) throw new Error('NOIRXU_TOKEN_ENCRYPTION_KEY must be 32 random bytes, base64-encoded');
-  return key;
+  const value = String(raw || '').trim();
+  const decoded = Buffer.from(value, 'base64');
+  if (/^[A-Za-z0-9+/]{43}=$/.test(value) && decoded.length === 32) return decoded;
+  if (value.length >= MIN_PASSPHRASE_LENGTH) return scryptSync(value, 'noirxu-ai-token-vault-v1', 32);
+  throw new Error(`NOIRXU_TOKEN_ENCRYPTION_KEY must be a base64 32-byte key or a passphrase of at least ${MIN_PASSPHRASE_LENGTH} characters`);
 }
 
 /** AES-256-GCM envelope for stored credentials. `aad` binds a ciphertext to its owner and connection. */
