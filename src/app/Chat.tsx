@@ -1,16 +1,7 @@
 'use client';
 
-import { Fragment, useRef, useState } from 'react';
-
-interface Link { label: string; url: string }
-interface Preview { title: string; fields: Array<{ label: string; value: string }>; body?: string; warnings?: string[] }
-type InvokeResult =
-  | { status: 'ok'; tool: string; data: unknown; links: Link[] }
-  | { status: 'confirmation_required'; tool: string; proposalId: string; preview: Preview; expiresAt: string }
-  | { status: 'error'; tool: string; code: string; message: string };
-type ConfirmResult =
-  | { status: 'succeeded'; tool: string; proposalId: string; data: unknown; recordId?: string; links: Link[] }
-  | { status: 'failed' | 'outcome_unknown'; tool: string; proposalId: string; code: string; message: string; candidates?: unknown[]; links: Link[] };
+import { useEffect, useRef, useState } from 'react';
+import { ProposalCard, RichText, ToolCard, type InvokeResult } from './components/shared';
 
 type Item =
   | { kind: 'user'; text: string }
@@ -18,89 +9,60 @@ type Item =
   | { kind: 'error'; text: string }
   | { kind: 'tool'; result: InvokeResult };
 
-function Links({ links }: { links: Link[] }) {
-  if (!links?.length) return null;
-  return <div className="links">{links.map(link => <a key={link.url + link.label} href={link.url} target="_blank" rel="noreferrer">{link.label} ↗</a>)}</div>;
-}
+const STORAGE_KEY = 'noirxu-ai-chat-v1';
 
-function ToolCard({ result }: { result: Extract<InvokeResult, { status: 'ok' | 'error' }> }) {
-  const ok = result.status === 'ok';
-  return (
-    <div className="tool">
-      <header><code>{result.tool}</code><span className={ok ? 'status-ok' : 'status-error'}>{ok ? '已讀取' : `失敗 · ${result.code}`}</span></header>
-      {ok ? (
-        <>
-          <Links links={result.links} />
-          <details><summary>原始資料</summary><pre>{JSON.stringify(result.data, null, 2)}</pre></details>
-        </>
-      ) : <div className="status-error">{result.message}</div>}
-    </div>
-  );
-}
+const EXAMPLES = [
+  { label: '記一筆午餐', text: '今天午餐 150 元，幫我記帳。' },
+  { label: '這個月花費', text: '這個月花了多少錢？哪一類最多？' },
+  { label: '新增交易紀錄', text: '今天買進一筆股票，幫我加入交易紀錄。' },
+  { label: '近一個月績效', text: '幫我分析最近一個月的交易績效。' },
+  { label: 'RADAR 今日觀察', text: 'RADAR 今天有哪些股票值得觀察？' },
+  { label: '個股分析', text: '分析 2330 的均線、量價與資金流向。' },
+  { label: '待回覆的信', text: '幫我找出今天需要回覆的 Gmail。' },
+  { label: '寫信', text: '幫我寫一封信，確認後再寄出。' },
+  { label: '整合報告', text: '整合 Ledger、Journal 與 RADAR，產生個人財務和市場研究報告。' }
+];
 
-function ProposalCard({ result, onDone }: { result: Extract<InvokeResult, { status: 'confirmation_required' }>; onDone: (note: string) => void }) {
-  const [state, setState] = useState<'pending' | 'busy' | 'done' | 'rejected'>('pending');
-  const [outcome, setOutcome] = useState<ConfirmResult | null>(null);
-  const [error, setError] = useState('');
+interface Saved { items: Item[]; history: unknown[]; notes: string[] }
 
-  async function act(action: 'confirm' | 'reject') {
-    setState('busy'); setError('');
-    try {
-      const response = await fetch(`/api/proposals/${result.proposalId}/${action}`, { method: 'POST' });
-      const body = await response.json();
-      if (!body.ok) { setError(body.error?.message ?? '操作失敗'); setState('pending'); return; }
-      if (action === 'reject') { setState('rejected'); onDone(`使用者取消了待確認操作 ${result.proposalId}（${result.tool}），沒有執行。`); return; }
-      const r = body.result as ConfirmResult;
-      setOutcome(r); setState('done');
-      onDone(r.status === 'succeeded'
-        ? `使用者已確認 ${result.tool}（${result.proposalId}），執行成功，來源系統紀錄 ID：${r.recordId ?? '無'}。`
-        : `使用者已確認 ${result.tool}（${result.proposalId}），但結果是 ${r.status}：${r.message}`);
-    } catch {
-      setError('網路錯誤，請重新整理後查看狀態，不要重複確認。'); setState('pending');
-    }
+function load(): Saved | null {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) as Saved : null;
+  } catch {
+    return null;
   }
-
-  return (
-    <div className="proposal">
-      <h3>{result.preview.title}</h3>
-      <dl>{result.preview.fields.map(field => <Fragment key={field.label}><dt>{field.label}</dt><dd>{field.value}</dd></Fragment>)}</dl>
-      {result.preview.body && <pre>{result.preview.body}</pre>}
-      {result.preview.warnings?.length ? <ul className="warn">{result.preview.warnings.map(w => <li key={w}>{w}</li>)}</ul> : null}
-      {state === 'pending' || state === 'busy' ? (
-        <div className="actions">
-          <button className="primary" disabled={state === 'busy'} onClick={() => act('confirm')}>{state === 'busy' ? '處理中…' : '確認執行'}</button>
-          <button disabled={state === 'busy'} onClick={() => act('reject')}>取消</button>
-        </div>
-      ) : null}
-      {error && <div className="result status-error">{error}</div>}
-      {state === 'rejected' && <div className="result">已取消，沒有執行。</div>}
-      {outcome?.status === 'succeeded' && (
-        <div className="result status-ok">已完成。{outcome.recordId ? `紀錄 ID：${outcome.recordId}` : ''}<Links links={outcome.links} /></div>
-      )}
-      {outcome && outcome.status !== 'succeeded' && (
-        <div className="result">
-          <div className={outcome.status === 'failed' ? 'status-error' : 'status-pending'}>{outcome.status === 'failed' ? '失敗' : '結果不明'}：{outcome.message}</div>
-          {outcome.candidates?.length ? <details open><summary>可能已建立的紀錄</summary><pre>{JSON.stringify(outcome.candidates, null, 2)}</pre></details> : null}
-          <Links links={outcome.links} />
-        </div>
-      )}
-    </div>
-  );
 }
 
-export function Chat() {
+export function Chat({ connected }: { connected: Record<string, boolean> }) {
   const [items, setItems] = useState<Item[]>([]);
   const [history, setHistory] = useState<unknown[]>([]);
   const [notes, setNotes] = useState<string[]>([]);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const feedEnd = useRef<HTMLDivElement>(null);
+  const input = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const saved = load();
+    if (saved) { setItems(saved.items); setHistory(saved.history); setNotes(saved.notes); }
+  }, []);
+
+  useEffect(() => {
+    try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ items, history, notes })); } catch { /* storage unavailable */ }
+  }, [items, history, notes]);
+
+  useEffect(() => {
+    const el = input.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [text]);
 
   const scroll = () => setTimeout(() => feedEnd.current?.scrollIntoView({ behavior: 'smooth' }), 50);
 
-  async function send(event: React.FormEvent) {
-    event.preventDefault();
-    const message = text.trim();
+  async function send(message: string) {
+    message = message.trim();
     if (!message || busy) return;
     setBusy(true); setText('');
     setItems(prev => [...prev, { kind: 'user', text: message }]); scroll();
@@ -123,26 +85,42 @@ export function Chat() {
     }
   }
 
+  function reset() {
+    setItems([]); setHistory([]); setNotes([]);
+  }
+
+  const systems = [['ledger', 'Ledger'], ['journal', 'Journal'], ['radar', 'RADAR'], ['gmail', 'Gmail']] as const;
+
   return (
     <>
       <main className="feed">
-        {items.length === 0 && <p className="hint">例如：「今天午餐 150 元，幫我記帳」、「這個月花了多少？哪一類最多？」、「RADAR 今天有哪些股票值得觀察？」、「找出今天需要回覆的 Gmail」。</p>}
+        {items.length === 0 && (
+          <section className="welcome">
+            <h1>想查什麼、記什麼？</h1>
+            <p className="hint">直接用一句話說。寫入資料和寄信都會先給你確認。</p>
+            <div className="status-row">
+              {systems.map(([id, label]) => <a key={id} href="/connections" className={`pill ${connected[id] ? 'on' : ''}`}>{connected[id] ? '●' : '○'} {label}</a>)}
+            </div>
+            <div className="chips">{EXAMPLES.map(example => <button key={example.label} onClick={() => { setText(example.text); input.current?.focus(); }}>{example.label}</button>)}</div>
+          </section>
+        )}
         {items.map((item, index) => {
           if (item.kind === 'tool') {
             return item.result.status === 'confirmation_required'
               ? <ProposalCard key={index} result={item.result} onDone={note => setNotes(prev => [...prev, note])} />
               : <ToolCard key={index} result={item.result} />;
           }
+          if (item.kind === 'assistant') return <div key={index} className="msg assistant"><RichText text={item.text} /></div>;
           return <div key={index} className={`msg ${item.kind}`}>{item.text}</div>;
         })}
-        {busy && <div className="hint">處理中…</div>}
+        {busy && <div className="typing" aria-label="處理中"><span /><span /><span /></div>}
         <div ref={feedEnd} />
       </main>
       <div className="composer">
-        <form onSubmit={send}>
-          <button type="button" onClick={() => { setItems([]); setHistory([]); setNotes([]); }} title="開新對話">新</button>
-          <textarea value={text} onChange={e => setText(e.target.value)} placeholder="輸入訊息…" rows={1}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(e); } }} />
+        <form onSubmit={event => { event.preventDefault(); void send(text); }}>
+          {items.length > 0 && <button type="button" className="ghost" onClick={reset} title="開新對話" aria-label="開新對話">＋</button>}
+          <textarea ref={input} value={text} onChange={e => setText(e.target.value)} placeholder="輸入訊息…" rows={1}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(text); } }} />
           <button className="primary" type="submit" disabled={busy || !text.trim()}>送出</button>
         </form>
       </div>
