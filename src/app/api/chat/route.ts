@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { ToolError } from '@/hub/errors';
-import { runAgentTurn } from '@/server/agent';
+import { REPLY_STYLES, runAgentTurn } from '@/server/agent';
 import { getHub } from '@/server/hub';
 import { errorResponse, json, requireContext } from '@/server/http';
 
@@ -11,6 +11,7 @@ export const maxDuration = 300;
 const MAX_BODY_BYTES = 2_000_000;
 const body = z.object({
   text: z.string().trim().min(1).max(4000),
+  style: z.enum(REPLY_STYLES).default('professional'),
   history: z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.unknown() }).loose()).max(400).default([])
 });
 
@@ -29,7 +30,8 @@ export async function POST(request: Request) {
       executor: hub.executor,
       ctx,
       history: parsed.data.history as Anthropic.Beta.Messages.BetaMessageParam[],
-      userText: parsed.data.text
+      userText: parsed.data.text,
+      style: parsed.data.style
     });
     return json({ ok: true, ...turn });
   } catch (error) {

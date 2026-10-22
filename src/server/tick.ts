@@ -1,10 +1,11 @@
 import 'server-only';
 import { buildBriefing, reminderMessage } from '@/agenda/briefing';
 import { taipeiDate } from '@/lib/dates';
+import { dueWaterSlot, waterReminder } from '@/health/water';
 import type { Hub } from './hub';
 import { OWNER_ID } from './session';
 
-export interface TickResult { reminders: number; briefing: boolean; pushed: number }
+export interface TickResult { reminders: number; briefing: boolean; pushed: number; water?: boolean }
 
 function taipeiHour(now: Date): number {
   return Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Taipei', hour: '2-digit', hour12: false }).format(now));
@@ -61,5 +62,19 @@ export async function runTick(hub: Hub, now = new Date()): Promise<TickResult> {
     pushed += result.sent;
     briefing = true;
   }
-  return { reminders, briefing, pushed };
+  // Water: one check per reminder slot; nothing is sent when the user is on pace.
+  let water = false;
+  if (hub.features?.water && hub.water) {
+    const prefs = await hub.water.prefs(OWNER_ID);
+    const slot = dueWaterSlot(prefs, now);
+    if (slot && await hub.agenda.claimNotification(`water:${OWNER_ID}:${today}:${slot}`, OWNER_ID, 'water')) {
+      const message = waterReminder(prefs, await hub.water.day(OWNER_ID, today), now);
+      if (message) {
+        const result = await hub.push.send(OWNER_ID, { ...message, url: '/', tag: `water-${today}` });
+        pushed += result.sent;
+        water = true;
+      }
+    }
+  }
+  return { reminders, briefing, pushed, water };
 }
