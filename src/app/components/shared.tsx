@@ -225,6 +225,17 @@ export function ToolCard({ result }: { result: Extract<InvokeResult, { status: '
   );
 }
 
+/** One label per action state, so a card never looks finished before the source system says so. */
+function StateChip({ state, outcome }: { state: 'pending' | 'busy' | 'done' | 'rejected'; outcome: ConfirmResult | null }) {
+  const [label, tone] = state === 'pending' ? ['待確認', 'pending']
+    : state === 'busy' ? ['執行中', 'pending']
+    : state === 'rejected' ? ['已取消', '']
+    : outcome?.status === 'succeeded' ? ['已完成', 'ok']
+    : outcome?.status === 'failed' ? ['執行失敗', 'error']
+    : ['結果不明', 'pending'];
+  return <span className={`state-chip ${tone}`}>{label}</span>;
+}
+
 export function ProposalCard({ result, onDone }: { result: Extract<InvokeResult, { status: 'confirmation_required' }>; onDone?: (note: string, outcome: ConfirmResult | null) => void }) {
   const [state, setState] = useState<'pending' | 'busy' | 'done' | 'rejected'>('pending');
   const [outcome, setOutcome] = useState<ConfirmResult | null>(null);
@@ -249,7 +260,7 @@ export function ProposalCard({ result, onDone }: { result: Extract<InvokeResult,
 
   return (
     <div className={`proposal proposal-${state}`}>
-      <h3><span className="sys">{toolSystem(result.tool)}</span>{result.preview.title}</h3>
+      <h3 style={{ display: 'flex', alignItems: 'center' }}><span className="sys">{toolSystem(result.tool)}</span>{result.preview.title}<StateChip state={state} outcome={outcome} /></h3>
       <dl>{result.preview.fields.map(field => <Fragment key={field.label}><dt>{field.label}</dt><dd>{field.value}</dd></Fragment>)}</dl>
       {result.preview.body && <pre>{result.preview.body}</pre>}
       {result.preview.warnings?.length ? <ul className="warn">{result.preview.warnings.map(w => <li key={w}>{w}</li>)}</ul> : null}

@@ -13,7 +13,7 @@ const calendarDate = z.string().refine(isCalendarDate, '日期需為 YYYY-MM-DD'
 const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, '時間需為 HH:MM');
 const importance = z.union([z.literal(1), z.literal(2), z.literal(3)]);
 
-const itemView = z.object({
+export const itemView = z.object({
   id: z.string(),
   title: z.string(),
   notes: z.string(),
@@ -27,7 +27,7 @@ const itemView = z.object({
   days_left: z.number().nullable()
 });
 
-function view(item: AgendaItem, today: string): z.output<typeof itemView> {
+export function agendaView(item: AgendaItem, today: string): z.output<typeof itemView> {
   const priority = priorityOf(item, today);
   return {
     id: item.id, title: item.title, notes: item.notes, due_date: item.due_date, due_time: item.due_time, importance: item.importance,
@@ -76,7 +76,7 @@ export function agendaTools(store: AgendaStore): ToolDefinition[] {
         if (item.due_date && item.due_date < today) throw new ToolError('INVALID_INPUT', `日期 ${item.due_date} 已經過去，請確認日期。`);
         const reminders = schedule(item, now);
         await store.createItem(item, reminders);
-        return { data: { item: view(item, today), reminders: reminders.map(r => ({ at: r.remind_at, label: r.label })) }, recordId: item.id };
+        return { data: { item: agendaView(item, today), reminders: reminders.map(r => ({ at: r.remind_at, label: r.label })) }, recordId: item.id };
       }
     }),
     defineTool({
@@ -93,7 +93,7 @@ export function agendaTools(store: AgendaStore): ToolDefinition[] {
         const today = taipeiDate(ctx.now());
         const items = await store.listItems(ctx.userId, { status: value.include_done ? 'all' : 'open' });
         const within = items.filter(item => { const d = daysUntil(item.due_date, today); return d === null || d <= value.days; });
-        return { data: { today, items: rankItems(within, today).map(item => view(item, today)) } };
+        return { data: { today, items: rankItems(within, today).map(item => agendaView(item, today)) } };
       }
     }),
     defineTool({
@@ -119,7 +119,7 @@ export function agendaTools(store: AgendaStore): ToolDefinition[] {
         if ('due_date' in patch || 'due_time' in patch || 'importance' in patch || patch.status === 'open') {
           await store.replaceReminders(ctx.userId, id, updated.status === 'open' ? schedule(updated, ctx.now()) : []);
         }
-        return { data: { item: view(updated, taipeiDate(ctx.now())) }, recordId: id };
+        return { data: { item: agendaView(updated, taipeiDate(ctx.now())) }, recordId: id };
       }
     })
   ];

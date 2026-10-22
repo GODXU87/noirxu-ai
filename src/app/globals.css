@@ -268,3 +268,28 @@ details pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; m
 .agenda-main:disabled { opacity: 1; cursor: default; }
 .seg-label { display: inline-flex; align-items: center; padding: 0 12px; font-size: 12px; color: var(--muted); border-right: 1px solid var(--line); }
 .agenda-edit .seg button { flex: 1; }
+
+/* Assistant cards: triage, ledger draft, reports, reply drafts */
+.fields { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; font-size: 13.5px; }
+.fields dt { color: var(--muted); }
+.fields dd { margin: 0; overflow-wrap: anywhere; }
+.tag { display: inline-block; font-size: 10.5px; font-weight: 600; padding: 1px 7px; margin-right: 6px; border-radius: 6px; border: 1px solid var(--line); color: var(--text-soft); vertical-align: 1px; }
+.tag.guess { color: var(--warn); border-color: rgba(221, 182, 120, .45); }
+.tag.kind-event, .tag.kind-todo { color: var(--accent); border-color: rgba(125, 217, 200, .4); }
+.tag.kind-finance { color: var(--warn); border-color: rgba(221, 182, 120, .45); }
+.tag.kind-reply { color: var(--text); }
+.triage-item { display: grid; gap: 6px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.triage-item p { margin: 0; }
+.warn-list { margin: 0; padding-left: 18px; color: var(--warn); font-size: 12.5px; }
+.actions-list, .help-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.action-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13.5px; }
+.action-row button { flex: none; padding: 5px 12px; font-size: 12.5px; }
+.draft { display: grid; gap: 8px; }
+.draft pre { white-space: pre-wrap; background: rgba(0, 0, 0, .25); border-radius: 8px; padding: 10px; margin: 0; font: inherit; }
+.suggest-list { margin: 0; padding-left: 20px; font-size: 13.5px; display: grid; gap: 4px; }
+.help-list li { display: grid; gap: 2px; }
+button.link { background: none; border: 0; padding: 0; color: var(--accent); font-weight: 600; text-align: left; }
+.state-chip { margin-left: auto; font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); }
+.state-chip.pending { color: var(--warn); border-color: rgba(221, 182, 120, .45); }
+.state-chip.ok { color: var(--accent); border-color: rgba(125, 217, 200, .4); }
+.state-chip.error { color: var(--danger); border-color: rgba(236, 143, 145, .5); }

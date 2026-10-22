@@ -23,10 +23,15 @@ export const TOOL_LABELS: Record<string, string> = {
   'gmail.messages.search': '搜尋 Gmail',
   'gmail.message.read': '讀取信件',
   'gmail.message.prepare': '整理信件草稿',
-  'gmail.message.send': '寄出信件'
+  'gmail.message.send': '寄出信件',
+  'assistant.text.triage': '文字分診',
+  'assistant.ledger.draft': '記帳草稿',
+  'assistant.briefing.morning': '早報',
+  'assistant.briefing.evening': '晚報',
+  'assistant.reply.drafts': '回覆草稿'
 };
 
-export const SYSTEM_OF: Record<string, string> = { agenda: '記事', ledger: 'Ledger', journal: 'Journal', radar: 'RADAR', gmail: 'Gmail' };
+export const SYSTEM_OF: Record<string, string> = { assistant: '助理', agenda: '記事', ledger: 'Ledger', journal: 'Journal', radar: 'RADAR', gmail: 'Gmail' };
 
 export function toolLabel(name: string): string {
   return TOOL_LABELS[name] ?? name;

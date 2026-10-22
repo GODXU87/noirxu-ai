@@ -16,11 +16,14 @@ import { RadarClient, radarTools } from '@/tools/radar/tools';
 import { MemoryAgendaStore, PgAgendaStore, type AgendaStore } from '@/agenda/store';
 import { PushService } from '@/push/service';
 import { agendaTools } from '@/tools/agenda/tools';
+import { assistantTools } from '@/tools/assistant/tools';
+import { loadFeatureFlags, type FeatureFlags } from '@/lib/features';
 import { ledgerAssetTools } from '@/tools/ledger/assets';
 import { loadConfig, type AppConfig } from './config';
 
 export interface Hub {
   config: AppConfig;
+  features: FeatureFlags;
   storageMode: 'database' | 'memory';
   registry: ToolRegistry;
   executor: Executor;
@@ -88,14 +91,18 @@ function build(): Hub {
   const radar = new RadarClient(config.radar);
   const gmail = new GmailService(config.google, credentials);
 
+  const features = loadFeatureFlags();
   const registry = new ToolRegistry();
+  // Assistant tools call other tools through the executor, which is created below.
+  let executor: Executor | null = null;
   for (const tool of [
     ...ledgerTools({ connection: ledger, appUrl: config.ledger.appUrl }),
     ...ledgerAssetTools({ connection: ledger, appUrl: config.ledger.appUrl }),
     ...agendaTools(agenda),
     ...journalTools({ connection: journal, appUrl: config.journal.appUrl }),
     ...radarTools(radar),
-    ...gmailTools(gmail)
+    ...gmailTools(gmail),
+    ...assistantTools({ agenda, features, isConnected: (userId, connection) => isConnected(userId, connection), invoke: (name, input, ctx) => executor!.invoke(name, input, ctx) })
   ]) registry.register(tool);
 
   const isConnected = async (userId: string, connection: ConnectionId) => {
@@ -107,7 +114,8 @@ function build(): Hub {
     }
   };
 
-  return { config, storageMode, registry, executor: new Executor({ registry, store, isConnected }), ledger, journal, radar, gmail, agenda, push, isConnected };
+  executor = new Executor({ registry, store, isConnected });
+  return { config, features, storageMode, registry, executor, ledger, journal, radar, gmail, agenda, push, isConnected };
 }
 
 const globalHub = globalThis as unknown as { __noirxuHub?: Hub };
