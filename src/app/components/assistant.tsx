@@ -2,6 +2,7 @@
 
 import { Fragment, useState } from 'react';
 import { money, taipeiToday, toolLabel } from '@/lib/tool-labels';
+import { Icon } from './Icon';
 import { AgendaList, callTool, Links, ProposalCard, type AgendaView, type InvokeResult } from './shared';
 
 // Cards for the assistant tools. Every action button here starts the normal flow:
@@ -194,6 +195,7 @@ function MorningView({ data }: { data: any }) {
         </div>
       )}
       {data.open_positions != null && <p className="hint">Journal 未平倉 {data.open_positions} 筆</p>}
+      <WaterLine water={data.water} />
       {data.gmail?.status === 'ok' && (
         <div>
           <p className="section-label" style={{ margin: '0 0 4px' }}>今天的未讀信</p>
@@ -218,6 +220,7 @@ function EveningView({ data }: { data: any }) {
           <ol className="suggest-list">{data.suggestions.map((s: any) => <li key={s.id}>{s.title}<span className="muted"> — {s.reason}</span></li>)}</ol>
         </div>
       )}
+      <WaterLine water={data.water} />
       <p className="hint">{data.note}</p>
     </div>
   );
@@ -259,6 +262,63 @@ function ReplyDraftsView({ data, onNote }: { data: any; onNote?: Note }) {
   );
 }
 
+/* ---------- 喝水 ---------- */
+
+const fmt = (n: number) => Number(n).toLocaleString('en-US');
+
+export function WaterMeter({ data, onChange, compact }: { data: any; onChange?: (next: any) => void; compact?: boolean }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  async function act(tool: string, input: unknown) {
+    setBusy(true); setError('');
+    const result = await callTool(tool, input);
+    setBusy(false);
+    if (result.status === 'ok') onChange?.(result.data);
+    else if (result.status === 'error') setError(result.message);
+  }
+  return (
+    <div className={`water ${compact ? 'compact' : ''}`}>
+      <div className="water-head">
+        <span className="water-icon"><Icon name="drop" size={compact ? 16 : 18} /></span>
+        <b>{fmt(data.total_ml)}</b><span className="muted"> / {fmt(data.goal_ml)} ml</span>
+        <span className="water-actions">
+          {[250, 500].map(ml => <button key={ml} type="button" className="ghost" disabled={busy} onClick={() => void act('health.water.log', { ml })}>+{ml}</button>)}
+        </span>
+      </div>
+      <div className="bar"><span className="bar-accent" style={{ width: `${data.percent}%` }} /></div>
+      {!compact && (
+        <>
+          <p className="hint">
+            {data.remaining_ml === 0 ? '今天的目標已達成。' : data.behind_ml > 0 ? `照進度現在應到 ${fmt(data.expected_ml)} ml，落後 ${fmt(data.behind_ml)} ml。` : `進度正常，還差 ${fmt(data.remaining_ml)} ml。`}
+            {data.logged_ml ? ` 已記錄 ${data.logged_ml} ml。` : ''}{data.removed_ml ? ` 已刪除 ${data.removed_ml} ml。` : ''}{data.removed_ml === null ? ' 今天沒有可以刪除的紀錄。' : ''}
+          </p>
+          <div className="row">
+            <span className="hint">提醒：{data.prefs.enabled ? `${data.prefs.start}–${data.prefs.end} 每 ${data.prefs.interval_hours} 小時（進度落後時才推播）` : '已關閉'}</span>
+            <button type="button" className="link" disabled={busy} onClick={() => void act('health.water.settings', { enabled: !data.prefs.enabled })}>{data.prefs.enabled ? '關閉提醒' : '開啟提醒'}</button>
+            {data.entries.length > 0 && <button type="button" className="link" disabled={busy} onClick={() => void act('health.water.undo', {})}>刪除上一筆</button>}
+          </div>
+        </>
+      )}
+      {error && <p className="status-error">{error}</p>}
+    </div>
+  );
+}
+
+function WaterCard({ initial }: { initial: any }) {
+  const [data, setData] = useState(initial);
+  return <WaterMeter data={data} onChange={setData} />;
+}
+
+function WaterLine({ water }: { water: any }) {
+  if (!water) return null;
+  return (
+    <div>
+      <p className="section-label" style={{ margin: '0 0 4px' }}>喝水</p>
+      <p className="hint">今天 {fmt(water.total_ml)} / {fmt(water.goal_ml)} ml（{water.percent}%）{water.reminders ? ` · 提醒 ${water.reminders}` : ' · 提醒已關閉'}</p>
+    </div>
+  );
+}
+
 /* ---------- 入口 ---------- */
 
 export function AssistantCard({ result, onNote, onReply }: { result: Extract<InvokeResult, { status: 'ok' }>; onNote?: Note; onReply?: () => void }) {
@@ -268,11 +328,12 @@ export function AssistantCard({ result, onNote, onReply }: { result: Extract<Inv
     : result.tool === 'assistant.briefing.morning' ? <MorningView data={data} />
     : result.tool === 'assistant.briefing.evening' ? <EveningView data={data} />
     : result.tool === 'assistant.reply.drafts' ? <ReplyDraftsView data={data} onNote={onNote} />
+    : result.tool.startsWith('health.water.') ? <WaterCard initial={data} />
     : <pre>{JSON.stringify(data, null, 2)}</pre>;
   const title = result.tool === 'assistant.briefing.morning' ? `早報 · ${data.today}` : result.tool === 'assistant.briefing.evening' ? `晚報 · ${data.today}` : toolLabel(result.tool);
   return (
     <div className="tool">
-      <header><span><span className="sys">助理</span>{title}</span></header>
+      <header><span><span className="sys">{result.tool.startsWith('health.') ? '健康' : '助理'}</span>{title}</span></header>
       {body}
       <Links links={result.links} />
     </div>

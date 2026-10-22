@@ -28,10 +28,14 @@ export const TOOL_LABELS: Record<string, string> = {
   'assistant.ledger.draft': '記帳草稿',
   'assistant.briefing.morning': '早報',
   'assistant.briefing.evening': '晚報',
-  'assistant.reply.drafts': '回覆草稿'
+  'assistant.reply.drafts': '回覆草稿',
+  'health.water.status': '喝水進度',
+  'health.water.log': '記錄喝水',
+  'health.water.undo': '刪除喝水紀錄',
+  'health.water.settings': '喝水設定'
 };
 
-export const SYSTEM_OF: Record<string, string> = { assistant: '助理', agenda: '記事', ledger: 'Ledger', journal: 'Journal', radar: 'RADAR', gmail: 'Gmail' };
+export const SYSTEM_OF: Record<string, string> = { assistant: '助理', health: '健康', agenda: '記事', ledger: 'Ledger', journal: 'Journal', radar: 'RADAR', gmail: 'Gmail' };
 
 export function toolLabel(name: string): string {
   return TOOL_LABELS[name] ?? name;

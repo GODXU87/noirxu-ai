@@ -22,6 +22,8 @@ export interface AgendaStore {
   getSetting(key: string): Promise<string | null>;
   /** Insert only if absent; returns the stored value (first writer wins). */
   putSettingIfAbsent(key: string, sealed: string): Promise<string>;
+  /** Insert or replace. */
+  putSetting(key: string, sealed: string): Promise<void>;
 }
 
 export class MemoryAgendaStore implements AgendaStore {
@@ -74,6 +76,7 @@ export class MemoryAgendaStore implements AgendaStore {
   async listPushSubscriptions(userId?: string) { return [...this.subs.values()].filter(s => !userId || s.user_id === userId); }
   async deletePushSubscription(endpoint: string) { this.subs.delete(endpoint); }
   async getSetting(key: string) { return this.settings.get(key) ?? null; }
+  async putSetting(key: string, sealed: string) { this.settings.set(key, sealed); }
   async putSettingIfAbsent(key: string, sealed: string) {
     if (!this.settings.has(key)) this.settings.set(key, sealed);
     return this.settings.get(key)!;
@@ -199,5 +202,9 @@ export class PgAgendaStore implements AgendaStore {
   async putSettingIfAbsent(key: string, sealed: string) {
     await this.pool.query('insert into noirxu_ai.settings (key, sealed) values ($1, $2) on conflict (key) do nothing', [key, sealed]);
     return (await this.getSetting(key))!;
+  }
+
+  async putSetting(key: string, sealed: string) {
+    await this.pool.query('insert into noirxu_ai.settings (key, sealed) values ($1, $2) on conflict (key) do update set sealed = excluded.sealed, updated_at = now()', [key, sealed]);
   }
 }

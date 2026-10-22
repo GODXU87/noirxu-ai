@@ -5,7 +5,7 @@ import { parseCommand, type CommandName } from '@/assistant/commands';
 import type { FeatureFlags } from '@/lib/features';
 import { money } from '@/lib/tool-labels';
 import { BrandMark, Icon } from './components/Icon';
-import { AssistantCard } from './components/assistant';
+import { AssistantCard, WaterMeter } from './components/assistant';
 import { callTool, ProposalCard, RichText, ToolCard, type InvokeResult } from './components/shared';
 
 type Item =
@@ -29,6 +29,7 @@ const PALETTE: Array<{ command: string; fill: string; label: string; run: boolea
   { command: '/記帳', fill: '/記帳 ', label: '一句話記帳，確認後才寫入 Ledger', run: false, feature: 'commands' },
   { command: '/分診', fill: '/分診 ', label: '貼上訊息，找出行程、待辦、帳單與要回覆的事', run: false, feature: 'triage' },
   { command: '/回覆', fill: '/回覆 ', label: '貼上信件，擬回覆草稿（需要 AI）', run: false, feature: 'reply_drafts' },
+  { command: '/喝水', fill: '/喝水 ', label: '記錄喝水、看今天的進度', run: false, feature: 'water' },
   { command: '/說明', fill: '/說明', label: '所有快捷指令', run: true, feature: 'commands' }
 ];
 
@@ -42,7 +43,7 @@ const CHIPS: Array<{ label: string; text: string; run: boolean; feature?: keyof 
 ];
 
 const WORKING: Partial<Record<CommandName, string>> = {
-  morning: '正在整理早報', evening: '正在整理晚報', ledger: '正在整理記帳草稿', triage: '正在分析文字', help: '讀取指令'
+  morning: '正在整理早報', evening: '正在整理晚報', water: '更新喝水紀錄', ledger: '正在整理記帳草稿', triage: '正在分析文字', help: '讀取指令'
 };
 
 const SYSTEMS = [['ledger', 'Ledger'], ['journal', 'Journal'], ['radar', 'RADAR'], ['gmail', 'Gmail']] as const;
@@ -110,6 +111,11 @@ export function Chat({ connected, features }: { connected: Record<string, boolea
   const input = useRef<HTMLTextAreaElement>(null);
   const empty = items.length === 0;
   const brief = useBrief(empty && features.briefings);
+  const [water, setWater] = useState<any>(null);
+  useEffect(() => {
+    if (!empty || !features.water) return;
+    void callTool('health.water.status', {}).then(result => { if (result.status === 'ok') setWater(result.data); });
+  }, [empty, features.water]);
 
   useEffect(() => {
     const saved = load();
@@ -208,8 +214,8 @@ export function Chat({ connected, features }: { connected: Record<string, boolea
       if (e.key === 'ArrowUp') { e.preventDefault(); setPaletteIndex(i => (i - 1 + palette.length) % palette.length); return; }
       if ((e.key === 'Enter' || e.key === 'Tab') && !e.shiftKey && !e.nativeEvent.isComposing) {
         const choice = palette[paletteIndex];
-        // An exact command with nothing to add just runs.
-        if (e.key === 'Enter' && choice.run && text.trim() === choice.command) { e.preventDefault(); void send(text); return; }
+        // A fully typed command runs as is.
+        if (e.key === 'Enter' && text.trim() === choice.command) { e.preventDefault(); void send(text); return; }
         e.preventDefault(); pick(choice.fill, choice.run && e.key === 'Enter'); return;
       }
       if (e.key === 'Escape') { setText(''); return; }
@@ -221,7 +227,7 @@ export function Chat({ connected, features }: { connected: Record<string, boolea
     const addNote = (note: string) => setNotes(prev => [...prev, note]);
     if (item.kind === 'tool') {
       if (item.result.status === 'confirmation_required') return <ProposalCard key={index} result={item.result} onDone={addNote} />;
-      if (item.result.status === 'ok' && item.result.tool.startsWith('assistant.')) {
+      if (item.result.status === 'ok' && (item.result.tool.startsWith('assistant.') || item.result.tool.startsWith('health.'))) {
         const source = items.slice(0, index).reverse().find(i => i.kind === 'user');
         const original = source?.kind === 'user' ? source.text.replace(/^[/／]\s*分診\s*/, '') : '';
         return <AssistantCard key={index} result={item.result} onNote={addNote}
@@ -283,6 +289,7 @@ export function Chat({ connected, features }: { connected: Record<string, boolea
                 {brief.top.map(t => <li key={t.id} className={`prio-${t.priority}`}><span className="rail" /><b>{t.title}</b><small>{t.due_label}</small></li>)}
               </ul>
             )}
+            {water && <WaterMeter data={water} onChange={setWater} compact />}
             {composer}
             <div className="chips">
               {CHIPS.filter(c => !c.feature || features[c.feature]).map(c => <button key={c.label} type="button" onClick={() => pick(c.text, c.run)}>{c.label}</button>)}

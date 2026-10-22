@@ -6,6 +6,8 @@ import { triageResult, triageText } from '@/assistant/triage';
 import { defineTool } from '@/hub/registry';
 import type { ConnectionId, InvokeResult, ToolContext, ToolDefinition } from '@/hub/types';
 import type { FeatureFlags } from '@/lib/features';
+import type { WaterService } from '@/health/service';
+import { waterProgress } from '@/health/water';
 import { taipeiDate } from '@/lib/dates';
 
 export interface AssistantDeps {
@@ -14,6 +16,8 @@ export interface AssistantDeps {
   invoke: (name: string, input: unknown, ctx: ToolContext) => Promise<InvokeResult>;
   isConnected: (userId: string, connection: ConnectionId) => Promise<boolean>;
   features: FeatureFlags;
+  /** Present when the water feature is on. */
+  water?: WaterService;
 }
 
 const anyRecord = z.record(z.string(), z.unknown());
@@ -31,6 +35,14 @@ async function ledgerDigest(deps: AssistantDeps, ctx: ToolContext, month: string
     status: 'ok',
     digest: { currency: a.currency, expense: a.summary.expense, income: a.summary.income, budget_warnings: b.categories.filter(c => c.status === 'warning' || c.status === 'over') }
   };
+}
+
+async function waterDigest(deps: AssistantDeps, ctx: ToolContext) {
+  if (!deps.water) return null;
+  const now = ctx.now();
+  const [prefs, day] = await Promise.all([deps.water.prefs(ctx.userId), deps.water.day(ctx.userId, taipeiDate(now))]);
+  const p = waterProgress(prefs, day, now);
+  return { total_ml: p.total_ml, goal_ml: p.goal_ml, percent: p.percent, expected_ml: p.expected_ml, reminders: prefs.enabled ? `${prefs.start}–${prefs.end} 每 ${prefs.interval_hours} 小時` : null };
 }
 
 async function gmailDigest(deps: AssistantDeps, ctx: ToolContext): Promise<GmailDigest> {
@@ -95,10 +107,11 @@ export function assistantTools(deps: AssistantDeps): ToolDefinition[] {
       output: anyRecord,
       async run(_value, ctx) {
         const today = taipeiDate(ctx.now());
-        const [items, ledger, gmail, journal] = await Promise.all([
+        const [items, ledger, gmail, water, journal] = await Promise.all([
           deps.agenda.listItems(ctx.userId, { status: 'open' }),
           ledgerDigest(deps, ctx, today.slice(0, 7)),
           gmailDigest(deps, ctx),
+          waterDigest(deps, ctx),
           (async () => {
             if (!(await deps.isConnected(ctx.userId, 'journal'))) return { status: 'not_connected' as const, open: null };
             const trades = await deps.invoke('journal.trades.list', { status: 'open', limit: 1 }, ctx);
@@ -106,7 +119,7 @@ export function assistantTools(deps: AssistantDeps): ToolDefinition[] {
           })()
         ]);
         return {
-          data: buildMorningReport({ today, items, ledger: ledger.digest, ledgerStatus: ledger.status, openPositions: journal.open, journalStatus: journal.status, gmail }) as unknown as Record<string, unknown>
+          data: { ...buildMorningReport({ today, items, ledger: ledger.digest, ledgerStatus: ledger.status, openPositions: journal.open, journalStatus: journal.status, gmail }), water } as unknown as Record<string, unknown>
         };
       }
     }));
@@ -119,8 +132,8 @@ export function assistantTools(deps: AssistantDeps): ToolDefinition[] {
       output: anyRecord,
       async run(_value, ctx) {
         const today = taipeiDate(ctx.now());
-        const items = await deps.agenda.listItems(ctx.userId, { status: 'all' });
-        return { data: buildEveningReport({ today, items }) as unknown as Record<string, unknown> };
+        const [items, water] = await Promise.all([deps.agenda.listItems(ctx.userId, { status: 'all' }), waterDigest(deps, ctx)]);
+        return { data: { ...buildEveningReport({ today, items }), water } as unknown as Record<string, unknown> };
       }
     }));
   }

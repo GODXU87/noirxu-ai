@@ -17,6 +17,8 @@ import { MemoryAgendaStore, PgAgendaStore, type AgendaStore } from '@/agenda/sto
 import { PushService } from '@/push/service';
 import { agendaTools } from '@/tools/agenda/tools';
 import { assistantTools } from '@/tools/assistant/tools';
+import { healthTools } from '@/tools/health/tools';
+import { WaterService } from '@/health/service';
 import { loadFeatureFlags, type FeatureFlags } from '@/lib/features';
 import { ledgerAssetTools } from '@/tools/ledger/assets';
 import { loadConfig, type AppConfig } from './config';
@@ -33,6 +35,7 @@ export interface Hub {
   gmail: GmailService;
   agenda: AgendaStore;
   push: PushService;
+  water: WaterService;
   isConnected: (userId: string, connection: ConnectionId) => Promise<boolean>;
 }
 
@@ -86,6 +89,7 @@ function build(): Hub {
   const vault = new TokenVault(config.tokenEncryptionKey ?? undefined);
   const credentials = new CredentialStore(backend, vault);
   const push = new PushService(agenda, vault);
+  const water = new WaterService(agenda, vault);
   const ledger = new SupabaseUserConnection('ledger', config.ledger.supabase, credentials);
   const journal = new SupabaseUserConnection('journal', config.journal.supabase, credentials);
   const radar = new RadarClient(config.radar);
@@ -102,7 +106,8 @@ function build(): Hub {
     ...journalTools({ connection: journal, appUrl: config.journal.appUrl }),
     ...radarTools(radar),
     ...gmailTools(gmail),
-    ...assistantTools({ agenda, features, isConnected: (userId, connection) => isConnected(userId, connection), invoke: (name, input, ctx) => executor!.invoke(name, input, ctx) })
+    ...(features.water ? healthTools(water) : []),
+    ...assistantTools({ agenda, water: features.water ? water : undefined, features, isConnected: (userId, connection) => isConnected(userId, connection), invoke: (name, input, ctx) => executor!.invoke(name, input, ctx) })
   ]) registry.register(tool);
 
   const isConnected = async (userId: string, connection: ConnectionId) => {
@@ -115,7 +120,7 @@ function build(): Hub {
   };
 
   executor = new Executor({ registry, store, isConnected });
-  return { config, features, storageMode, registry, executor, ledger, journal, radar, gmail, agenda, push, isConnected };
+  return { config, features, storageMode, registry, executor, ledger, journal, radar, gmail, agenda, push, water, isConnected };
 }
 
 const globalHub = globalThis as unknown as { __noirxuHub?: Hub };
