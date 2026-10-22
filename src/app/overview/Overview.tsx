@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { money, monthBounds, taipeiToday } from '@/lib/tool-labels';
 import { Icon } from '../components/Icon';
+import { LedgerDraftCard } from '../components/assistant';
 import { AgendaList, callTool, Links, ProposalCard, ToolData, type AgendaView, type InvokeResult } from '../components/shared';
 
 const EXPENSE_METHODS = ['信用卡', '現金', '轉帳', 'LINE Pay', 'Apple Pay', '悠遊卡'];
@@ -94,6 +95,19 @@ function QuickEntry({ onSaved }: { onSaved: () => void }) {
   const [proposal, setProposal] = useState<Extract<InvokeResult, { status: 'confirmation_required' }> | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [manual, setManual] = useState(false);
+  const [line, setLine] = useState('');
+  const [draft, setDraft] = useState<any>(null);
+  const [draftKey, setDraftKey] = useState(0);
+
+  async function sketch(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true); setError('');
+    const result = await callTool('assistant.ledger.draft', { text: line });
+    setBusy(false);
+    if (result.status === 'ok') { setDraft(result.data); setDraftKey(k => k + 1); }
+    else if (result.status === 'error') { setError(result.code === 'UNKNOWN_TOOL' ? '一句話記帳目前已關閉，請用手動填寫。' : result.message); if (result.code === 'UNKNOWN_TOOL') setManual(true); }
+  }
 
   useEffect(() => {
     void callTool('ledger.categories.list', {}).then(result => {
@@ -123,9 +137,30 @@ function QuickEntry({ onSaved }: { onSaved: () => void }) {
     else if (result.status === 'error') setError(result.message);
   }
 
+  if (!manual) {
+    return (
+      <section className="card">
+        <p className="section-label">記一筆<small><button type="button" className="link-button" onClick={() => setManual(true)}>手動填寫</button></small></p>
+        {draft ? (
+          <>
+            <LedgerDraftCard key={draftKey} {...draft} onNote={note => { if (note.includes('執行成功')) onSaved(); }} />
+            <button type="button" className="ghost" onClick={() => { setDraft(null); setLine(''); }}>再記一筆</button>
+          </>
+        ) : (
+          <form className="quick-add" onSubmit={sketch}>
+            <input value={line} onChange={e => setLine(e.target.value)} placeholder="例如：午餐 150 元 刷卡" maxLength={300} aria-label="一句話記帳" required />
+            <button className="primary" disabled={busy || !line.trim()} aria-label="整理"><Icon name="arrow" size={18} /></button>
+          </form>
+        )}
+        {error && <p className="status-error">{error}</p>}
+        {!draft && <p className="hint">用一句話描述，我會整理成記帳草稿；你確認後才寫入 Ledger。</p>}
+      </section>
+    );
+  }
+
   return (
     <section className="card">
-      <p className="section-label">快速記帳
+      <p className="section-label">手動記帳
         <span className="seg" style={{ marginLeft: 'auto' }}>
           <button type="button" className={type === 'expense' ? 'on' : ''} onClick={() => switchType('expense')}>支出</button>
           <button type="button" className={type === 'income' ? 'on' : ''} onClick={() => switchType('income')}>收入</button>

@@ -267,6 +267,15 @@ describe('agent safety', () => {
     expect(ledger.untrusted_content).toBeUndefined();
   });
 
+  it('adds the chosen reply style without touching the data rules', () => {
+    const registry = new ToolRegistry();
+    const base = systemPrompt(registry, TODAY);
+    expect(systemPrompt(registry, TODAY, 'professional')).toBe(base);
+    expect(systemPrompt(registry, TODAY, 'butler')).toContain('先生');
+    expect(systemPrompt(registry, TODAY, 'butler').startsWith(base)).toBe(true);
+    expect(systemPrompt(registry, TODAY, 'concise')).toContain('5 行');
+  });
+
   it('mentions only the assistant tools that are switched on', () => {
     const on = setup();
     expect(systemPrompt(on.registry, TODAY)).toContain('assistant.text.triage');

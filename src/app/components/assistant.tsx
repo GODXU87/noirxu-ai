@@ -143,8 +143,10 @@ function TriageAction({ action, onNote, onReply }: { action: Triage['actions'][n
 
 function TriageView({ data, onNote, onReply }: { data: Triage; onNote?: Note; onReply?: () => void }) {
   const contacts = [...data.contacts.emails, ...data.contacts.phones, ...data.contacts.urls];
+  const counts = Object.entries(data.items.reduce<Record<string, number>>((acc, item) => ({ ...acc, [item.kind]: (acc[item.kind] ?? 0) + 1 }), {}));
   return (
     <div className="view">
+      {counts.length > 0 && <p className="headline">找到 {counts.map(([kind, n]) => `${n} 項${KIND_LABEL[kind] ?? kind}`).join('、')}{data.actions.length ? `，有 ${data.actions.length} 個建議操作等你決定` : ''}。</p>}
       {data.injection_signals.length > 0 && <p className="banner danger" style={{ margin: 0 }}>⚠ 內容含有疑似指令（{data.injection_signals.join('、')}）。已當作一般文字，不會照做。</p>}
       {data.items.length === 0 && <p className="hint">沒有找到行程、待辦、金額或需要回覆的內容。</p>}
       {data.items.map((item, i) => (
