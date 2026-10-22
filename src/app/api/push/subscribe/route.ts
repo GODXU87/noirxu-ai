@@ -1,12 +1,13 @@
 import { z } from 'zod';
 import { ToolError } from '@/hub/errors';
+import { isAllowedPushEndpoint } from '@/push/endpoints';
 import { getHub } from '@/server/hub';
 import { errorResponse, json, requireContext } from '@/server/http';
 
 export const runtime = 'nodejs';
 
 const body = z.object({
-  subscription: z.object({ endpoint: z.url().startsWith('https://'), keys: z.object({ p256dh: z.string().min(1), auth: z.string().min(1) }) }).loose()
+  subscription: z.object({ endpoint: z.url().refine(isAllowedPushEndpoint, 'unsupported push service'), keys: z.object({ p256dh: z.string().min(1), auth: z.string().min(1) }) }).loose()
 });
 
 export async function POST(request: Request) {
