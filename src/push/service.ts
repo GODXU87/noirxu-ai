@@ -1,6 +1,7 @@
 import webpush from 'web-push';
 import type { AgendaStore } from '@/agenda/store';
 import type { TokenVault } from '@/connections/vault';
+import { isAllowedPushEndpoint } from './endpoints';
 
 export interface PushMessage {
   title: string;
@@ -54,6 +55,7 @@ export class PushService {
     let sent = 0;
     let failed = 0;
     await Promise.all(subs.map(async sub => {
+      if (!isAllowedPushEndpoint(sub.endpoint)) { failed += 1; return; }
       try {
         await webpush.sendNotification(sub.subscription as webpush.PushSubscription, JSON.stringify(message), {
           vapidDetails: { subject: SUBJECT, publicKey: keys.publicKey, privateKey: keys.privateKey },

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { verifyGithubScheduler } from '@/server/github-oidc';
 import { getHub } from '@/server/hub';
+import { databaseHealth } from '@/server/health';
 import { runTick } from '@/server/tick';
 
 export const runtime = 'nodejs';
@@ -14,6 +15,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, ...(await runTick(getHub())) }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     console.error('[noirxu-ai:tick]', error instanceof Error ? error.message.slice(0, 200) : 'error');
-    return NextResponse.json({ ok: false }, { status: 500, headers: { 'Cache-Control': 'no-store' } });
+    return NextResponse.json({ ok: false, db: await databaseHealth() }, { status: 500, headers: { 'Cache-Control': 'no-store' } });
   }
 }
