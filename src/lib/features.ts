@@ -5,7 +5,7 @@
 //   Vercel without touching the rest of the app.
 
 export const ASSISTANT_FEATURES = ['triage', 'commands', 'briefings', 'reply_drafts', 'water'] as const;
-export const OPT_IN_FEATURES = ['server_history', 'memory'] as const;
+export const OPT_IN_FEATURES = ['server_history', 'memory', 'research'] as const;
 export type AssistantFeature = (typeof ASSISTANT_FEATURES)[number] | (typeof OPT_IN_FEATURES)[number];
 export type FeatureFlags = Record<AssistantFeature, boolean>;
 

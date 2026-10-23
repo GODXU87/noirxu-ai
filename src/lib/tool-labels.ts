@@ -35,6 +35,7 @@ export const TOOL_LABELS: Record<string, string> = {
   'health.water.settings': '喝水設定',
   'health.water.exercise': '今天的運動',
   'health.water.profile': '喝水個人資料',
+  'research.run': '股票研究',
   'memory.list': '長期記憶',
   'memory.create': '新增記憶',
   'memory.update': '更新記憶',

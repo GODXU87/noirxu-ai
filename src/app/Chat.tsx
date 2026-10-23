@@ -282,7 +282,7 @@ export function Chat({ connected, features, variant = 'classic' }: { connected: 
     const addNote = (note: string) => setNotes(prev => [...prev, note]);
     if (item.kind === 'tool') {
       if (item.result.status === 'confirmation_required') return <ProposalCard key={index} result={item.result} onDone={addNote} />;
-      if (item.result.status === 'ok' && (item.result.tool.startsWith('assistant.') || item.result.tool.startsWith('health.') || item.result.tool.startsWith('memory.'))) {
+      if (item.result.status === 'ok' && (item.result.tool.startsWith('assistant.') || item.result.tool.startsWith('health.') || item.result.tool.startsWith('memory.') || item.result.tool.startsWith('research.'))) {
         const source = items.slice(0, index).reverse().find(i => i.kind === 'user');
         const original = source?.kind === 'user' ? source.text.replace(/^[/／]\s*分診\s*/, '') : '';
         return <AssistantCard key={index} result={item.result} onNote={addNote}

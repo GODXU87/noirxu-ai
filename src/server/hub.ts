@@ -22,6 +22,7 @@ import { WaterService } from '@/health/service';
 import { HistoryService } from '@/history/service';
 import { MemoryHistoryStore, PgHistoryStore, type HistoryStore } from '@/history/store';
 import { memoryTools } from '@/tools/memory/tools';
+import { researchTools } from '@/tools/research/tools';
 import { loadFeatureFlags, type FeatureFlags } from '@/lib/features';
 import { ledgerAssetTools } from '@/tools/ledger/assets';
 import { loadConfig, type AppConfig } from './config';
@@ -117,6 +118,7 @@ function build(): Hub {
     ...gmailTools(gmail),
     ...(features.water ? healthTools(water) : []),
     ...(features.memory ? memoryTools(history) : []),
+    ...(features.research ? researchTools({ radar, invoke: (name, input, ctx) => executor!.invoke(name, input, ctx) }) : []),
     ...assistantTools({ agenda, water: features.water ? water : undefined, features, isConnected: (userId, connection) => isConnected(userId, connection), invoke: (name, input, ctx) => executor!.invoke(name, input, ctx) })
   ]) registry.register(tool);
 

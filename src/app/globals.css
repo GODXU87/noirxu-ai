@@ -516,3 +516,16 @@ button.link { background: none; border: 0; padding: 0; color: var(--accent); fon
 .memory-main small { color: var(--muted); font-size: 12px; }
 .memory-actions { display: flex; gap: 6px; }
 .memory-actions button { padding: 6px 10px; font-size: 12.5px; }
+
+/* Research report */
+.research-card { display: grid; gap: 8px; padding: 12px 0; border-top: 1px solid var(--line); }
+.research-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.research-symbol { font-size: 18px; font-weight: 650; letter-spacing: .04em; font-variant-numeric: tabular-nums; }
+.research-score { margin-left: auto; color: var(--muted); font-size: 12px; }
+.research-levels { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; margin: 0; }
+.research-levels div { background: rgba(255, 255, 255, .03); border: 1px solid var(--line); border-radius: 9px; padding: 6px 8px; min-width: 0; }
+.research-levels dt { font-size: 11px; color: var(--muted); }
+.research-levels dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+@media (max-width: 520px) { .research-levels { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.research-detail { display: grid; gap: 4px; margin-top: 6px; }
+.research-detail p { margin: 0; }

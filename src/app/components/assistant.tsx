@@ -345,6 +345,52 @@ function MemoryView({ tool, data }: { tool: string; data: any }) {
   );
 }
 
+/* ---------- 股票研究 ---------- */
+
+const n2 = (v: number | null | undefined) => (v === null || v === undefined ? '—' : Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 }));
+
+function ResearchView({ data }: { data: any }) {
+  const statusText: Record<string, string> = { fresh: '資料為應有的交易日', stale: '資料不是最新交易日', missing: '沒有可用資料' };
+  return (
+    <div className="view research">
+      <p className="headline">{data.summary}</p>
+      <p className="hint">{data.kind === 'premarket' ? '盤前' : '盤後'}研究 · RADAR 資料日 {data.data.trade_date ?? '—'}（應為 {data.data.expected_trade_date}，{statusText[data.data.status]}）· 規則 {data.rules_version}</p>
+      {data.candidates.map((c: any) => (
+        <div key={c.symbol} className="research-card">
+          <div className="research-head">
+            <b className="research-symbol">{c.symbol}</b><span>{c.name ?? ''}</span>{c.sector && <span className="tag">{c.sector}</span>}
+            <span className="research-score">研究分數 {c.research_score} · RADAR {n2(c.radar.score)}</span>
+          </div>
+          <dl className="research-levels">
+            <div><dt>進場區間</dt><dd>{n2(c.levels.entry_low)}～{n2(c.levels.entry_high)}</dd></div>
+            <div><dt>停損</dt><dd className="tone-down">{n2(c.levels.stop_loss)}</dd></div>
+            <div><dt>目標</dt><dd>{n2(c.levels.take_profit)}</dd></div>
+            <div><dt>壓力</dt><dd>{n2(c.levels.resistance)}</dd></div>
+            <div><dt>現價</dt><dd>{n2(c.levels.current)}</dd></div>
+          </dl>
+          {c.radar.reason && <p className="hint">RADAR 理由：{c.radar.reason}</p>}
+          {c.trend.length > 0 && <ul className="suggest-list">{c.trend.map((t: string) => <li key={t}>{t}</li>)}</ul>}
+          <details>
+            <summary>條件、風險與指標</summary>
+            <div className="research-detail">
+              <p><b>進場條件</b></p><ul className="suggest-list">{c.entry_conditions.map((t: string) => <li key={t}>{t}</li>)}</ul>
+              <p><b>失效條件</b></p><ul className="suggest-list">{c.invalidation.map((t: string) => <li key={t}>{t}</li>)}</ul>
+              <p><b>風險</b></p><ul className="warn-list">{c.risks.map((t: string) => <li key={t}>{t}</li>)}</ul>
+              {c.catalysts.length > 0 && <><p><b>催化因素</b></p><ul className="suggest-list">{c.catalysts.map((t: string) => <li key={t}>{t}</li>)}</ul></>}
+              <p className="hint">消息面：{c.news.note}</p>
+              <p className="hint">指標：MA5 {n2(c.indicators.ma5)} · MA10 {n2(c.indicators.ma10)} · MA20 {n2(c.indicators.ma20)} · MA60 {n2(c.indicators.ma60)} · RSI14 {n2(c.indicators.rsi14)} · 量比 {n2(c.indicators.volume_ratio_20d)} · 法人買超 {n2(c.indicators.institutional_positive_days_5d)}/5 日</p>
+              {c.missing.length > 0 && <p className="hint status-pending">缺少：{c.missing.join('、')}</p>}
+            </div>
+          </details>
+          <p className="hint">{c.conclusion}</p>
+        </div>
+      ))}
+      {data.excluded.length > 0 && <details><summary>未入選 {data.excluded.length} 檔與原因</summary><ul className="suggest-list">{data.excluded.map((e: any) => <li key={e.symbol + e.reason}>{e.symbol}：{e.reason}</li>)}</ul></details>}
+      <p className="hint">{data.disclaimer}</p>
+    </div>
+  );
+}
+
 /* ---------- 入口 ---------- */
 
 export function AssistantCard({ result, onNote, onReply }: { result: Extract<InvokeResult, { status: 'ok' }>; onNote?: Note; onReply?: () => void }) {
@@ -356,11 +402,12 @@ export function AssistantCard({ result, onNote, onReply }: { result: Extract<Inv
     : result.tool === 'assistant.reply.drafts' ? <ReplyDraftsView data={data} onNote={onNote} />
     : result.tool.startsWith('health.water.') ? <WaterCard initial={data} />
     : result.tool.startsWith('memory.') ? <MemoryView tool={result.tool} data={data} />
+    : result.tool === 'research.run' ? <ResearchView data={data} />
     : <pre>{JSON.stringify(data, null, 2)}</pre>;
   const title = result.tool === 'assistant.briefing.morning' ? `早報 · ${data.today}` : result.tool === 'assistant.briefing.evening' ? `晚報 · ${data.today}` : toolLabel(result.tool);
   return (
     <div className="tool">
-      <header><span><span className="sys">{result.tool.startsWith('health.') ? '健康' : result.tool.startsWith('memory.') ? '記憶' : '助理'}</span>{title}</span></header>
+      <header><span><span className="sys">{result.tool.startsWith('health.') ? '健康' : result.tool.startsWith('memory.') ? '記憶' : result.tool.startsWith('research.') ? '研究' : '助理'}</span>{title}</span></header>
       <Collapsible limit={420}>{body}</Collapsible>
       <Links links={result.links} />
     </div>

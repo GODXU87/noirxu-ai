@@ -1,7 +1,7 @@
 // Explicit shortcut commands. Parsed with plain rules, never guessed by the AI model, so
 // a slash command always does exactly what it says.
 
-export type CommandName = 'morning' | 'evening' | 'ledger' | 'memory' | 'triage' | 'reply' | 'water' | 'help';
+export type CommandName = 'morning' | 'evening' | 'ledger' | 'memory' | 'triage' | 'reply' | 'water' | 'research' | 'help';
 
 export interface ParsedCommand {
   name: CommandName;
@@ -18,6 +18,7 @@ const SLASH: Record<string, CommandName> = {
   分診: 'triage', 整理: 'triage', triage: 'triage',
   回覆: 'reply', reply: 'reply',
   喝水: 'water', 水: 'water', water: 'water',
+  研究: 'research', research: 'research',
   說明: 'help', 指令: 'help', help: 'help'
 };
 

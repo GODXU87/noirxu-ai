@@ -83,6 +83,11 @@ export async function POST(request: Request) {
         }
         break;
       }
+      case 'research': {
+        if (!hub.features.research) return notice('股票研究還沒啟用（原型階段，需要你核准後才會開啟）。');
+        const kind = /盤前|premarket|早/.test(command.arg) ? 'premarket' : 'postmarket';
+        return json({ ok: true, command: command.name, result: await run('research.run', { kind }) });
+      }
       case 'memory': {
         if (!hub.features.memory) return notice('長期記憶還沒啟用（需要你核准資料庫變更後才會開啟）。這句話沒有被儲存。');
         if (!command.arg) return json({ ok: true, command: command.name, result: await run('memory.list', {}) });
