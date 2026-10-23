@@ -5,6 +5,15 @@ import { loadFeatureFlags as getFeatures } from '@/lib/features';
 import { Chat } from './Chat';
 import { uiMode } from '@/server/ui-mode';
 import { Frame } from './Frame';
+import { loadConfig } from '@/server/config';
+
+/** The model chat actually runs on, for the composer badge. Null when no API key is set. */
+function aiLabel(): string | null {
+  const config = loadConfig();
+  if (config.aiProvider === 'openai') return config.openai.model.replace(/^gpt-/i, 'GPT-');
+  if (config.aiProvider === 'anthropic') return config.anthropicModel.replace(/^claude-([a-z]+)-(\d+)-(\d+)$/, (_, n: string, a, b) => `Claude ${n[0].toUpperCase()}${n.slice(1)} ${a}.${b}`);
+  return null;
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -18,7 +27,7 @@ export default async function HomePage() {
       <Frame current="chat" />
       {problem && <p className="banner danger">{problem}</p>}
       {storageMode === 'memory' && <p className="banner">開發模式：資料只存在伺服器記憶體，重新啟動後會清空。</p>}
-      <Chat connected={connected} features={getFeatures()} variant={ui} />
+      <Chat connected={connected} features={getFeatures()} variant={ui} ai={aiLabel()} />
     </div>
   );
 }

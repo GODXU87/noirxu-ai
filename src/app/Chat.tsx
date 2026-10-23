@@ -4,7 +4,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { parseCommand, type CommandName } from '@/assistant/commands';
 import type { FeatureFlags } from '@/lib/features';
 import { money } from '@/lib/tool-labels';
-import { BrandMark, Icon } from './components/Icon';
+import { BrandMark, Icon, type IconName } from './components/Icon';
 import { AssistantCard, WaterMeter } from './components/assistant';
 import { importLegacySession, loadConversation, newConversationId, saveConversation } from './sasuke/conversations';
 import { SasukeMark } from './sasuke/SasukeNav';
@@ -35,13 +35,13 @@ const PALETTE: Array<{ command: string; fill: string; label: string; run: boolea
   { command: '/說明', fill: '/說明', label: '所有快捷指令', run: true, feature: 'commands' }
 ];
 
-const CHIPS: Array<{ label: string; text: string; run: boolean; feature?: keyof FeatureFlags }> = [
-  { label: '早報', text: '/早報', run: true, feature: 'briefings' },
-  { label: '最近有什麼事', text: '最近有什麼事？依重要程度排給我。', run: true },
-  { label: '記一筆帳', text: '/記帳 ', run: false, feature: 'commands' },
-  { label: '整理一段訊息', text: '/分診 ', run: false, feature: 'triage' },
-  { label: '這個月花了多少', text: '這個月花了多少錢？哪一類最多？', run: true },
-  { label: '晚報', text: '/晚報', run: true, feature: 'briefings' }
+const CHIPS: Array<{ label: string; text: string; run: boolean; icon: IconName; feature?: keyof FeatureFlags }> = [
+  { label: '早報', text: '/早報', run: true, icon: 'calendar', feature: 'briefings' },
+  { label: '最近有什麼事', text: '最近有什麼事？依重要程度排給我。', run: true, icon: 'bell' },
+  { label: '記一筆帳', text: '/記帳 ', run: false, icon: 'wallet', feature: 'commands' },
+  { label: '整理一段訊息', text: '/分診 ', run: false, icon: 'chat', feature: 'triage' },
+  { label: '這個月花了多少', text: '這個月花了多少錢？哪一類最多？', run: true, icon: 'chart' },
+  { label: '晚報', text: '/晚報', run: true, icon: 'report', feature: 'briefings' }
 ];
 
 const WORKING: Partial<Record<CommandName, string>> = {
@@ -106,7 +106,7 @@ function turns(items: Item[]) {
   return out;
 }
 
-export function Chat({ connected, features, variant = 'classic' }: { connected: Record<string, boolean>; features: FeatureFlags; variant?: 'classic' | 'sasuke' }) {
+export function Chat({ connected, features, variant = 'classic', ai = null }: { connected: Record<string, boolean>; features: FeatureFlags; variant?: 'classic' | 'sasuke'; ai?: string | null }) {
   const sasuke = variant === 'sasuke';
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [storageError, setStorageError] = useState<string | null>(null);
@@ -161,6 +161,12 @@ export function Chat({ connected, features, variant = 'classic' }: { connected: 
     }
     try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ items, history, notes })); } catch { /* storage unavailable */ }
   }, [items, history, notes, sasuke, conversationId]);
+
+  // Keep the header water chip in step with water logged from the chat.
+  useEffect(() => {
+    const last = [...items].reverse().find(i => i.kind === 'tool' && i.result.status === 'ok' && i.result.tool.startsWith('health.water.'));
+    if (last?.kind === 'tool' && last.result.status === 'ok') window.dispatchEvent(new CustomEvent('noirxu-water', { detail: last.result.data }));
+  }, [items]);
 
   // iPhone Safari: keep the input above the on-screen keyboard.
   useEffect(() => {
@@ -294,6 +300,9 @@ export function Chat({ connected, features, variant = 'classic' }: { connected: 
     return <div key={index} className={`msg ${item.kind}`}>{item.text}</div>;
   }
 
+  const newConversation = () => { if (sasuke) { window.location.href = '/?c=new'; return; } setItems([]); setHistory([]); setNotes([]); };
+  const placeholder = !features.commands ? '交代我一件事…' : empty ? '交代我一件事，或輸入 / 使用快捷指令' : '繼續交代，或輸入 /';
+
   const composer = (
     <div className={empty ? 'composer docked-center' : 'composer'}>
       <div className="composer-inner">
@@ -308,12 +317,28 @@ export function Chat({ connected, features, variant = 'classic' }: { connected: 
             ))}
           </ul>
         )}
-        <form onSubmit={event => { event.preventDefault(); void send(text); }}>
-          {!empty && <button type="button" className="icon-button" onClick={() => { if (sasuke) { window.location.href = '/?c=new'; return; } setItems([]); setHistory([]); setNotes([]); }} aria-label="開新對話" title="開新對話"><Icon name="plus" size={18} /></button>}
-          <textarea ref={input} value={text} onChange={e => setText(e.target.value)} rows={1} aria-label="訊息" onKeyDown={onKeyDown}
-            placeholder={!features.commands ? '交代我一件事…' : empty ? '交代我一件事，或輸入 / 使用快捷指令' : '繼續交代，或輸入 /'} />
-          <button className="primary" type="submit" disabled={Boolean(busy) || !text.trim()} aria-label="送出"><Icon name="send" size={18} /></button>
-        </form>
+        {sasuke ? (
+          <form className="sk-composer" onSubmit={event => { event.preventDefault(); void send(text); }}>
+            <textarea ref={input} value={text} onChange={e => setText(e.target.value)} rows={1} aria-label="訊息" onKeyDown={onKeyDown} placeholder={placeholder} />
+            <div className="sk-tools">
+              <span className={ai ? 'sk-model' : 'sk-model off'} title={ai ? '目前回覆你的 AI 模型' : '尚未設定 AI 金鑰，只能使用快捷指令'}><span className="sk-pulse" />{ai ?? 'AI 未設定'}</span>
+              <label className="sk-style" title="回覆風格">
+                <select value={style} onChange={e => chooseStyle(e.target.value as ReplyStyle)} aria-label="回覆風格">
+                  {STYLES.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+                </select>
+              </label>
+              {features.commands && <button type="button" className="sk-tool" onClick={() => { setText('/'); input.current?.focus(); }} aria-label="快捷指令" title="快捷指令"><Icon name="slash" size={15} /></button>}
+              {!empty && <button type="button" className="sk-tool" onClick={newConversation} aria-label="開新對話" title="開新對話"><Icon name="plus" size={16} /></button>}
+              <button className="sk-send" type="submit" disabled={Boolean(busy) || !text.trim()} aria-label="送出"><Icon name="up" size={18} /></button>
+            </div>
+          </form>
+        ) : (
+          <form onSubmit={event => { event.preventDefault(); void send(text); }}>
+            {!empty && <button type="button" className="icon-button" onClick={newConversation} aria-label="開新對話" title="開新對話"><Icon name="plus" size={18} /></button>}
+            <textarea ref={input} value={text} onChange={e => setText(e.target.value)} rows={1} aria-label="訊息" onKeyDown={onKeyDown} placeholder={placeholder} />
+            <button className="primary" type="submit" disabled={Boolean(busy) || !text.trim()} aria-label="送出"><Icon name="send" size={18} /></button>
+          </form>
+        )}
       </div>
     </div>
   );
@@ -324,19 +349,25 @@ export function Chat({ connected, features, variant = 'classic' }: { connected: 
         {storageError && <p className="banner storage-warning" role="alert">{storageError}</p>}
         {empty && sasuke && (
           <section className="sk-home">
-            <span className="sk-home-mark"><SasukeMark size={40} /></span>
-            <p className="sk-eyebrow">SASUKE · {new Intl.DateTimeFormat('zh-TW', { timeZone: 'Asia/Taipei', month: 'long', day: 'numeric', weekday: 'long' }).format(new Date())}</p>
-            <h1>{greeting()}，先生。</h1>
-            {brief && <p className="sk-status">{brief.lines.join('　·　')}</p>}
-            {brief && brief.top.length > 0 && (
-              <ol className="sk-focus">
-                {brief.top.map(t => <li key={t.id}><span className={`sk-dot prio-${t.priority}`} /><b>{t.title}</b><small>{t.due_label}</small></li>)}
-              </ol>
-            )}
+            <div className="sk-orb" aria-hidden="true"><span className="sk-orb-glow" /><SasukeMark size={36} /></div>
+            <h1 className="sk-title">{greeting()}，先生。<span>今天要我處理什麼？</span></h1>
             {composer}
             <div className="sk-chips">
-              {CHIPS.filter(c => !c.feature || features[c.feature]).slice(0, 4).map(c => <button key={c.label} type="button" onClick={() => pick(c.text, c.run)}>{c.label}</button>)}
+              {CHIPS.filter(c => !c.feature || features[c.feature]).slice(0, 4).map(c => <button key={c.label} type="button" onClick={() => pick(c.text, c.run)}><Icon name={c.icon} size={15} />{c.label}</button>)}
             </div>
+            {brief && (
+              <div className="sk-brief">
+                <header>
+                  <span>{new Intl.DateTimeFormat('zh-TW', { timeZone: 'Asia/Taipei', month: 'long', day: 'numeric', weekday: 'long' }).format(new Date())}</span>
+                  <p>{brief.lines.map((line, i) => <span key={i}>{line}</span>)}</p>
+                </header>
+                {brief.top.length > 0 && (
+                  <ol className="sk-focus">
+                    {brief.top.map(t => <li key={t.id}><span className={`sk-dot prio-${t.priority}`} /><b>{t.title}</b><small>{t.due_label}</small></li>)}
+                  </ol>
+                )}
+              </div>
+            )}
             {SYSTEMS.some(([id]) => !connected[id]) && (
               <a className="sk-missing" href="/connections">{SYSTEMS.filter(([id]) => !connected[id]).map(([, label]) => label).join('、')} 尚未連接 →</a>
             )}
@@ -388,7 +419,9 @@ export function Chat({ connected, features, variant = 'classic' }: { connected: 
         {busy && (
           <div className="agent-turn">
             <span className="agent-avatar thinking" aria-hidden="true">{sasuke ? <SasukeMark size={24} /> : <BrandMark size={26} />}</span>
-            <div className="agent-body"><p className="working" aria-live="polite">{busy}<span className="typing"><span /><span /><span /></span></p></div>
+            <div className="agent-body">{sasuke
+              ? <p className="sk-working" aria-live="polite">{busy === '思考中' ? 'SASUKE 正在思考' : busy}…</p>
+              : <p className="working" aria-live="polite">{busy}<span className="typing"><span /><span /><span /></span></p>}</div>
           </div>
         )}
         <div ref={feedEnd} />

@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import '@fontsource-variable/inter';
 import './globals.css';
 import { ServiceWorker } from './components/ServiceWorker';
 import { uiMode } from '@/server/ui-mode';

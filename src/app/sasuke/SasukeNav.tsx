@@ -16,9 +16,7 @@ const SECONDARY: Array<{ id: Page; href: string; label: string; icon: IconName }
   { id: 'connections', href: '/connections', label: '連線與通知', icon: 'link' }
 ];
 
-const STYLE_KEY = 'noirxu-ai-style';
 const COLLAPSE_KEY = 'noirxu-ui-sidebar-collapsed';
-const STYLES: Array<[string, string]> = [['professional', '標準'], ['concise', '簡潔'], ['butler', '管家']];
 
 /** Original mark for SASUKE: a quiet lens — an outlined ring with an offset point. */
 export function SasukeMark({ size = 28 }: { size?: number }) {
@@ -36,6 +34,21 @@ function currentConversation(): string | null {
   return new URLSearchParams(window.location.search).get('c');
 }
 
+/** Sidebar sections by last activity, Taipei calendar days. */
+function groupByDay(list: ConversationMeta[]): Array<[string, ConversationMeta[]]> {
+  const day = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(d);
+  const today = day(new Date());
+  const ago = (iso: string) => Math.round((Date.parse(today) - Date.parse(day(new Date(iso)))) / 86_400_000);
+  const order = ['今天', '昨天', '過去 7 天', '過去 30 天', '更早'];
+  const out = new Map<string, ConversationMeta[]>();
+  for (const c of list) {
+    const n = ago(c.updatedAt);
+    const label = n <= 0 ? order[0] : n === 1 ? order[1] : n <= 7 ? order[2] : n <= 30 ? order[3] : order[4];
+    out.set(label, [...(out.get(label) ?? []), c]);
+  }
+  return order.filter(l => out.has(l)).map(l => [l, out.get(l)!]);
+}
+
 function History({ onNavigate }: { onNavigate: () => void }) {
   const [list, setList] = useState<ConversationMeta[]>([]);
   const [query, setQuery] = useState('');
@@ -51,6 +64,7 @@ function History({ onNavigate }: { onNavigate: () => void }) {
   }, []);
 
   const shown = query.trim() ? list.filter(c => c.title.toLowerCase().includes(query.trim().toLowerCase())) : list;
+  const groups = groupByDay(shown);
 
   return (
     <div className="history">
@@ -58,42 +72,35 @@ function History({ onNavigate }: { onNavigate: () => void }) {
         <input value={query} onChange={e => setQuery(e.target.value)} placeholder="搜尋對話" aria-label="搜尋對話" />
       </div>
       {shown.length === 0 && <p className="history-empty">{query ? '沒有符合的對話' : '對話會出現在這裡'}</p>}
-      <ul>
-        {shown.map(c => (
-          <li key={c.id} className={c.id === active ? 'on' : ''}>
-            {editing === c.id ? (
-              <form onSubmit={e => { e.preventDefault(); warnIfFailed(renameConversation(c.id, draft)); setEditing(null); }}>
-                <input value={draft} onChange={e => setDraft(e.target.value)} autoFocus maxLength={60} aria-label="對話名稱" onBlur={() => setEditing(null)} />
-              </form>
-            ) : (
-              <>
-                <a href={`/?c=${c.id}`} onClick={onNavigate} title={c.title}>{c.title}</a>
-                <span className="history-actions">
-                  <button type="button" aria-label={`重新命名：${c.title}`} onClick={() => { setEditing(c.id); setDraft(c.title); }}><Icon name="edit" size={14} /></button>
-                  <button type="button" aria-label={`刪除：${c.title}`} onClick={() => { if (confirm(`刪除「${c.title}」？這只會刪除這台裝置上的紀錄。`)) { const r = deleteConversation(c.id); warnIfFailed(r); if (r.ok && c.id === active) window.location.href = '/'; } }}><Icon name="close" size={14} /></button>
-                </span>
-              </>
-            )}
-          </li>
+      <div className="history-list">
+        {groups.map(([label, entries]) => (
+          <section key={label}>
+            <h3>{label}</h3>
+            <ul>
+              {entries.map(c => (
+                <li key={c.id} className={c.id === active ? 'on' : ''}>
+                  {editing === c.id ? (
+                    <form onSubmit={e => { e.preventDefault(); warnIfFailed(renameConversation(c.id, draft)); setEditing(null); }}>
+                      <input value={draft} onChange={e => setDraft(e.target.value)} autoFocus maxLength={60} aria-label="對話名稱" onBlur={() => setEditing(null)} />
+                    </form>
+                  ) : (
+                    <>
+                      <a href={`/?c=${c.id}`} onClick={onNavigate} title={c.title}>{c.title}</a>
+                      <span className="history-actions">
+                        <button type="button" aria-label={`重新命名：${c.title}`} onClick={() => { setEditing(c.id); setDraft(c.title); }}><Icon name="edit" size={14} /></button>
+                        <button type="button" aria-label={`刪除：${c.title}`} onClick={() => { if (confirm(`刪除「${c.title}」？這只會刪除這台裝置上的紀錄。`)) { const r = deleteConversation(c.id); warnIfFailed(r); if (r.ok && c.id === active) window.location.href = '/'; } }}><Icon name="close" size={14} /></button>
+                      </span>
+                    </>
+                  )}
+                </li>
+                ))}
+            </ul>
+          </section>
         ))}
-      </ul>
+      </div>
       {list.length > SOFT_LIMIT && <p className="history-note warn">這台裝置已有 {list.length} 個對話。不會自動刪除；不需要的可以手動刪除，以免儲存空間不足。</p>}
       {imports > 0 && <p className="history-note">已從原版介面匯入 {imports} 段對話（原版資料仍保留）。</p>}
-      <p className="history-note">目前只存在這台裝置。伺服器同步會在下一階段開放。</p>
     </div>
-  );
-}
-
-function StylePicker() {
-  const [style, setStyle] = useState('professional');
-  useEffect(() => { try { setStyle(localStorage.getItem(STYLE_KEY) ?? 'professional'); } catch { /* storage unavailable */ } }, []);
-  return (
-    <label className="style-pick">
-      <span>回覆</span>
-      <select value={style} onChange={e => { setStyle(e.target.value); try { localStorage.setItem(STYLE_KEY, e.target.value); } catch { /* storage unavailable */ } }}>
-        {STYLES.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
-      </select>
-    </label>
   );
 }
 
@@ -107,8 +114,10 @@ export function WaterChip() {
   useEffect(() => {
     void callTool('health.water.status', {}).then(r => { if (r.status === 'ok') setData(r.data); });
     const close = (e: MouseEvent) => { if (box.current && !box.current.contains(e.target as Node)) setOpen(false); };
+    const update = (e: Event) => { const d = (e as CustomEvent).detail; if (d && typeof d.total_ml === 'number') setData(d); };
     document.addEventListener('click', close);
-    return () => document.removeEventListener('click', close);
+    window.addEventListener('noirxu-water', update);
+    return () => { document.removeEventListener('click', close); window.removeEventListener('noirxu-water', update); };
   }, []);
 
   if (!data) return null;
@@ -167,7 +176,7 @@ export function SasukeNav({ current, water }: { current: Page; water: boolean })
         ))}
       </nav>
       <div className="sk-foot">
-        <StylePicker />
+        <span className="sk-foot-note" title="伺服器同步會在下一階段開放">對話存在這台裝置</span>
         <form method="post" action="/api/logout"><button type="submit" className="sk-icon" aria-label="登出" title="登出"><Icon name="logout" size={17} /></button></form>
       </div>
     </>
