@@ -13,7 +13,7 @@ import { callTool, ProposalCard, RichText, ToolCard, type InvokeResult } from '.
 
 type Item =
   | { kind: 'user'; text: string }
-  | { kind: 'assistant'; text: string }
+  | { kind: 'assistant'; text: string; via?: string }
   | { kind: 'error'; text: string; retry?: string }
   | { kind: 'tool'; result: InvokeResult }
   | { kind: 'notice'; text: string }
@@ -60,6 +60,13 @@ const SYSTEMS = [['ledger', 'Ledger'], ['journal', 'Journal'], ['radar', 'RADAR'
 
 const TOOL_LABELS: Record<string, string> = { ledger: 'Ledger', journal: 'Journal', radar: 'RADAR', gmail: 'Gmail', agenda: '提醒', health: '飲水紀錄', assistant: '助理工具', memory: '記憶', research: '研究' };
 function toolLabel(tool: string) { return TOOL_LABELS[tool.split('.')[0]] ?? tool; }
+
+/** How the server handled a reply; details (tokens, cost) live in Settings → AI 成本保護. */
+function routeLabel(route?: { level: string; source: string }) {
+  if (!route) return undefined;
+  if (route.source === 'ai') return 'AI 分析';
+  return route.source === 'memory' ? '記憶查詢' : route.level === 'L0' ? '本地處理' : '工具查詢';
+}
 
 interface Saved { items: Item[]; history: unknown[]; notes: string[] }
 
@@ -300,7 +307,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
       setItems(prev => [
         ...prev,
         ...body.events.filter((_: unknown, i: number) => !shown.has(i)).map((e: { result: InvokeResult }) => ({ kind: 'tool' as const, result: e.result })),
-        ...(body.reply ? [{ kind: 'assistant' as const, text: body.reply }] : [])
+        ...(body.reply ? [{ kind: 'assistant' as const, text: body.reply, via: routeLabel(body.route) }] : [])
       ]);
     } catch {
       setItems(prev => [...prev, shown.size
@@ -372,7 +379,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
       }
       return <ToolCard key={index} result={item.result} />;
     }
-    if (item.kind === 'assistant') return <div key={index} className="msg assistant"><RichText text={item.text} /></div>;
+    if (item.kind === 'assistant') return <div key={index} className="msg assistant"><RichText text={item.text} />{sasuke && item.via && <span className="msg-via">{item.via}</span>}</div>;
     if (item.kind === 'notice') return <div key={index} className="msg assistant"><p>{item.text}</p></div>;
     if (item.kind === 'help') {
       return (
@@ -438,7 +445,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
         {empty && sasuke && (
           <section className="sk-home">
             <span className="sk-home-mark"><SasukeMark size={44} /></span>
-            <h1 className="sk-hello">{greeting()}，Sir。</h1>
+            <h1 className="sk-hello">{greeting()} <span>Sir</span></h1>
             {notices.length > 0 && (
               <ul className="sk-notices" aria-label="重要通知">
                 {notices.map(n => <li key={n.key}><span className={`sk-dot ${n.tone}`} /><button type="button" className="sk-notice" onClick={() => pick(n.ask, true)}>{n.text}</button></li>)}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { Page } from '../TopBar';
 import { Icon, type IconName } from '../components/Icon';
 import Link from 'next/link';
@@ -25,13 +25,29 @@ const NAV: Array<{ id: Page; href: string; label: string; icon: IconName; also?:
 
 const COLLAPSE_KEY = 'noirxu-ui-sidebar-collapsed';
 
-/** Original mark for SASUKE: a quiet lens — an outlined ring with an offset point. */
+/**
+ * Original mark for SASUKE: a segmented sensor ring around a diamond frame and a lit core.
+ * Static (no animation) so it costs nothing; ids are unique per instance.
+ */
 export function SasukeMark({ size = 28 }: { size?: number }) {
+  const id = useId().replace(/:/g, '');
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" className="sasuke-mark">
-      <circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" strokeWidth="1.2" opacity=".55" />
-      <circle cx="16" cy="16" r="7.5" fill="none" stroke="currentColor" strokeWidth="1.2" />
-      <circle cx="16" cy="16" r="3" fill="var(--accent)" />
+      <defs>
+        <linearGradient id={`skg${id}`} x1="4" y1="4" x2="28" y2="28" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#8ff0ff" />
+          <stop offset="1" stopColor="#3b7bff" />
+        </linearGradient>
+        <radialGradient id={`skc${id}`} cx="16" cy="16" r="5" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#e9fdff" />
+          <stop offset=".55" stopColor="#5fe0f2" />
+          <stop offset="1" stopColor="#2f78ff" />
+        </radialGradient>
+      </defs>
+      <circle cx="16" cy="16" r="13" fill="none" stroke={`url(#skg${id})`} strokeWidth="1.3" strokeDasharray="16.4 4" transform="rotate(-36 16 16)" strokeLinecap="round" />
+      <path d="M16 2.2v2M16 27.8v2M2.2 16h2M27.8 16h2" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" opacity=".45" />
+      <path d="M16 8.2 23.8 16 16 23.8 8.2 16Z" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" opacity=".8" />
+      <circle cx="16" cy="16" r="3.6" fill={`url(#skc${id})`} />
     </svg>
   );
 }

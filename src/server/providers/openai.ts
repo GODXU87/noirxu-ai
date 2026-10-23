@@ -5,7 +5,7 @@ import type { Executor } from '@/hub/executor';
 import type { ToolRegistry } from '@/hub/registry';
 import type { ToolContext, ToolDefinition } from '@/hub/types';
 import { taipeiDate } from '@/lib/dates';
-import { systemPrompt, toClaudeName, toolResultText, type ProgressEvent, type ReplyStyle, type ToolEvent, type TurnUsage } from '../agent';
+import { systemPrompt, toClaudeName, toolResultText, type ProgressEvent, type ReplyStyle, type ToolEvent, type TurnLimits, type TurnUsage } from '../agent';
 
 // OpenAI provider for the same SASUKE engine: same system prompt, same tool registry and
 // executor (so confirmation cards, duplicate protection and the audit log are unchanged),
@@ -53,6 +53,8 @@ export async function runOpenAITurn(options: {
   style?: ReplyStyle;
   reasoningEffort?: 'low' | 'medium' | 'high' | null;
   onProgress?: (event: ProgressEvent) => void;
+  limits?: TurnLimits;
+  extraSystem?: string;
 }): Promise<OpenAITurn> {
   const { client, model, registry, executor, ctx } = options;
   const tools = openAITools(registry);
@@ -60,9 +62,15 @@ export async function runOpenAITurn(options: {
   const input: unknown[] = [...options.history, { role: 'user', content: options.userText }];
   const events: ToolEvent[] = [];
   const usage: TurnUsage = { calls: 0, input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
-  const instructions = systemPrompt(registry, taipeiDate(ctx.now()), options.style);
+  const instructions = systemPrompt(registry, taipeiDate(ctx.now()), options.style) + (options.extraSystem ? `\n\n${options.extraSystem}` : '');
 
-  for (let iteration = 0; iteration < MAX_ITERATIONS; iteration += 1) {
+  const limits = options.limits ?? {};
+  const effort = options.reasoningEffort ?? limits.effort ?? null;
+  // OpenAI caches long identical prompt prefixes automatically; instructions and tools come
+  // first and stay identical between calls so they can be reused (reported as cached_tokens).
+  for (let iteration = 0; iteration < (limits.maxIterations ?? MAX_ITERATIONS); iteration += 1) {
+    const stop = limits.beforeCall?.(usage);
+    if (stop) return { provider: 'openai', messages: input, reply: stop, events, stopReason: 'budget', usage };
     const response = await client.responses.create({
       model,
       instructions,
@@ -70,8 +78,8 @@ export async function runOpenAITurn(options: {
       tools,
       store: false,
       include: ['reasoning.encrypted_content'],
-      max_output_tokens: 16000,
-      ...(options.reasoningEffort ? { reasoning: { effort: options.reasoningEffort } } : {})
+      max_output_tokens: limits.maxOutputTokens ?? 16000,
+      ...(effort ? { reasoning: { effort } } : {})
     });
     usage.calls += 1;
     usage.input_tokens += response.usage?.input_tokens ?? 0;

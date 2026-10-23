@@ -71,6 +71,7 @@ export function radarTools(radar: RadarClient): ToolDefinition[] {
       description: '查詢 RADAR 最新發布的資料交易日與各資料來源狀態。',
       connection: 'radar',
       kind: 'read',
+      cacheTtlMs: 10 * 60_000, // end-of-day data published once a day
       input: z.object({}).strict(),
       output: radarOutput,
       async run() {
@@ -94,6 +95,7 @@ export function radarTools(radar: RadarClient): ToolDefinition[] {
       description: `取得 RADAR 對單一個股的完整資料：Radar 分數與歷史、報酬、均線/RSI/MACD/量比等技術面、法人與籌碼、融資券、基本面、所屬產業與題材。${RESEARCH_NOTE}`,
       connection: 'radar',
       kind: 'read',
+      cacheTtlMs: 10 * 60_000, // end-of-day data published once a day
       input: z.object({ market: z.enum(['TWSE', 'TPEX']), symbol: z.string().regex(/^\d{4,6}$/) }).strict(),
       output: radarOutput,
       async run(value) {
@@ -108,6 +110,7 @@ export function radarTools(radar: RadarClient): ToolDefinition[] {
       description: `取得 RADAR 當日掃描清單（技術、籌碼、共振、融資券、基本面、潛力、強度階段、強於大盤、NOIRXU 清單）。${RESEARCH_NOTE}`,
       connection: 'radar',
       kind: 'read',
+      cacheTtlMs: 10 * 60_000, // end-of-day data published once a day
       input: z.object({ kind: z.enum(SIGNAL_KINDS), limit: z.number().int().min(1).max(50).default(20) }).strict(),
       output: radarOutput,
       async run(value) {
@@ -120,6 +123,7 @@ export function radarTools(radar: RadarClient): ToolDefinition[] {
       description: `取得 RADAR 當日產業與題材資金流分數、排名、變化與指標。${RESEARCH_NOTE}`,
       connection: 'radar',
       kind: 'read',
+      cacheTtlMs: 10 * 60_000, // end-of-day data published once a day
       input: z.object({}).strict(),
       output: radarOutput,
       async run() {
