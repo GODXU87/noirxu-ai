@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from 'next';
 import '@fontsource-variable/inter';
 import './globals.css';
 import { ServiceWorker } from './components/ServiceWorker';
+import { ViewportSync } from './components/ViewportSync';
+import { PushToast } from './components/PushToast';
 import { Suspense } from 'react';
 import { uiMode } from '@/server/ui-mode';
 import { SasukeNav } from './sasuke/SasukeNav';
@@ -24,6 +26,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         {/* Apply the saved sidebar width before first paint so the layout never jumps. */}
         {ui === 'sasuke' && <script dangerouslySetInnerHTML={{ __html: "try{if(localStorage.getItem('noirxu-ui-sidebar-collapsed')==='1')document.documentElement.classList.add('sidebar-collapsed')}catch(e){}" }} />}
         {ui === 'sasuke' && <Suspense fallback={null}><SasukeNav /></Suspense>}
+        {ui === 'sasuke' && <ViewportSync />}
+        {ui === 'sasuke' && <PushToast />}
         {children}
         <ServiceWorker />
       </body>

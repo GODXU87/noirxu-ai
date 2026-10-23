@@ -780,3 +780,20 @@ button[data-state="error"] { border-color: var(--danger) !important; animation: 
 @media (hover: hover) and (pointer: fine) { [data-tip][aria-expanded="true"]::after { display: none; } }
 .ui-sasuke a.sk-menu-item { color: var(--text-soft); }
 .ui-sasuke a.sk-menu-item:hover { color: var(--text); }
+
+/* iPhone: keep the header and water chip pinned to the visible area while the keyboard is open
+   (Safari scrolls the page under fixed elements; see ViewportSync). */
+.ui-sasuke .sk-top, .ui-sasuke .sk-water-slot { transform: translateY(var(--vv-top, 0px)); }
+/* iPhone zooms into any field under 16px when it gets focus, which shifts the whole page. */
+@media (pointer: coarse) { input, textarea, select, .ui-sasuke .history-search input, .history li input { font-size: 16px; } }
+/* In-app banner for a notification that arrives while SASUKE is open. */
+.sk-toast { position: fixed; z-index: 30; left: 50%; top: calc(12px + env(safe-area-inset-top) + var(--vv-top, 0px)); transform: translateX(-50%); width: min(92vw, 420px); display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 16px; background: var(--surface-2, #22252a); color: var(--text); box-shadow: 0 12px 32px rgba(0, 0, 0, .45); border: 1px solid rgba(43, 196, 220, .3); animation: toast-in .22s ease both; cursor: pointer; text-align: left; }
+.sk-toast b { display: block; font-size: 14px; font-weight: 600; }
+.sk-toast small { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; white-space: pre-line; }
+.sk-toast svg { color: var(--accent); flex: none; margin-top: 2px; }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@media (prefers-reduced-motion: reduce) { .sk-toast { animation: none; } }
+/* Grid cards never grow past their column (long URLs or keys used to push them off-screen on phones). */
+.cards > *, .conn-list > * { min-width: 0; }
+.conn { overflow-wrap: anywhere; }
+.conn ol { padding-left: 18px; display: grid; gap: 4px; }
