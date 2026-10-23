@@ -98,7 +98,7 @@ describe('E–F: no burst of advance notices; explicit times kept', () => {
     expect(sent).toHaveLength(0);
     await runTick(hub, taipei('2026-10-25T20:01:00'));
     expect(sent).toHaveLength(1);
-    expect(sent[0].title).toBe('SASUKE · 準備兒童朝會報告');
+    expect(sent[0].title).toBe('Sir，準備兒童朝會報告');
     expect(sent[0].body).toContain('5 個時段');
     expect(sent[0].body).not.toContain('備註');
     expect((await hub.delivery.inbox('owner')).length).toBe(5);
@@ -119,9 +119,9 @@ describe('E–F: no burst of advance notices; explicit times kept', () => {
     for (const t of slots) await create(`10/26 ${Number(t.slice(0, 2))}點提醒我準備報告`, taipei('2026-10-23T19:43:00'));
     for (const t of slots) await runTick(hub, taipei(`2026-10-26T${t}:30`));
     // The 09:00 run also sends the daily morning summary; count the reminders.
-    const reminders = sent.filter(m => m.title.startsWith('SASUKE'));
+    const reminders = sent.filter(m => m.title.startsWith('Sir，該準備報告了'));
     expect(reminders).toHaveLength(5);
-    expect(reminders.every(m => m.body.startsWith('提醒時間'))).toBe(true);
+    expect(reminders.every(m => m.body === '')).toBe(true);
   });
 
   it('caps one run at three notifications (a summary instead)', async () => {
@@ -129,7 +129,7 @@ describe('E–F: no burst of advance notices; explicit times kept', () => {
     for (const title of ['甲', '乙', '丙', '丁', '戊']) await create(`2分鐘後提醒我${title}`, taipei('2026-10-23T20:00:00'));
     await runTick(hub, taipei('2026-10-23T20:02:30'));
     expect(sent).toHaveLength(1);
-    expect(sent[0].title).toContain('5 則提醒');
+    expect(sent[0].title).toBe('Sir，現在有 5 件事');
   });
 });
 
@@ -161,7 +161,7 @@ describe('G–I: concurrency, failures, cancel and late runs', () => {
     for (const t of ['甲', '乙', '丙']) await late.create(`2分鐘後提醒我${t}`, taipei('2026-10-23T18:00:00'));
     await runTick(late.hub, taipei('2026-10-23T20:05:00'));
     expect(late.sent).toHaveLength(1);
-    expect(late.sent[0].title).toContain('錯過的提醒');
+    expect(late.sent[0].title).toBe('Sir，剛才錯過 3 件事');
 
     const stale = setup();
     await stale.create('2分鐘後提醒我甲', taipei('2026-10-23T06:00:00'));
@@ -181,7 +181,7 @@ describe('G–I: concurrency, failures, cancel and late runs', () => {
     expect(sent).toHaveLength(0);
     await runTick(hub, taipei('2026-10-23T21:00:30'));
     expect(sent).toHaveLength(1);
-    expect(sent[0].title).toBe('SASUKE · 乙');
+    expect(sent[0].title).toBe('Sir，該乙了');
   });
 });
 
@@ -201,10 +201,13 @@ describe('J: zero model calls for a plain relative reminder', () => {
 });
 
 describe('lock-screen text', () => {
-  it('shows SASUKE, the title and the time; no notes', () => {
+  it('speaks to Sir with the thing and the time; no notes, no filler', () => {
     const item: AgendaItem = { id: 'i', user_id: 'owner', title: '準備兒童朝會報告', notes: '請在 09:00、11:00、13:00 各提醒一次，原始訊息…', due_date: '2026-10-26', due_time: '09:00', importance: 3, status: 'open', source: 'structured', created_at: '', updated_at: '' };
     const m = reminderMessage(item, '明天', '2026-10-25');
-    expect(m.title).toBe('SASUKE · 準備兒童朝會報告');
+    expect(m.title).toBe('Sir，準備兒童朝會報告');
     expect(m.body).toBe('明天 09:00 · 重要');
+    const now = reminderMessage({ ...item, title: '看電腦', source: 'reminder', importance: 2 }, '提醒', '2026-10-23');
+    expect(now).toMatchObject({ title: 'Sir，該看電腦了', body: '' });
+    expect(reminderMessage({ ...item, title: '提醒', source: 'reminder', importance: 2 }, '提醒', '2026-10-23').title).toBe('Sir，時間到了');
   });
 });

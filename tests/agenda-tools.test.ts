@@ -89,7 +89,7 @@ describe('runTick', () => {
     await runTick(hub, evening);
     await runTick(hub, evening);
     expect(sent.filter(m => m.title.includes('繳電話費'))).toHaveLength(1);
-    expect(sent[0].title).toBe('SASUKE · 繳電話費');
+    expect(sent[0].title).toBe('Sir，繳電話費');
   });
 
   it('sends the morning summary once per day between 08:00 and 11:00 Taipei', async () => {

@@ -202,7 +202,7 @@ export class TaskService {
         let message: PushMessage;
         if (step.type === 'notify') {
           const found = step.include_results ? run.steps.filter(s => s.type === 'tool').map(s => `${s.tool}：${s.summary}`).join('\n') : '';
-          message = { title: `SASUKE · ${step.title}`, body: [step.body, found].filter(Boolean).join('\n') || '自動任務提醒', url: '/tasks', tag: `task-${task.id}` };
+          message = { title: `Sir，${step.title}`, body: [step.body, found].filter(Boolean).join('\n'), url: '/tasks', tag: `task-${task.id}` };
         } else {
           const brief = await this.deps.briefing(step.which, task.user_id, now);
           if (step.only_if_important && !brief.important) {
@@ -224,7 +224,7 @@ export class TaskService {
       if (result.status === 'confirmation_required') {
         run.steps.push({ step: index, type: 'tool', tool: step.tool, status: 'waiting_approval', summary: result.preview.title, proposal_id: result.proposalId });
         run.status = 'waiting_approval';
-        await this.deps.notify({ key: `task-approval:${result.proposalId}`, userId: task.user_id, message: { title: `SASUKE · 等你確認：${task.title}`, body: result.preview.title, url: '/tasks', tag: `task-${task.id}` }, now });
+        await this.deps.notify({ key: `task-approval:${result.proposalId}`, userId: task.user_id, message: { title: 'Sir，這件事要你確認', body: `${task.title}：${result.preview.title}`, url: '/tasks', tag: `task-${task.id}` }, now });
         return;
       }
       if (result.status === 'error') {

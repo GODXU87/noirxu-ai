@@ -111,7 +111,7 @@ describe('acceptance workflows', () => {
     const run = (await tasks.get(id))!.runs[0];
     expect(run).toMatchObject({ status: 'completed', tool_calls: 2, llm_tokens: 0 });
     expect(run.steps.map(s => s.summary).slice(0, 2)).toEqual(['3 個訊號，資料日期 2026-10-22', '4 筆交易']);
-    expect(send.mock.calls[0][1]).toMatchObject({ title: 'SASUKE · 今日訊號與持倉', body: 'radar.signals.scan：3 個訊號，資料日期 2026-10-22\njournal.trades.list：4 筆交易' });
+    expect(send.mock.calls[0][1]).toMatchObject({ title: 'Sir，今日訊號與持倉', body: 'radar.signals.scan：3 個訊號，資料日期 2026-10-22\njournal.trades.list：4 筆交易' });
   });
 
   it('C. Gmail task: reading runs automatically, sending waits for approval and is audited', async () => {
