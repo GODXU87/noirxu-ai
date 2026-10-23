@@ -140,6 +140,59 @@ function ReminderCard({ data }: { data: any }) {
   );
 }
 
+const TASK_TONE: Record<string, string> = { queued: 'ok', running: 'pending', waiting_approval: 'pending', completed: 'ok', failed: 'error', cancelled: '', outcome_unknown: 'pending', paused: '' };
+const RUN_LABEL: Record<string, string> = { completed: '完成', failed: '失敗', waiting_approval: '等你確認', outcome_unknown: '結果不明', skipped: '略過', not_met: '條件未達成' };
+
+/** A background task in the chat or the task center: schedule, next run, last result, pause / resume / cancel. */
+export function TaskCard({ task: initial }: { task: any }) {
+  const [task, setTask] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [runs, setRuns] = useState<any[] | null>(null);
+  const finished = task.status === 'cancelled' || task.status === 'completed';
+  async function act(action: 'pause' | 'resume' | 'cancel', button: HTMLButtonElement) {
+    setBusy(true); setError('');
+    const result = await callTool('tasks.update', { id: task.id, action });
+    setBusy(false);
+    if (result.status === 'ok') setTask((result.data as any).task);
+    else { setError(result.status === 'error' ? result.message : '更新失敗'); flash(button, 'error'); }
+  }
+  async function history() {
+    if (runs) { setRuns(null); return; }
+    const result = await callTool('tasks.history.get', { id: task.id });
+    if (result.status === 'ok') setRuns((result.data as any).runs); else setError(result.status === 'error' ? result.message : '讀不到紀錄');
+  }
+  return (
+    <div className={`reminder-card task-card is-${task.status}`}>
+      <div className="reminder-head">
+        <Icon name={task.kind === 'conditional' ? 'chart' : 'bell'} size={16} />
+        <b>{task.title}</b>
+        <span className={`state-chip ${TASK_TONE[task.status] ?? ''}`}>{task.status_label}</span>
+      </div>
+      <p className="task-meta">{task.kind_label} · {task.schedule_label}{task.condition ? ` · 條件：${task.condition.category ?? '本月'}支出 > ${Number(task.condition.amount).toLocaleString('en-US')}` : ''}</p>
+      {!finished && task.next_local && <p className="task-next">{task.status === 'paused' ? '已暫停，恢復後下次' : '下次執行'} <b>{task.next_local}</b></p>}
+      {task.last_run && <p className="hint">最近一次 {task.last_run.local}：{RUN_LABEL[task.last_run.status] ?? task.last_run.status}{task.last_run.error ? `（${task.last_run.error}）` : ''}</p>}
+      {!finished && (
+        <div className="row reminder-actions">
+          {task.status === 'paused'
+            ? <button type="button" disabled={busy} onClick={e => void act('resume', e.currentTarget)}>恢復</button>
+            : <button type="button" disabled={busy || task.status === 'running'} onClick={e => void act('pause', e.currentTarget)}>暫停</button>}
+          <button type="button" className="ghost" disabled={busy || task.status === 'running'} onClick={e => void act('cancel', e.currentTarget)}>取消任務</button>
+          <button type="button" className="ghost" onClick={() => void history()}>{runs ? '收合紀錄' : '執行紀錄'}</button>
+        </div>
+      )}
+      {finished && task.runs_kept > 0 && <div className="row reminder-actions"><button type="button" className="ghost" onClick={() => void history()}>{runs ? '收合紀錄' : '執行紀錄'}</button></div>}
+      {runs && (
+        <ul className="rows task-runs">
+          {runs.map(r => <li key={r.id}><span className="muted">{r.local}</span><span>{RUN_LABEL[r.status] ?? r.status}{r.late_minutes ? ` · 晚 ${r.late_minutes} 分` : ''}</span><span className="muted">{r.error ?? r.steps.map((s: any) => s.summary).join('；')}</span></li>)}
+          {!runs.length && <li className="muted">還沒有執行過</li>}
+        </ul>
+      )}
+      {error && <p className="hint tone-error">{error}</p>}
+    </div>
+  );
+}
+
 const STATUS_TONE: Record<string, 'accent' | 'warn' | 'danger'> = { safe: 'accent', warning: 'warn', over: 'danger', unset: 'accent' };
 
 /** Readable views for the common tools; everything else falls back to the raw data. */
@@ -237,6 +290,13 @@ export function ToolData({ tool, data }: { tool: string; data: any }): ReactNode
           {!data.accounts?.length && <p className="hint">Ledger 還沒有資產帳戶。</p>}
         </div>
       );
+    case 'tasks.create':
+    case 'tasks.update':
+      return <TaskCard task={data.task} />;
+    case 'tasks.history.get':
+      return <TaskCard task={data.task} />;
+    case 'tasks.list':
+      return <div className="view task-list">{data.tasks.map((t: any) => <TaskCard key={t.id} task={t} />)}{!data.tasks.length && <p className="hint">目前沒有自動任務。</p>}</div>;
     case 'radar.status':
       return <div className="view"><p className="hint">最新資料交易日：<b>{data.publication?.trade_date ?? '—'}</b></p></div>;
     default:

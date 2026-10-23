@@ -24,6 +24,9 @@ import { healthTools } from '@/tools/health/tools';
 import { WaterService } from '@/health/service';
 import { loadFeatureFlags, type FeatureFlags } from '@/lib/features';
 import { ledgerAssetTools } from '@/tools/ledger/assets';
+import { taskTools } from '@/tools/tasks/tools';
+import { TaskService } from '@/tasks/service';
+import { eveningBriefing, morningBriefing } from './tick';
 import { loadConfig, type AppConfig } from './config';
 
 export interface Hub {
@@ -44,6 +47,8 @@ export interface Hub {
   memory: MemorySource | null;
   vault: TokenVault;
   water: WaterService;
+  /** Background tasks (feature 'tasks'); null when the feature is off. */
+  tasks: TaskService | null;
   isConnected: (userId: string, connection: ConnectionId) => Promise<boolean>;
 }
 
@@ -109,6 +114,18 @@ function build(): Hub {
   const registry = new ToolRegistry();
   // Assistant tools call other tools through the executor, which is created below.
   let executor: Executor | null = null;
+  let hub: Hub | null = null;
+  const invoke: Executor['invoke'] = (name, input, ctx) => executor!.invoke(name, input, ctx);
+  const tasks = features.tasks ? new TaskService({
+    store: agenda, vault, executor: { invoke }, proposals: { getProposal: id => store.getProposal(id) },
+    notify: async ({ key, userId, message, now }) => delivery.deliver({ key, kind: 'task', userId, message, now, expiresAt: new Date(now.getTime() + 12 * 60 * 60_000) }),
+    briefing: async (which, userId, now) => (which === 'morning' ? morningBriefing(hub!, userId, now) : eveningBriefing(hub!, userId, now)),
+    redeliver: async (key, now) => {
+      const record = await delivery.get(key);
+      if (!record) return null;
+      return (await delivery.deliver({ key, kind: record.kind, userId: record.user_id, message: record.message, expiresAt: new Date(record.expires_at), now })).status;
+    }
+  }) : null;
   for (const tool of [
     ...ledgerTools({ connection: ledger, appUrl: config.ledger.appUrl }),
     ...ledgerAssetTools({ connection: ledger, appUrl: config.ledger.appUrl }),
@@ -117,7 +134,8 @@ function build(): Hub {
     ...radarTools(radar),
     ...gmailTools(gmail),
     ...(features.water ? healthTools(water) : []),
-    ...assistantTools({ agenda, water: features.water ? water : undefined, features, isConnected: (userId, connection) => isConnected(userId, connection), invoke: (name, input, ctx) => executor!.invoke(name, input, ctx) })
+    ...assistantTools({ agenda, water: features.water ? water : undefined, features, isConnected: (userId, connection) => isConnected(userId, connection), invoke }),
+    ...(tasks ? taskTools({ tasks, hasTool: name => Boolean(registry.get(name)) }) : [])
   ]) registry.register(tool);
 
   const isConnected = async (userId: string, connection: ConnectionId) => {
@@ -130,7 +148,8 @@ function build(): Hub {
   };
 
   executor = new Executor({ registry, store, isConnected });
-  return { config, features, storageMode, registry, executor, ledger, journal, radar, gmail, agenda, push, delivery, cost, memory: null, vault, water, isConnected };
+  hub = { config, features, storageMode, registry, executor, ledger, journal, radar, gmail, agenda, push, delivery, cost, memory: null, vault, water, tasks, isConnected };
+  return hub;
 }
 
 const globalHub = globalThis as unknown as { __noirxuHub?: Hub };

@@ -769,6 +769,13 @@ button[data-state="error"] { border-color: var(--danger) !important; animation: 
 .reminder-time small { font-size: 12px; font-weight: 400; color: var(--muted); }
 .reminder-card.is-cancelled .reminder-time { font-size: 14px; font-weight: 400; color: var(--muted); }
 .reminder-actions { gap: 8px; }
+.task-meta { font-size: 13px; color: var(--muted); }
+.task-next { font-size: 15px; font-variant-numeric: tabular-nums; }
+.task-next b { font-weight: 650; }
+.task-list { display: grid; gap: 14px; }
+.task-list .task-card + .task-card { border-top: 1px solid var(--line); padding-top: 14px; }
+.task-runs li { grid-template-columns: auto auto 1fr; font-size: 12px; }
+.task-card.is-cancelled .task-meta, .task-card.is-completed .task-meta { text-decoration: line-through; }
 @media (hover: hover) and (pointer: fine) { .inbox-btn[data-tip]::after { right: 0; transform: translateY(-2px); } .inbox-btn[data-tip]:hover::after { transform: none; } }
 @media (hover: hover) and (pointer: fine) { [data-tip][aria-expanded="true"]::after { display: none; } }
 .ui-sasuke a.sk-menu-item { color: var(--text-soft); }

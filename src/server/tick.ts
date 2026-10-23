@@ -1,13 +1,14 @@
 import 'server-only';
 import { createHash } from 'node:crypto';
 import { buildBriefing, digestMessage, reminderMessage } from '@/agenda/briefing';
+import { buildEveningReport } from '@/assistant/reports';
 import { taipeiDate } from '@/lib/dates';
 import { dueWaterSlot, waterReminder } from '@/health/water';
 import type { PushMessage } from '@/push/service';
 import type { Hub } from './hub';
 import { OWNER_ID } from './session';
 
-export interface TickResult { reminders: number; briefing: boolean; pushed: number; water?: boolean }
+export interface TickResult { reminders: number; briefing: boolean; pushed: number; water?: boolean; tasks?: { ran: number; waiting: number; error?: string } }
 
 function taipeiHour(now: Date): number {
   return Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Taipei', hour: '2-digit', hour12: false }).format(now));
@@ -37,6 +38,18 @@ export async function morningBriefing(hub: Hub, userId: string, now: Date) {
     if (trades.status === 'ok') openPositions = (trades.data as { total_matching: number }).total_matching;
   }
   return buildBriefing({ today, items, ledger, openPositions });
+}
+
+/** Evening summary for a scheduled task: what is still open today and what comes tomorrow. */
+export async function eveningBriefing(hub: Hub, userId: string, now: Date) {
+  const report = buildEveningReport({ today: taipeiDate(now), items: await hub.agenda.listItems(userId, { status: 'all' }) });
+  const lines = [
+    report.done_today.length ? `今天完成 ${report.done_today.length} 件` : null,
+    report.still_open_today.length ? `今天還沒完成：${report.still_open_today.slice(0, 3).map(i => i.title).join('、')}` : null,
+    report.overdue.length ? `逾期 ${report.overdue.length} 件` : null,
+    report.tomorrow.length ? `明天：${report.tomorrow.slice(0, 3).map(i => i.title).join('、')}` : '明天沒有排定的事'
+  ].filter(Boolean);
+  return { title: '晚報', body: lines.join('\n') };
 }
 
 /** Taipei wall-clock HH:MM on `date` as an instant. */
@@ -171,5 +184,11 @@ export async function runTick(hub: Hub, now = new Date()): Promise<TickResult> {
       }
     }
   }
-  return { reminders, briefing, pushed, water };
+  // Background tasks run after the reminders, so a failing task never delays a reminder.
+  let tasks: TickResult['tasks'];
+  if (hub.tasks) {
+    try { tasks = await hub.tasks.runDue(now); }
+    catch (error) { tasks = { ran: 0, waiting: 0, error: error instanceof Error ? error.message.slice(0, 200) : 'task run failed' }; }
+  }
+  return { reminders, briefing, pushed, water, ...(tasks ? { tasks } : {}) };
 }

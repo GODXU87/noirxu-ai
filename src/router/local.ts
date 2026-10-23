@@ -143,6 +143,25 @@ export async function runLocal(intent: LocalIntent, deps: Deps): Promise<LocalTu
       }
       return { level: 'L1', source: 'tool', intent: intent.kind, reply, events: [event] };
     }
+    case 'task_create': {
+      const input = { text: intent.text };
+      const result = await executor.invoke('tasks.create', input, ctx);
+      if (result.status !== 'ok') return { level: 'L1', source: 'tool', intent: intent.kind, reply: result.status === 'error' ? (result.code === 'UNKNOWN_TOOL' ? '自動任務功能目前沒有開啟，這次沒有建立任何任務。' : result.message) : '任務沒有建立。', events: [] };
+      const task = (result.data as { task: { title: string; kind: string; schedule_label: string; next_local: string | null } }).task;
+      const what = task.kind === 'conditional' ? `每 6 小時檢查一次 Ledger，${task.title}時通知你（同一個月只通知一次）` : `${task.schedule_label}：${task.title}`;
+      return { level: 'L1', source: 'tool', intent: intent.kind, reply: `${sirFor(seed) ? 'Sir，' : ''}已建立自動任務——${what}。下次執行 ${task.next_local}。背景排程執行，不需要開著 App；隨時可以暫停或取消。`, events: [{ tool: 'tasks.create', input, result }] };
+    }
+    case 'task_list': {
+      const input = { include_finished: false };
+      const result = await executor.invoke('tasks.list', input, ctx);
+      const event = { tool: 'tasks.list', input, result };
+      if (result.status !== 'ok') return { level: 'L1', source: 'tool', intent: intent.kind, reply: result.status === 'error' && result.code === 'UNKNOWN_TOOL' ? '自動任務功能目前沒有開啟。' : '任務清單目前讀不到，請稍後再試。', events: [] };
+      const tasks = (result.data as { tasks: Array<{ title: string; status_label: string; schedule_label: string; next_local: string | null }> }).tasks;
+      const reply = tasks.length
+        ? `目前有 ${tasks.length} 個自動任務：${tasks.slice(0, 4).map(t => `${t.title}（${t.schedule_label}，${t.status_label}）`).join('、')}${tasks.length > 4 ? ' 等' : ''}。`
+        : '目前沒有自動任務。可以說「每天早上 8 點提醒我喝水」來建立一個。';
+      return { level: 'L1', source: 'tool', intent: intent.kind, reply: withSir(reply, seed), events: [event] };
+    }
     case 'memory_recall': {
       const subject = intent.subject.replace(/^(的)/, '');
       if (!deps.memory) return { level: 'L1', source: 'memory', intent: intent.kind, reply: `長期記憶目前還沒啟用，所以我沒有保存你的${subject}。告訴我的話，這段對話裡我會記得。`, events: [] };
