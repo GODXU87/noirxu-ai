@@ -88,3 +88,18 @@ describe('C1: importing the classic chat', () => {
     expect(lib.listConversations()).toHaveLength(2);
   });
 });
+
+describe('fresh conversation on each open', () => {
+  it('continues the tab conversation only while it is recent and still saved', () => {
+    const t0 = 1_800_000_000_000;
+    expect(lib.resumeActive(t0)).toBeNull();
+    lib.saveConversation('c1', conv(2), '問題');
+    lib.touchActive('c1', t0);
+    expect(lib.resumeActive(t0 + 5 * 60_000)).toBe('c1');
+    expect(lib.resumeActive(t0 + lib.IDLE_MS)).toBeNull();
+    // A new tab or relaunched app has empty sessionStorage: new conversation, old one kept.
+    session.clear();
+    expect(lib.resumeActive(t0)).toBeNull();
+    expect(lib.listConversations().map(c => c.id)).toContain('c1');
+  });
+});
