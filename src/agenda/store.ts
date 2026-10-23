@@ -24,6 +24,11 @@ export interface AgendaStore {
   putSettingIfAbsent(key: string, sealed: string): Promise<string>;
   /** Insert or replace. */
   putSetting(key: string, sealed: string): Promise<void>;
+  /**
+   * Writes `next` only if the stored value is still `expected` (null = row absent).
+   * Returns false when someone else wrote in between, so the caller can re-read and retry.
+   */
+  compareAndSetSetting(key: string, expected: string | null, next: string): Promise<boolean>;
 }
 
 export class MemoryAgendaStore implements AgendaStore {
@@ -77,6 +82,11 @@ export class MemoryAgendaStore implements AgendaStore {
   async deletePushSubscription(endpoint: string) { this.subs.delete(endpoint); }
   async getSetting(key: string) { return this.settings.get(key) ?? null; }
   async putSetting(key: string, sealed: string) { this.settings.set(key, sealed); }
+  async compareAndSetSetting(key: string, expected: string | null, next: string) {
+    if ((this.settings.get(key) ?? null) !== expected) return false;
+    this.settings.set(key, next);
+    return true;
+  }
   async putSettingIfAbsent(key: string, sealed: string) {
     if (!this.settings.has(key)) this.settings.set(key, sealed);
     return this.settings.get(key)!;
@@ -206,5 +216,12 @@ export class PgAgendaStore implements AgendaStore {
 
   async putSetting(key: string, sealed: string) {
     await this.pool.query('insert into noirxu_ai.settings (key, sealed) values ($1, $2) on conflict (key) do update set sealed = excluded.sealed, updated_at = now()', [key, sealed]);
+  }
+
+  async compareAndSetSetting(key: string, expected: string | null, next: string) {
+    const { rowCount } = expected === null
+      ? await this.pool.query('insert into noirxu_ai.settings (key, sealed) values ($1, $2) on conflict (key) do nothing', [key, next])
+      : await this.pool.query('update noirxu_ai.settings set sealed = $3, updated_at = now() where key = $1 and sealed = $2', [key, expected, next]);
+    return rowCount === 1;
   }
 }
