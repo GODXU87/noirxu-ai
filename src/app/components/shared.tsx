@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { money, toolLabel, toolSystem } from '@/lib/tool-labels';
 import { Icon } from './Icon';
 
@@ -208,6 +208,20 @@ export function ToolData({ tool, data }: { tool: string; data: any }): ReactNode
   }
 }
 
+/** Long results fold to a fixed height with a toggle (SASUKE UI; the classic CSS ignores it). */
+export function Collapsible({ children, limit = 360 }: { children: ReactNode; limit?: number }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [tall, setTall] = useState(false);
+  const [open, setOpen] = useState(false);
+  useEffect(() => { if (box.current) setTall(box.current.scrollHeight > limit + 40); }, [children, limit]);
+  return (
+    <div className={`collapsible ${tall && !open ? 'folded' : ''}`} style={{ ['--fold' as string]: `${limit}px` }}>
+      <div ref={box} className="collapsible-body">{children}</div>
+      {tall && <button type="button" className="collapse-toggle" onClick={() => setOpen(o => !o)}>{open ? '收合' : '展開全部'}</button>}
+    </div>
+  );
+}
+
 export function ToolCard({ result }: { result: Extract<InvokeResult, { status: 'ok' | 'error' }> }) {
   const ok = result.status === 'ok';
   const view = ok ? ToolData({ tool: result.tool, data: result.data }) : null;
@@ -216,7 +230,7 @@ export function ToolCard({ result }: { result: Extract<InvokeResult, { status: '
       <header><span><span className="sys">{toolSystem(result.tool)}</span>{toolLabel(result.tool)}</span><span className={ok ? 'status-ok' : 'status-error'}>{ok ? '✓ 已讀取' : '✕ 失敗'}</span></header>
       {ok ? (
         <>
-          {view}
+          <Collapsible>{view}</Collapsible>
           <Links links={result.links} />
           <details><summary>原始資料</summary><pre>{JSON.stringify(result.data, null, 2)}</pre></details>
         </>

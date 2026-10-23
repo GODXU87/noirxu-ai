@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { ServiceWorker } from './components/ServiceWorker';
+import { uiMode } from '@/server/ui-mode';
 
 export const metadata: Metadata = {
   title: 'NOIRXU AI',
@@ -9,6 +10,7 @@ export const metadata: Metadata = {
 };
 export const viewport: Viewport = { width: 'device-width', initialScale: 1, viewportFit: 'cover', themeColor: '#0b0d0d' };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return <html lang="zh-Hant"><body>{children}<ServiceWorker /></body></html>;
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const ui = await uiMode();
+  return <html lang="zh-Hant" className={ui === 'sasuke' ? 'ui-sasuke' : undefined}><body>{children}<ServiceWorker /></body></html>;
 }

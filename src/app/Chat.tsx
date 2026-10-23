@@ -6,6 +6,8 @@ import type { FeatureFlags } from '@/lib/features';
 import { money } from '@/lib/tool-labels';
 import { BrandMark, Icon } from './components/Icon';
 import { AssistantCard, WaterMeter } from './components/assistant';
+import { importLegacySession, loadConversation, newConversationId, saveConversation } from './sasuke/conversations';
+import { SasukeMark } from './sasuke/SasukeNav';
 import { callTool, ProposalCard, RichText, ToolCard, type InvokeResult } from './components/shared';
 
 type Item =
@@ -59,6 +61,11 @@ function load(): Saved | null {
   }
 }
 
+/** The sidebar picker may have changed the style since this page loaded. */
+function currentStyle(fallback: ReplyStyle): ReplyStyle {
+  try { const s = localStorage.getItem(STYLE_KEY) as ReplyStyle | null; return s && STYLES.some(([id]) => id === s) ? s : fallback; } catch { return fallback; }
+}
+
 function greeting() {
   const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Taipei', hour: '2-digit', hour12: false }).format(new Date()));
   return hour < 5 ? '夜深了' : hour < 11 ? '早安' : hour < 14 ? '午安' : hour < 18 ? '下午好' : '晚上好';
@@ -99,7 +106,9 @@ function turns(items: Item[]) {
   return out;
 }
 
-export function Chat({ connected, features }: { connected: Record<string, boolean>; features: FeatureFlags }) {
+export function Chat({ connected, features, variant = 'classic' }: { connected: Record<string, boolean>; features: FeatureFlags; variant?: 'classic' | 'sasuke' }) {
+  const sasuke = variant === 'sasuke';
+  const [conversationId, setConversationId] = useState<string | null>(null);
   const [items, setItems] = useState<Item[]>([]);
   const [history, setHistory] = useState<unknown[]>([]);
   const [notes, setNotes] = useState<string[]>([]);
@@ -113,19 +122,50 @@ export function Chat({ connected, features }: { connected: Record<string, boolea
   const brief = useBrief(empty && features.briefings);
   const [water, setWater] = useState<any>(null);
   useEffect(() => {
-    if (!empty || !features.water) return;
+    // SASUKE keeps water in the header chip instead of the home screen.
+    if (!empty || !features.water || sasuke) return;
     void callTool('health.water.status', {}).then(result => { if (result.status === 'ok') setWater(result.data); });
-  }, [empty, features.water]);
+  }, [empty, features.water, sasuke]);
 
   useEffect(() => {
-    const saved = load();
+    let saved: Saved | null;
+    if (sasuke) {
+      // ?c=<id> opens a saved conversation; anything else starts a new one.
+      const imported = importLegacySession();
+      const requested = new URLSearchParams(window.location.search).get('c');
+      const id = requested && requested !== 'new' ? requested : imported && !requested ? imported : newConversationId();
+      setConversationId(id);
+      saved = loadConversation(id) as Saved | null;
+    } else {
+      saved = load();
+    }
     if (saved) { setItems(saved.items); setHistory(saved.history); setNotes(saved.notes); }
     try { const s = localStorage.getItem(STYLE_KEY) as ReplyStyle | null; if (s && STYLES.some(([id]) => id === s)) setStyle(s); } catch { /* storage unavailable */ }
   }, []);
 
   useEffect(() => {
+    if (sasuke) {
+      if (!conversationId) return;
+      const first = items.find(i => i.kind === 'user');
+      saveConversation(conversationId, { items, history, notes }, first?.kind === 'user' ? first.text : undefined);
+      if (items.length && new URLSearchParams(window.location.search).get('c') !== conversationId) {
+        window.history.replaceState(null, '', `/?c=${conversationId}`);
+      }
+      return;
+    }
     try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ items, history, notes })); } catch { /* storage unavailable */ }
-  }, [items, history, notes]);
+  }, [items, history, notes, sasuke, conversationId]);
+
+  // iPhone Safari: keep the input above the on-screen keyboard.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!sasuke || !vv) return;
+    const update = () => document.documentElement.style.setProperty('--kb', `${Math.max(0, window.innerHeight - vv.height - vv.offsetTop)}px`);
+    update();
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    return () => { vv.removeEventListener('resize', update); vv.removeEventListener('scroll', update); };
+  }, [sasuke]);
 
   useEffect(() => {
     const el = input.current;
@@ -185,7 +225,7 @@ export function Chat({ connected, features }: { connected: Record<string, boolea
     setBusy('思考中');
     const payload = notes.length ? `[系統紀錄]\n${notes.join('\n')}\n\n${message}` : message;
     try {
-      const response = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: payload, history, style }) });
+      const response = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: payload, history, style: currentStyle(style) }) });
       const body = await response.json();
       if (!body.ok) { setItems(prev => [...prev, { kind: 'error', text: body.error?.message ?? '發生錯誤' }]); return; }
       setNotes([]);
@@ -262,7 +302,7 @@ export function Chat({ connected, features }: { connected: Record<string, boolea
           </ul>
         )}
         <form onSubmit={event => { event.preventDefault(); void send(text); }}>
-          {!empty && <button type="button" className="icon-button" onClick={() => { setItems([]); setHistory([]); setNotes([]); }} aria-label="開新對話" title="開新對話"><Icon name="plus" size={18} /></button>}
+          {!empty && <button type="button" className="icon-button" onClick={() => { if (sasuke) { window.location.href = '/?c=new'; return; } setItems([]); setHistory([]); setNotes([]); }} aria-label="開新對話" title="開新對話"><Icon name="plus" size={18} /></button>}
           <textarea ref={input} value={text} onChange={e => setText(e.target.value)} rows={1} aria-label="訊息" onKeyDown={onKeyDown}
             placeholder={!features.commands ? '交代我一件事…' : empty ? '交代我一件事，或輸入 / 使用快捷指令' : '繼續交代，或輸入 /'} />
           <button className="primary" type="submit" disabled={Boolean(busy) || !text.trim()} aria-label="送出"><Icon name="send" size={18} /></button>
@@ -274,7 +314,27 @@ export function Chat({ connected, features }: { connected: Record<string, boolea
   return (
     <>
       <main className={empty ? 'feed home' : 'feed'}>
-        {empty && (
+        {empty && sasuke && (
+          <section className="sk-home">
+            <span className="sk-home-mark"><SasukeMark size={40} /></span>
+            <p className="sk-eyebrow">SASUKE · {new Intl.DateTimeFormat('zh-TW', { timeZone: 'Asia/Taipei', month: 'long', day: 'numeric', weekday: 'long' }).format(new Date())}</p>
+            <h1>{greeting()}，先生。</h1>
+            {brief && <p className="sk-status">{brief.lines.join('　·　')}</p>}
+            {brief && brief.top.length > 0 && (
+              <ol className="sk-focus">
+                {brief.top.map(t => <li key={t.id}><span className={`sk-dot prio-${t.priority}`} /><b>{t.title}</b><small>{t.due_label}</small></li>)}
+              </ol>
+            )}
+            {composer}
+            <div className="sk-chips">
+              {CHIPS.filter(c => !c.feature || features[c.feature]).slice(0, 4).map(c => <button key={c.label} type="button" onClick={() => pick(c.text, c.run)}>{c.label}</button>)}
+            </div>
+            {SYSTEMS.some(([id]) => !connected[id]) && (
+              <a className="sk-missing" href="/connections">{SYSTEMS.filter(([id]) => !connected[id]).map(([, label]) => label).join('、')} 尚未連接 →</a>
+            )}
+          </section>
+        )}
+        {empty && !sasuke && (
           <section className="agent-home">
             <div className="agent-id">
               <span className="agent-mark"><BrandMark size={44} /></span>
@@ -311,7 +371,7 @@ export function Chat({ connected, features }: { connected: Record<string, boolea
             {turn.user && <div className="msg user">{turn.user.text}</div>}
             {turn.replies.length > 0 && (
               <div className="agent-turn">
-                <span className="agent-avatar" aria-hidden="true"><BrandMark size={26} /></span>
+                <span className="agent-avatar" aria-hidden="true">{sasuke ? <SasukeMark size={24} /> : <BrandMark size={26} />}</span>
                 <div className="agent-body">{turn.replies.map(renderReply)}</div>
               </div>
             )}
@@ -319,7 +379,7 @@ export function Chat({ connected, features }: { connected: Record<string, boolea
         ))}
         {busy && (
           <div className="agent-turn">
-            <span className="agent-avatar thinking" aria-hidden="true"><BrandMark size={26} /></span>
+            <span className="agent-avatar thinking" aria-hidden="true">{sasuke ? <SasukeMark size={24} /> : <BrandMark size={26} />}</span>
             <div className="agent-body"><p className="working" aria-live="polite">{busy}<span className="typing"><span /><span /><span /></span></p></div>
           </div>
         )}

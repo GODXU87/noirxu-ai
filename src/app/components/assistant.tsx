@@ -3,7 +3,7 @@
 import { Fragment, useState } from 'react';
 import { money, taipeiToday, toolLabel } from '@/lib/tool-labels';
 import { Icon } from './Icon';
-import { AgendaList, callTool, Links, ProposalCard, type AgendaView, type InvokeResult } from './shared';
+import { AgendaList, callTool, Collapsible, Links, ProposalCard, type AgendaView, type InvokeResult } from './shared';
 
 // Cards for the assistant tools. Every action button here starts the normal flow:
 // agenda items are NOIRXU AI's own notes; Ledger and Gmail still need the confirmation card.
@@ -334,7 +334,7 @@ export function AssistantCard({ result, onNote, onReply }: { result: Extract<Inv
   return (
     <div className="tool">
       <header><span><span className="sys">{result.tool.startsWith('health.') ? '健康' : '助理'}</span>{title}</span></header>
-      {body}
+      <Collapsible limit={420}>{body}</Collapsible>
       <Links links={result.links} />
     </div>
   );
