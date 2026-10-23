@@ -4,7 +4,11 @@ import { useEffect, useRef, useState } from 'react';
 import type { Page } from '../TopBar';
 import { Icon, type IconName } from '../components/Icon';
 import { callTool } from '../components/shared';
-import { deleteConversation, listConversations, onConversationsChanged, renameConversation, type ConversationMeta } from './conversations';
+import { deleteConversation, legacyImports, listConversations, onConversationsChanged, renameConversation, SOFT_LIMIT, type ConversationMeta, type SaveResult } from './conversations';
+
+function warnIfFailed(result: SaveResult) {
+  if (!result.ok) alert(result.reason === 'quota' ? '這台裝置的儲存空間已滿，變更沒有存下來。' : '瀏覽器不允許儲存，變更沒有存下來。');
+}
 
 const SECONDARY: Array<{ id: Page; href: string; label: string; icon: IconName }> = [
   { id: 'overview', href: '/overview', label: '總覽', icon: 'overview' },
@@ -38,9 +42,10 @@ function History({ onNavigate }: { onNavigate: () => void }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [active, setActive] = useState<string | null>(null);
+  const [imports, setImports] = useState(0);
 
   useEffect(() => {
-    const refresh = () => { setList(listConversations()); setActive(currentConversation()); };
+    const refresh = () => { setList(listConversations()); setActive(currentConversation()); setImports(legacyImports().length); };
     refresh();
     return onConversationsChanged(refresh);
   }, []);
@@ -57,7 +62,7 @@ function History({ onNavigate }: { onNavigate: () => void }) {
         {shown.map(c => (
           <li key={c.id} className={c.id === active ? 'on' : ''}>
             {editing === c.id ? (
-              <form onSubmit={e => { e.preventDefault(); renameConversation(c.id, draft); setEditing(null); }}>
+              <form onSubmit={e => { e.preventDefault(); warnIfFailed(renameConversation(c.id, draft)); setEditing(null); }}>
                 <input value={draft} onChange={e => setDraft(e.target.value)} autoFocus maxLength={60} aria-label="對話名稱" onBlur={() => setEditing(null)} />
               </form>
             ) : (
@@ -65,13 +70,15 @@ function History({ onNavigate }: { onNavigate: () => void }) {
                 <a href={`/?c=${c.id}`} onClick={onNavigate} title={c.title}>{c.title}</a>
                 <span className="history-actions">
                   <button type="button" aria-label={`重新命名：${c.title}`} onClick={() => { setEditing(c.id); setDraft(c.title); }}><Icon name="edit" size={14} /></button>
-                  <button type="button" aria-label={`刪除：${c.title}`} onClick={() => { if (confirm(`刪除「${c.title}」？這只會刪除這台裝置上的紀錄。`)) { deleteConversation(c.id); if (c.id === active) window.location.href = '/'; } }}><Icon name="close" size={14} /></button>
+                  <button type="button" aria-label={`刪除：${c.title}`} onClick={() => { if (confirm(`刪除「${c.title}」？這只會刪除這台裝置上的紀錄。`)) { const r = deleteConversation(c.id); warnIfFailed(r); if (r.ok && c.id === active) window.location.href = '/'; } }}><Icon name="close" size={14} /></button>
                 </span>
               </>
             )}
           </li>
         ))}
       </ul>
+      {list.length > SOFT_LIMIT && <p className="history-note warn">這台裝置已有 {list.length} 個對話。不會自動刪除；不需要的可以手動刪除，以免儲存空間不足。</p>}
+      {imports > 0 && <p className="history-note">已從原版介面匯入 {imports} 段對話（原版資料仍保留）。</p>}
       <p className="history-note">目前只存在這台裝置。伺服器同步會在下一階段開放。</p>
     </div>
   );
