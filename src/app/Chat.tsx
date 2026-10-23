@@ -245,6 +245,7 @@ export function Chat({ connected, features, variant = 'classic' }: { connected: 
       if (!body.ok) { setItems(prev => [...prev, { kind: 'error', text: body.error?.message ?? '發生錯誤' }]); return; }
       setNotes([]);
       setHistory(body.messages);
+      if (body.contextReset) setItems(prev => [...prev, { kind: 'notice', text: `AI 已改用 ${body.provider === 'openai' ? 'OpenAI' : 'Claude'}，之前的對話脈絡沒有帶過去；畫面上的紀錄都還在。` }]);
       setItems(prev => [
         ...prev,
         ...body.events.map((e: { result: InvokeResult }) => ({ kind: 'tool' as const, result: e.result })),

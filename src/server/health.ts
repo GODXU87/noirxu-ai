@@ -26,7 +26,7 @@ export function configuredFeatures() {
     login: has('NOIRXU_AI_OWNER_PASSWORD', 'NOIRXU_AI_SESSION_SECRET'),
     encryption: has('NOIRXU_TOKEN_ENCRYPTION_KEY'),
     database: has('NOIRXU_AI_DATABASE_URL'),
-    ai: has('ANTHROPIC_API_KEY'),
+    ai: has('ANTHROPIC_API_KEY') || has('OPENAI_API_KEY'),
     ledger: has('LEDGER_SUPABASE_URL', 'LEDGER_SUPABASE_ANON_KEY'),
     journal: has('JOURNAL_SUPABASE_URL', 'JOURNAL_SUPABASE_ANON_KEY'),
     radar: has('RADAR_INTEGRATION_URL', 'RADAR_INTEGRATION_TOKEN'),
