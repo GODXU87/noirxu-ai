@@ -16,8 +16,9 @@ import type { DeviceResult, PushMessage, SendReport } from '@/push/service';
 // current database grants. A dedicated table is prepared in supabase/pending for approval.
 
 /** 'grouped' = sent as part of a combined notification (see digest_key), not on its own. */
-export type DeliveryStatus = 'pending' | 'claimed' | 'sending' | 'provider_accepted' | 'retry_pending' | 'failed' | 'expired' | 'grouped';
-const TERMINAL: DeliveryStatus[] = ['provider_accepted', 'failed', 'expired', 'grouped'];
+/** 'held' = kept in the inbox only (quiet hours or daily limit for proactive alerts), never pushed. */
+export type DeliveryStatus = 'pending' | 'claimed' | 'sending' | 'provider_accepted' | 'retry_pending' | 'failed' | 'expired' | 'grouped' | 'held';
+const TERMINAL: DeliveryStatus[] = ['provider_accepted', 'failed', 'expired', 'grouped', 'held'];
 
 export interface DeliveryRecord {
   key: string;
@@ -36,6 +37,12 @@ export interface DeliveryRecord {
   devices?: DeviceResult[];
   /** For 'grouped': the combined notification that carried this one. */
   digest_key?: string;
+  /** For 'held': why it was not pushed. */
+  held_reason?: string;
+  /** Reported by the service worker after it showed the notification (a real device receipt). */
+  displayed_at?: string;
+  /** Reported when the user tapped the notification. */
+  opened_at?: string;
 }
 
 export interface InboxEntry { key: string; kind: string; title: string; body: string; url?: string; created_at: string; read: boolean }
@@ -109,7 +116,7 @@ export class DeliveryService {
     let report: SendReport | null = null;
     let error: string | undefined;
     try {
-      report = await this.send(record.user_id, sending.message, now);
+      report = await this.send(record.user_id, { ...sending.message, key }, now);
     } catch (e) {
       error = e instanceof Error ? e.message.slice(0, 200) : '發送時發生錯誤';
     }
@@ -144,6 +151,41 @@ export class DeliveryService {
     const record: DeliveryRecord = {
       key: input.key, kind: input.kind, user_id: input.userId, message: input.message, status: 'grouped', attempts: 0,
       created_at: input.now.toISOString(), updated_at: input.now.toISOString(), expires_at: input.expiresAt.toISOString(), digest_key: input.digestKey
+    };
+    if (await this.transition(input.key, null, record)) {
+      await this.addToInbox(input.userId, { key: input.key, kind: input.kind, title: input.message.title, body: input.message.body, url: input.message.url, created_at: input.now.toISOString(), read: false });
+      return record;
+    }
+    return (await this.get(input.key))!;
+  }
+
+  /**
+   * Device receipt from the service worker. Only a notification owned by `userId` can be
+   * marked; the first time of each event is kept. Without a receipt the app never claims a
+   * notification was shown — "provider_accepted" only means the push service took it.
+   */
+  async markReceipt(userId: string, key: string, event: 'displayed' | 'opened', now: Date): Promise<boolean> {
+    const k = this.settingKey(key);
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const sealed = await this.store.getSetting(k);
+      const record = this.open<DeliveryRecord>(sealed, k);
+      if (!record || record.user_id !== userId) return false;
+      const field = event === 'displayed' ? 'displayed_at' : 'opened_at';
+      if (record[field]) break;
+      const next: DeliveryRecord = { ...record, [field]: now.toISOString(), ...(event === 'opened' && !record.displayed_at ? { displayed_at: now.toISOString() } : {}) };
+      if (await this.store.compareAndSetSetting(k, sealed, this.vault.seal(JSON.stringify(next), k))) break;
+    }
+    if (event === 'opened') await this.markRead(userId, [key]);
+    return true;
+  }
+
+  /** Files a notification in the inbox without pushing it (status 'held'). Idempotent. */
+  async hold(input: { key: string; kind: string; userId: string; message: PushMessage; reason: string; now: Date }): Promise<DeliveryRecord> {
+    const existing = await this.get(input.key);
+    if (existing) return existing;
+    const record: DeliveryRecord = {
+      key: input.key, kind: input.kind, user_id: input.userId, message: input.message, status: 'held', attempts: 0,
+      created_at: input.now.toISOString(), updated_at: input.now.toISOString(), expires_at: input.now.toISOString(), held_reason: input.reason
     };
     if (await this.transition(input.key, null, record)) {
       await this.addToInbox(input.userId, { key: input.key, kind: input.kind, title: input.message.title, body: input.message.body, url: input.message.url, created_at: input.now.toISOString(), read: false });

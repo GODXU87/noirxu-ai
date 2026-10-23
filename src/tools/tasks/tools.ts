@@ -3,7 +3,7 @@ import { ToolError } from '@/hub/errors';
 import { defineTool } from '@/hub/registry';
 import type { ToolDefinition } from '@/hub/types';
 import { taipeiDate } from '@/lib/dates';
-import { conditionSchema, describeSchedule, scheduleSchema, stepSchema, type Task } from '@/tasks/model';
+import { conditionSchema, describeSchedule, scheduleSchema, stepSchema, type Task, type TaskStep } from '@/tasks/model';
 import { parseTaskText } from '@/tasks/parse';
 import type { TaskService } from '@/tasks/service';
 
@@ -53,14 +53,17 @@ export function taskTools(deps: { tasks: TaskService; hasTool: (name: string) =>
       output: anyRecord,
       async run(value, ctx) {
         const now = ctx.now();
-        let spec: { title: string; kind: Task['kind']; schedule: z.infer<typeof scheduleSchema>; steps: z.infer<typeof stepSchema>[]; condition?: z.infer<typeof conditionSchema> };
+        let defaultTime: string | undefined;
+        let spec: { title: string; kind: Task['kind']; schedule: z.infer<typeof scheduleSchema>; steps: TaskStep[]; condition?: z.infer<typeof conditionSchema> };
         if (value.schedule && value.steps) {
           spec = { title: value.title ?? value.text ?? '自動任務', kind: value.kind ?? (value.condition ? 'conditional' : value.schedule.type === 'once' ? 'background' : 'recurring'), schedule: value.schedule, steps: value.steps, condition: value.condition };
         } else if (value.text) {
           const parsed = parseTaskText(value.text, taipeiDate(now));
           if (!parsed) throw new ToolError('INVALID_INPUT', '這句話我沒辦法確定排程（頻率或時間）。請說得更明確，例如「每天早上 8 點提醒我喝水」。這次沒有建立任何任務。');
           if (!parsed.ok) throw new ToolError('INVALID_INPUT', parsed.error);
-          spec = { ...parsed.task, title: value.title ?? parsed.task.title };
+          const { default_time: _d, ...rest } = parsed.task;
+          defaultTime = parsed.task.default_time;
+          spec = { ...rest, title: value.title ?? parsed.task.title };
         } else throw new ToolError('INVALID_INPUT', '需要 text，或同時提供 schedule 與 steps。');
         for (const step of spec.steps) {
           if (step.type !== 'tool') continue;
@@ -73,7 +76,7 @@ export function taskTools(deps: { tasks: TaskService; hasTool: (name: string) =>
         } catch (error) {
           throw new ToolError('INVALID_INPUT', error instanceof Error ? `${error.message}，這次沒有建立任何任務。` : '任務沒有建立。');
         }
-        return { data: { task: taskView(task), created: true } };
+        return { data: { task: taskView(task), created: true, ...(defaultTime ? { default_time: defaultTime } : {}) } };
       }
     }),
     defineTool({
@@ -84,8 +87,8 @@ export function taskTools(deps: { tasks: TaskService; hasTool: (name: string) =>
       input: z.object({ include_finished: z.boolean().default(false) }).strict(),
       output: anyRecord,
       async run(value, ctx) {
-        const tasks = await deps.tasks.list(ctx.userId, { includeFinished: value.include_finished });
-        return { data: { tasks: tasks.map(taskView), total: tasks.length } };
+        const [tasks, halt] = await Promise.all([deps.tasks.list(ctx.userId, { includeFinished: value.include_finished }), deps.tasks.halted()]);
+        return { data: { tasks: tasks.map(taskView), total: tasks.length, halted: halt.halted } };
       }
     }),
     defineTool({
@@ -108,6 +111,18 @@ export function taskTools(deps: { tasks: TaskService; hasTool: (name: string) =>
         } catch (error) {
           throw new ToolError('INVALID_INPUT', error instanceof Error ? error.message : '任務沒有更改。');
         }
+      }
+    }),
+    defineTool({
+      name: 'tasks.halt',
+      description: '緊急停止（或恢復）所有背景自動任務。停止期間不執行任何任務；既有任務、佇列與紀錄都保留，恢復後從下一個排程繼續（停止期間錯過太久的週期會略過）。',
+      connection: 'internal',
+      kind: 'write',
+      requiresConfirmation: false,
+      input: z.object({ halted: z.boolean() }).strict(),
+      output: anyRecord,
+      async run(value, ctx) {
+        return { data: await deps.tasks.setHalted(value.halted, ctx.now()) };
       }
     }),
     defineTool({

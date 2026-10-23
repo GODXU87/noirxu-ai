@@ -10,6 +10,8 @@ export interface PushMessage {
   /** Page to open when the notification is tapped. */
   url?: string;
   tag?: string;
+  /** Delivery key, so the service worker can report "displayed" / "opened" back. */
+  key?: string;
 }
 
 interface VapidKeys { publicKey: string; privateKey: string }

@@ -92,7 +92,20 @@ describe('notification delivery state machine', () => {
     const { delivery, send } = setup([none, accepted]);
     await delivery.deliver({ ...input(t0), message: { title: '該喝水了', body: '今天 0 ml' } });
     await delivery.deliver({ ...input(later(6)), message: { title: '該喝水了', body: '今天 300 ml' } });
-    expect(send.mock.calls[1]).toEqual(['owner', { title: '該喝水了', body: '今天 300 ml' }, later(6)]);
+    expect(send.mock.calls[1]).toEqual(['owner', { title: '該喝水了', body: '今天 300 ml', key: 'reminder:r1' }, later(6)]);
+  });
+
+  it('records device receipts only for the owner, and opening marks it read', async () => {
+    const { delivery } = setup([accepted]);
+    await delivery.deliver(input(t0));
+    expect((await delivery.get('reminder:r1'))?.displayed_at).toBeUndefined();
+    expect(await delivery.markReceipt('someone-else', 'reminder:r1', 'displayed', later(1))).toBe(false);
+    expect(await delivery.markReceipt('owner', 'reminder:r1', 'displayed', later(1))).toBe(true);
+    await delivery.markReceipt('owner', 'reminder:r1', 'displayed', later(2));
+    expect((await delivery.get('reminder:r1'))?.displayed_at).toBe(later(1).toISOString());
+    await delivery.markReceipt('owner', 'reminder:r1', 'opened', later(3));
+    expect((await delivery.get('reminder:r1'))?.opened_at).toBe(later(3).toISOString());
+    expect((await delivery.inbox('owner'))[0].read).toBe(true);
   });
 
   it('marks inbox entries read', async () => {

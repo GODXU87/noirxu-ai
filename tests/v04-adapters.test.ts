@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MemoryAgendaStore } from '@/agenda/store';
 import { budgetAlerts, fromLedgerBudget, parseThresholds, spendingAnomaly, spendingPace, totalsByCurrency } from '@/finance/intel';
-import { GarminConnectionStore, GarminNotConfigured } from '@/garmin/adapter';
+import { GARMIN_TOKEN_URL, GarminConnectionStore, GarminNotConfigured, verifyGarminKey } from '@/garmin/adapter';
 import { speakable, voiceSupport } from '@/lib/voice';
 import { vault } from './helpers/chat-hub';
 
@@ -60,21 +60,31 @@ describe('Garmin adapter (interface only until the official API is approved)', (
     await expect(garmin.activities('owner', { from: '2026-10-01', to: '2026-10-23' })).rejects.toThrow('不會使用帳號密碼');
   });
 
-  it('keeps tokens sealed, reports expiry and sync state, and disconnects without leaving a token', async () => {
+  it('keeps the API key sealed, shows only a hint, records checks, and disconnects without leaving the key', async () => {
     const store = new MemoryAgendaStore();
     const conns = new GarminConnectionStore(store, vault);
     const now = new Date('2026-10-23T00:00:00Z');
-    await conns.save('owner', { access_token: 'secret-token-123', expires_at: '2026-10-23T01:00:00Z', scopes: ['activity:read'], connected_at: now.toISOString() });
-    expect(store.settings.get('garmin:connection:owner')).not.toContain('secret-token-123');
-    expect(await conns.status('owner', now)).toMatchObject({ connected: true, expired: false, last_sync_at: null });
-    expect(JSON.stringify(await conns.status('owner', now))).not.toContain('secret-token');
-    await conns.recordSync('owner', now, 'HTTP 401');
-    expect(await conns.status('owner', new Date('2026-10-23T02:00:00Z'))).toMatchObject({ expired: true, last_error: 'HTTP 401' });
-    await conns.recordSync('owner', now);
-    expect(await conns.status('owner', now)).toMatchObject({ last_sync_at: now.toISOString(), last_error: null });
+    await conns.save('owner', { apiKey: 'gpk-secret-key-0123456789abcd', keyExpiresOn: '2026-10-25', now });
+    expect(store.settings.get('garmin:connection:owner')).not.toContain('gpk-secret');
+    const status = await conns.status('owner', now);
+    expect(status).toMatchObject({ connected: true, key_hint: '…abcd', key_expired: false, last_check_status: null });
+    expect(JSON.stringify(status)).not.toContain('secret');
+    expect(await conns.status('owner', new Date('2026-10-26T00:00:00Z'))).toMatchObject({ key_expired: true });
+
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    const fake = (async (url: string, init: RequestInit) => { calls.push({ url, init }); return new Response('{}', { status: 401 }); }) as unknown as typeof fetch;
+    const check = await verifyGarminKey(conns, 'owner', now, fake);
+    expect(calls[0].url).toBe(GARMIN_TOKEN_URL);
+    expect(calls[0].init).toMatchObject({ method: 'POST', headers: { Authorization: 'ApiKey gpk-secret-key-0123456789abcd' } });
+    expect(check).toMatchObject({ ok: false, status: 401 });
+    expect(await conns.status('owner', now)).toMatchObject({ last_check_status: 401, last_error: expect.stringContaining('拒絕') });
+    const good = (async () => new Response('{}', { status: 200 })) as unknown as typeof fetch;
+    expect(await verifyGarminKey(conns, 'owner', now, good)).toMatchObject({ ok: true });
+    expect(await conns.status('owner', now)).toMatchObject({ last_check_status: 200, last_error: null });
+
     await conns.disconnect('owner', now);
     expect(await conns.status('owner', now)).toEqual({ connected: false });
-    expect(vault.open(store.settings.get('garmin:connection:owner')!, 'garmin:connection:owner')).not.toContain('token');
+    expect(vault.open(store.settings.get('garmin:connection:owner')!, 'garmin:connection:owner')).not.toContain('gpk');
   });
 });
 

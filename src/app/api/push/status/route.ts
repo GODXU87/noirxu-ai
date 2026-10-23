@@ -28,7 +28,7 @@ export async function GET(request: Request) {
       history: history.map(h => ({
         key: h.key, kind: h.kind, title: h.title, created_at: h.created_at, read: h.read,
         status: h.delivery?.status ?? 'pending', attempts: h.delivery?.attempts ?? 0, last_error: h.delivery?.last_error ?? null,
-        next_retry_at: h.delivery?.next_retry_at ?? null, accepted_at: h.delivery?.accepted_at ?? null, devices: h.delivery?.devices ?? []
+        next_retry_at: h.delivery?.next_retry_at ?? null, accepted_at: h.delivery?.accepted_at ?? null, displayed_at: h.delivery?.displayed_at ?? null, opened_at: h.delivery?.opened_at ?? null, devices: h.delivery?.devices ?? []
       }))
     });
   } catch (error) {

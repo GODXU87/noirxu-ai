@@ -17,7 +17,8 @@ export type LocalIntent =
   | { kind: 'memory_recall'; subject: string }
   | { kind: 'reminder_create'; text: string }
   | { kind: 'task_create'; text: string }
-  | { kind: 'task_list' };
+  | { kind: 'task_list' }
+  | { kind: 'task_halt'; halted: boolean };
 
 /** Words that ask for a change, a judgement or a longer piece of work: never answered locally. */
 const ACTION = /(記下|記一|幫我記|新增|加入|刪除|刪掉|取消|修改|改成|改到|設定|寄|回覆|回信|擬|寫一|建立|提醒我|分析|比較|研究|為什麼|怎麼辦|建議|規劃|安排一下|排一下|整理|翻譯|總結|摘要|預測|應該)/;
@@ -71,6 +72,8 @@ export function classify(raw: string): LocalIntent | null {
   if (!text || text.length > MAX_LOCAL_CHARS || text.startsWith('/') || text.startsWith('／')) return null;
   // "兩分鐘後提醒我看電腦", "明天9點提醒我開會": created locally from the user's own words.
   const words = userWords(raw).trim();
+  if (/^(緊急)?(停止|暫停|停掉|關掉)(所有|全部)(的)?(自動|背景)?(任務|自動化|排程)$/.test(text)) return { kind: 'task_halt', halted: true };
+  if (/^(恢復|重新啟動|重啟)(所有|全部)(的)?(自動|背景)?(任務|自動化|排程)$/.test(text)) return { kind: 'task_halt', halted: false };
   // "每天早上8點提醒我喝水", "每週一早上9點給我早報", "如果這個月餐飲超過5000提醒我": a task, by rules.
   // The parser's date only matters for relative dates, which recurring rules never use.
   if (words.length <= 80 && !MULTI.test(words) && parseTaskText(words, '2026-01-01') !== null) return { kind: 'task_create', text: words };

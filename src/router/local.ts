@@ -147,9 +147,9 @@ export async function runLocal(intent: LocalIntent, deps: Deps): Promise<LocalTu
       const input = { text: intent.text };
       const result = await executor.invoke('tasks.create', input, ctx);
       if (result.status !== 'ok') return { level: 'L1', source: 'tool', intent: intent.kind, reply: result.status === 'error' ? (result.code === 'UNKNOWN_TOOL' ? '自動任務功能目前沒有開啟，這次沒有建立任何任務。' : result.message) : '任務沒有建立。', events: [] };
-      const task = (result.data as { task: { title: string; kind: string; schedule_label: string; next_local: string | null } }).task;
+      const { task, default_time } = result.data as { default_time?: string; task: { title: string; kind: string; schedule_label: string; next_local: string | null; steps: Array<{ only_if_important?: boolean }> } };
       const what = task.kind === 'conditional' ? `每 6 小時檢查一次 Ledger，${task.title}時通知你（同一個月只通知一次）` : `${task.schedule_label}：${task.title}`;
-      return { level: 'L1', source: 'tool', intent: intent.kind, reply: `${sirFor(seed) ? 'Sir，' : ''}已建立自動任務——${what}。下次執行 ${task.next_local}。背景排程執行，不需要開著 App；隨時可以暫停或取消。`, events: [{ tool: 'tasks.create', input, result }] };
+      return { level: 'L1', source: 'tool', intent: intent.kind, reply: `${sirFor(seed) ? 'Sir，' : ''}已建立自動任務——${what}。${default_time ? `你沒指定時間，先用 ${default_time}，要改說一聲就好。` : ''}${task.steps.some(s => s.only_if_important) ? '只有緊急或重要的事才會通知你。' : ''}下次執行 ${task.next_local}。背景排程執行，不需要開著 App；隨時可以暫停或取消。`, events: [{ tool: 'tasks.create', input, result }] };
     }
     case 'task_list': {
       const input = { include_finished: false };
@@ -161,6 +161,12 @@ export async function runLocal(intent: LocalIntent, deps: Deps): Promise<LocalTu
         ? `目前有 ${tasks.length} 個自動任務：${tasks.slice(0, 4).map(t => `${t.title}（${t.schedule_label}，${t.status_label}）`).join('、')}${tasks.length > 4 ? ' 等' : ''}。`
         : '目前沒有自動任務。可以說「每天早上 8 點提醒我喝水」來建立一個。';
       return { level: 'L1', source: 'tool', intent: intent.kind, reply: withSir(reply, seed), events: [event] };
+    }
+    case 'task_halt': {
+      const input = { halted: intent.halted };
+      const result = await executor.invoke('tasks.halt', input, ctx);
+      if (result.status !== 'ok') return { level: 'L1', source: 'tool', intent: intent.kind, reply: result.status === 'error' && result.code === 'UNKNOWN_TOOL' ? '自動任務功能目前沒有開啟。' : '沒有成功切換，背景任務維持原狀。', events: [] };
+      return { level: 'L1', source: 'tool', intent: intent.kind, reply: intent.halted ? '已停止所有背景自動任務。任務與紀錄都還在，說「恢復所有任務」就會從下一個排程繼續。' : '背景自動任務已恢復，會從下一個排程繼續；停止期間錯過太久的週期不會補跑。', events: [{ tool: 'tasks.halt', input, result }] };
     }
     case 'memory_recall': {
       const subject = intent.subject.replace(/^(的)/, '');

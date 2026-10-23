@@ -6,7 +6,7 @@ import type { HubStore } from '@/hub/store';
 import type { InvokeResult } from '@/hub/types';
 import { taipeiDate } from '@/lib/dates';
 import type { PushMessage } from '@/push/service';
-import { LEASE_MS, MAX_RUNS_KEPT, MISSED_SLOT_MS, nextRun, type StepResult, type Task, type TaskCondition, type TaskRun, type TaskSchedule, type TaskStep } from './model';
+import { LEASE_MS, MAX_RUNS_KEPT, MISSED_SLOT_MS, STEP_TIMEOUT_MS, nextRun, type StepResult, type Task, type TaskCondition, type TaskRun, type TaskSchedule, type TaskStep } from './model';
 
 // Persistent tasks in the existing settings table (sealed, compare-and-set) — no schema
 // change; a dedicated table is prepared in supabase/pending. Runs happen only from the
@@ -19,16 +19,20 @@ export interface TaskDeps {
   executor: Pick<Executor, 'invoke'>;
   proposals: Pick<HubStore, 'getProposal'>;
   /** Sends a notification through the delivery service (inbox + push, with retries). */
-  notify: (input: { key: string; userId: string; message: PushMessage; now: Date }) => Promise<{ status: string }>;
+  /** proactive = SASUKE decided to send it (watch results), so the daily cap and quiet hours apply. */
+  notify: (input: { key: string; userId: string; message: PushMessage; now: Date; proactive?: boolean }) => Promise<{ status: string }>;
   /** Morning / evening summary text, from the existing briefing builders. */
-  briefing: (which: 'morning' | 'evening', userId: string, now: Date) => Promise<{ title: string; body: string }>;
+  briefing: (which: 'morning' | 'evening', userId: string, now: Date) => Promise<{ title: string; body: string; important?: boolean }>;
   /** Retries a notification that no device accepted yet; returns its current status, or null if unknown. */
   redeliver?: (key: string, now: Date) => Promise<string | null>;
+  /** Defaults to STEP_TIMEOUT_MS. */
+  stepTimeoutMs?: number;
 }
 
 const PENDING_DELIVERY = ['pending', 'sending', 'claimed', 'retry_pending'];
 
 const INDEX = 'tasks:index';
+const HALT = 'tasks:halt';
 const key = (id: string) => `task:${id}`;
 
 /** Read-only tools may be retried; anything that writes is never re-run automatically. */
@@ -110,8 +114,20 @@ export class TaskService {
     return updated;
   }
 
+  /** Emergency stop: no background task runs while set. Tasks, queue and history are left as they are. */
+  async halted(): Promise<{ halted: boolean; at?: string } > {
+    const sealed = await this.deps.store.getSetting(HALT);
+    return sealed ? JSON.parse(this.deps.vault.open(sealed, HALT)) : { halted: false };
+  }
+
+  async setHalted(halted: boolean, now: Date) {
+    await this.deps.store.putSetting(HALT, this.deps.vault.seal(JSON.stringify({ halted, at: now.toISOString() }), HALT));
+    return { halted, at: now.toISOString() };
+  }
+
   /** Runs every task that is due. Called by the scheduler; safe to call concurrently. */
-  async runDue(now: Date): Promise<{ ran: number; waiting: number }> {
+  async runDue(now: Date): Promise<{ ran: number; waiting: number; halted?: boolean }> {
+    if ((await this.halted()).halted) return { ran: 0, waiting: 0, halted: true };
     let ran = 0;
     let waiting = 0;
     for (const id of await this.index()) {
@@ -161,9 +177,10 @@ export class TaskService {
       : { ...t, status: 'running', claim, lease_until: new Date(now.getTime() + LEASE_MS).toISOString(), last_slot: slot, attempts: t.attempts + 1, updated_at: now.toISOString() }));
     if (!claimed || claimed.claim !== claim) return false;
 
-    const run: TaskRun = { id: randomUUID(), slot, started_at: now.toISOString(), status: 'completed', steps: [], late_minutes: late > 60_000 ? Math.round(late / 60_000) : undefined };
+    const run: TaskRun = { id: randomUUID(), slot, started_at: now.toISOString(), status: 'completed', steps: [], tool_calls: 0, llm_tokens: 0, late_minutes: late > 60_000 ? Math.round(late / 60_000) : undefined };
     try {
       if (claimed.condition) {
+        run.tool_calls = 1;
         const met = await this.conditionMet(claimed, now);
         if (met === null) { run.status = 'failed'; run.error = '條件需要的資料讀不到（例如 Ledger 未連接）'; }
         else if (!met) run.status = 'not_met';
@@ -182,16 +199,28 @@ export class TaskService {
     const ctx = { userId: task.user_id, now: () => now };
     for (const [index, step] of task.steps.entries()) {
       if (step.type === 'notify' || step.type === 'briefing') {
-        const message = step.type === 'notify' ? { title: `SASUKE · ${step.title}`, body: step.body || '自動任務提醒', url: '/tasks', tag: `task-${task.id}` }
-          : { ...(await this.deps.briefing(step.which, task.user_id, now)), url: '/tasks', tag: `task-${task.id}` };
+        let message: PushMessage;
+        if (step.type === 'notify') {
+          const found = step.include_results ? run.steps.filter(s => s.type === 'tool').map(s => `${s.tool}：${s.summary}`).join('\n') : '';
+          message = { title: `SASUKE · ${step.title}`, body: [step.body, found].filter(Boolean).join('\n') || '自動任務提醒', url: '/tasks', tag: `task-${task.id}` };
+        } else {
+          const brief = await this.deps.briefing(step.which, task.user_id, now);
+          if (step.only_if_important && !brief.important) {
+            run.steps.push({ step: index, type: 'briefing', status: 'skipped', summary: '沒有重要事項，這次不通知' });
+            continue;
+          }
+          message = { title: brief.title, body: brief.body, url: '/tasks', tag: `task-${task.id}` };
+        }
         const deliveryKey = `task:${task.id}:${run.slot}:${index}`;
-        const result = await this.deps.notify({ key: deliveryKey, userId: task.user_id, message, now });
+        const result = await this.deps.notify({ key: deliveryKey, userId: task.user_id, message, now, proactive: task.kind === 'conditional' || (step.type === 'notify' && step.include_results) });
         run.steps.push({ step: index, type: step.type, status: 'ok', summary: deliveryLabel(result.status), delivery_key: deliveryKey, delivery_status: result.status });
         continue;
       }
-      let result: InvokeResult = await this.deps.executor.invoke(step.tool, step.input, ctx);
+      const readOnly = READ_SUFFIX.test(step.tool);
+      run.tool_calls = (run.tool_calls ?? 0) + 1;
+      let result: InvokeResult = await this.invokeWithTimeout(step.tool, step.input ?? {}, ctx, readOnly);
       // Read-only steps get one quick retry; writes are never repeated automatically.
-      if (result.status === 'error' && READ_SUFFIX.test(step.tool) && result.code !== 'NOT_CONNECTED' && result.code !== 'INVALID_INPUT') result = await this.deps.executor.invoke(step.tool, step.input, ctx);
+      if (result.status === 'error' && readOnly && result.code !== 'NOT_CONNECTED' && result.code !== 'INVALID_INPUT') { run.tool_calls += 1; result = await this.invokeWithTimeout(step.tool, step.input ?? {}, ctx, readOnly); }
       if (result.status === 'confirmation_required') {
         run.steps.push({ step: index, type: 'tool', tool: step.tool, status: 'waiting_approval', summary: result.preview.title, proposal_id: result.proposalId });
         run.status = 'waiting_approval';
@@ -206,6 +235,17 @@ export class TaskService {
       }
       run.steps.push({ step: index, type: 'tool', tool: step.tool, status: 'ok', summary: summarize(result.data) });
     }
+  }
+
+  /** A step that does not finish in time is reported; a write that timed out is "outcome unknown", never retried. */
+  private async invokeWithTimeout(tool: string, input: unknown, ctx: { userId: string; now: () => Date }, readOnly: boolean): Promise<InvokeResult> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const limit = this.deps.stepTimeoutMs ?? STEP_TIMEOUT_MS;
+    const timeout = new Promise<InvokeResult>(resolve => {
+      timer = setTimeout(() => resolve({ status: 'error', tool, code: readOnly ? 'UPSTREAM_UNAVAILABLE' : 'OUTCOME_UNKNOWN', message: `步驟超過 ${Math.round(limit / 1000)} 秒未完成，已停止${readOnly ? '' : '；可能已部分執行，請檢查'}` }), limit);
+    });
+    try { return await Promise.race([this.deps.executor.invoke(tool, input, ctx), timeout]); }
+    finally { clearTimeout(timer); }
   }
 
   /** Records a run and moves the task on: next slot, finished, or waiting for approval. */
@@ -274,11 +314,16 @@ function deliveryLabel(status: string) {
     : '通知已排入，等裝置可接收時重試（已留在通知收件匣）';
 }
 
+const LIST_LABEL: Record<string, string> = { items: '筆事項', messages: '封信', trades: '筆交易', transactions: '筆收支', signals: '個訊號', results: '筆結果', stocks: '檔股票', tasks: '個任務' };
+
+/** One line for the run log and result notifications: counts and dates, never the raw data. */
 function summarize(data: unknown): string {
-  if (data && typeof data === 'object') {
-    const d = data as Record<string, unknown>;
-    if (typeof d.title === 'string') return d.title;
-    if (Array.isArray(d.items)) return `${d.items.length} 筆`;
-  }
-  return '完成';
+  if (!data || typeof data !== 'object') return '完成';
+  const d = data as Record<string, unknown>;
+  if (typeof d.title === 'string') return d.title;
+  const parts: string[] = [];
+  for (const [key, label] of Object.entries(LIST_LABEL)) if (Array.isArray(d[key])) parts.push(`${typeof d.total_matching === 'number' ? d.total_matching : (d[key] as unknown[]).length} ${label}`);
+  const date = (d.trade_date ?? (d.publication as Record<string, unknown> | undefined)?.trade_date ?? d.month) as string | undefined;
+  if (date) parts.push(`資料日期 ${date}`);
+  return parts.join('，') || '完成';
 }

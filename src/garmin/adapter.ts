@@ -39,12 +39,18 @@ export class GarminNotConfigured implements GarminAdapter {
   async recovery(_userId: string, _date: string): Promise<GarminRecovery> { this.fail(); }
 }
 
-// Connection state: OAuth tokens (sealed with the app's TokenVault, never in plain text),
-// expiry, last sync and last error. Stored in the settings table under the existing grants;
-// the app role cannot delete settings rows, so disconnecting overwrites the record with a
-// sealed tombstone that holds no token.
+// Connection: the Garmin Connect Personal API. Per Garmin's own instructions the user creates
+// a personal API key in Garmin Connect (Settings → Personal API Key, with an expiry they
+// choose; shown once), and the key is exchanged for an access token at the endpoint below with
+// the header "Authorization: ApiKey <key>". That is everything verified so far: the data
+// endpoints and the token response fields come from the Swagger docs and are not used until
+// they have been read. The key is sealed with the app's TokenVault and never shown again.
+// The app role cannot delete settings rows, so disconnecting overwrites the record with a
+// sealed tombstone that holds no key.
 
-export interface GarminConnection { access_token: string; refresh_token?: string; expires_at: string; scopes: string[]; connected_at: string; last_sync_at?: string; last_error?: string }
+export const GARMIN_TOKEN_URL = 'https://personal.connectapi.garmin.com/personalapitoken-service/personal-api/personal-api-key/token';
+
+export interface GarminConnection { api_key: string; key_expires_on: string | null; connected_at: string; last_check_at?: string; last_check_status?: number; last_sync_at?: string; last_error?: string }
 type Stored = GarminConnection | { disconnected_at: string };
 
 export class GarminConnectionStore {
@@ -59,31 +65,57 @@ export class GarminConnectionStore {
 
   async get(userId: string): Promise<GarminConnection | null> {
     const { value } = await this.read(userId);
-    return value && 'access_token' in value ? value : null;
+    return value && 'api_key' in value ? value : null;
   }
 
-  async save(userId: string, connection: GarminConnection) {
+  async save(userId: string, input: { apiKey: string; keyExpiresOn: string | null; now: Date }) {
+    const connection: GarminConnection = { api_key: input.apiKey, key_expires_on: input.keyExpiresOn, connected_at: input.now.toISOString() };
     await this.store.putSetting(this.key(userId), this.vault.seal(JSON.stringify(connection), this.key(userId)));
   }
 
-  /** What the settings page shows: never the token itself. */
+  /** What the settings page shows: never the key itself. */
   async status(userId: string, now: Date) {
     const c = await this.get(userId);
     if (!c) return { connected: false as const };
-    return { connected: true as const, expired: Date.parse(c.expires_at) <= now.getTime(), expires_at: c.expires_at, scopes: c.scopes, last_sync_at: c.last_sync_at ?? null, last_error: c.last_error ?? null };
+    const expired = c.key_expires_on ? Date.parse(`${c.key_expires_on}T23:59:59+08:00`) < now.getTime() : false;
+    return {
+      connected: true as const, key_hint: `…${c.api_key.slice(-4)}`, key_expires_on: c.key_expires_on, key_expired: expired, connected_at: c.connected_at,
+      last_check_at: c.last_check_at ?? null, last_check_status: c.last_check_status ?? null, last_sync_at: c.last_sync_at ?? null, last_error: c.last_error ?? null
+    };
   }
 
-  async recordSync(userId: string, now: Date, error?: string) {
+  async update(userId: string, change: (c: GarminConnection) => GarminConnection) {
     const k = this.key(userId);
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const { sealed, value } = await this.read(userId);
-      if (!value || !('access_token' in value)) return;
-      const next: GarminConnection = error ? { ...value, last_error: error.slice(0, 200) } : { ...value, last_sync_at: now.toISOString(), last_error: undefined };
-      if (await this.store.compareAndSetSetting(k, sealed, this.vault.seal(JSON.stringify(next), k))) return;
+      if (!value || !('api_key' in value)) return;
+      if (await this.store.compareAndSetSetting(k, sealed, this.vault.seal(JSON.stringify(change(value)), k))) return;
     }
   }
 
   async disconnect(userId: string, now: Date) {
     await this.store.putSetting(this.key(userId), this.vault.seal(JSON.stringify({ disconnected_at: now.toISOString() }), this.key(userId)));
   }
+}
+
+/**
+ * Checks the stored key against Garmin's token endpoint. Only the HTTP status is used — the
+ * token in the response is not kept or interpreted until the Swagger docs confirm its fields.
+ */
+export async function verifyGarminKey(conns: GarminConnectionStore, userId: string, now: Date, fetcher: typeof fetch = fetch) {
+  const c = await conns.get(userId);
+  if (!c) return { ok: false as const, message: 'Garmin 尚未設定 API Key。' };
+  let status = 0;
+  let message: string;
+  try {
+    const response = await fetcher(GARMIN_TOKEN_URL, { method: 'POST', headers: { Authorization: `ApiKey ${c.api_key}` }, signal: AbortSignal.timeout(15_000) });
+    status = response.status;
+    await response.body?.cancel().catch(() => undefined);
+    message = response.ok ? 'Garmin 已接受這組 API Key。' : status === 401 || status === 403 ? 'Garmin 拒絕這組 API Key（可能已過期或被撤銷），請到 Garmin Connect 重新建立。' : status === 429 ? 'Garmin 暫時限制請求次數，請稍後再試。' : `Garmin 回應 HTTP ${status}。`;
+  } catch (error) {
+    message = `無法連到 Garmin：${error instanceof Error ? error.message.slice(0, 120) : '網路錯誤'}`;
+  }
+  const ok = status >= 200 && status < 300;
+  await conns.update(userId, x => ({ ...x, last_check_at: now.toISOString(), last_check_status: status, last_error: ok ? undefined : message }));
+  return { ok, status, message };
 }

@@ -26,7 +26,7 @@ interface DeviceInfo {
 
 interface DeviceRow { device: string; platform: string; service: string; created_at: string | null; last_success_at: string | null; is_this: boolean }
 interface DeviceResult { device: string; platform: string; outcome: string; error?: string }
-interface HistoryRow { key: string; kind: string; title: string; created_at: string; status: string; attempts: number; last_error: string | null; next_retry_at: string | null; accepted_at: string | null; devices: DeviceResult[] }
+interface HistoryRow { key: string; kind: string; title: string; created_at: string; status: string; attempts: number; last_error: string | null; next_retry_at: string | null; accepted_at: string | null; displayed_at?: string | null; opened_at?: string | null; devices: DeviceResult[] }
 interface ServerStatus {
   publicKey: string;
   server_has_this_device: boolean;
@@ -36,7 +36,7 @@ interface ServerStatus {
 }
 
 const STATUS_LABEL: Record<string, string> = {
-  pending: '等待發送', claimed: '處理中', sending: '發送中', provider_accepted: '推播服務已接受', grouped: '已合併通知', retry_pending: '等待重試', failed: '發送失敗', expired: '已過期未送出'
+  pending: '等待發送', claimed: '處理中', sending: '發送中', provider_accepted: '推播服務已接受', grouped: '已合併通知', retry_pending: '等待重試', failed: '發送失敗', expired: '已過期未送出', held: '僅存收件匣（靜音時段或每日上限）'
 };
 const OUTCOME_LABEL: Record<string, string> = {
   accepted: '推播服務已接受', gone: '訂閱已失效', vapid_mismatch: '金鑰不一致', rate_limited: '被限流', provider_error: '推播服務錯誤', network_error: '網路錯誤', rejected: '推播服務拒絕', invalid_endpoint: '端點無效'
@@ -215,8 +215,8 @@ export function Notifications() {
           {server.history.length === 0 ? <p className="hint">還沒有通知紀錄。</p> : (
             <ul>{server.history.map(h => (
               <li key={h.key}>
-                <div><b>{h.title}</b><span className={`state-chip ${h.status === 'provider_accepted' ? 'ok' : h.status === 'failed' || h.status === 'expired' ? 'error' : 'pending'}`}>{STATUS_LABEL[h.status] ?? h.status}</span></div>
-                <small>{KIND_LABEL[h.kind] ?? h.kind} · 建立 {fmt(h.created_at)} · 嘗試 {h.attempts} 次{h.next_retry_at ? ` · 下次重試 ${fmt(h.next_retry_at)}` : ''}</small>
+                <div><b>{h.title}</b><span className={`state-chip ${h.status === 'provider_accepted' ? 'ok' : h.status === 'failed' || h.status === 'expired' ? 'error' : 'pending'}`}>{h.opened_at ? '已點開' : h.displayed_at ? '裝置已顯示' : STATUS_LABEL[h.status] ?? h.status}</span></div>
+                <small>{KIND_LABEL[h.kind] ?? h.kind} · 建立 {fmt(h.created_at)} · 嘗試 {h.attempts} 次{h.next_retry_at ? ` · 下次重試 ${fmt(h.next_retry_at)}` : ''}{h.displayed_at ? ` · 裝置顯示 ${fmt(h.displayed_at)}` : h.status === 'provider_accepted' ? ' · 尚未收到裝置回報（不代表沒跳出）' : ''}</small>
                 {h.last_error && <small className="tone-error">{h.last_error}</small>}
               </li>
             ))}</ul>
