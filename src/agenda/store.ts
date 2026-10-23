@@ -3,7 +3,7 @@ import type { AgendaItem } from './rank';
 
 export interface Reminder { id: string; item_id: string; user_id: string; remind_at: string; label: string; sent_at: string | null }
 export interface DueReminder extends Reminder { item: AgendaItem }
-export interface PushSubscriptionRow { endpoint: string; user_id: string; subscription: unknown }
+export interface PushSubscriptionRow { endpoint: string; user_id: string; subscription: unknown; user_agent?: string; created_at?: string; last_success_at?: string | null }
 
 export interface AgendaStore {
   createItem(item: AgendaItem, reminders: Array<{ id: string; remind_at: string; label: string }>): Promise<void>;
@@ -19,6 +19,7 @@ export interface AgendaStore {
   savePushSubscription(row: PushSubscriptionRow & { user_agent: string }): Promise<void>;
   listPushSubscriptions(userId?: string): Promise<PushSubscriptionRow[]>;
   deletePushSubscription(endpoint: string): Promise<void>;
+  markPushSuccess(endpoint: string, at: Date): Promise<void>;
   getSetting(key: string): Promise<string | null>;
   /** Insert only if absent; returns the stored value (first writer wins). */
   putSettingIfAbsent(key: string, sealed: string): Promise<string>;
@@ -77,9 +78,10 @@ export class MemoryAgendaStore implements AgendaStore {
     this.log.add(key);
     return true;
   }
-  async savePushSubscription(row: PushSubscriptionRow) { this.subs.set(row.endpoint, row); }
+  async savePushSubscription(row: PushSubscriptionRow) { this.subs.set(row.endpoint, { created_at: new Date().toISOString(), last_success_at: null, ...this.subs.get(row.endpoint), ...row }); }
   async listPushSubscriptions(userId?: string) { return [...this.subs.values()].filter(s => !userId || s.user_id === userId); }
   async deletePushSubscription(endpoint: string) { this.subs.delete(endpoint); }
+  async markPushSuccess(endpoint: string, at: Date) { const s = this.subs.get(endpoint); if (s) s.last_success_at = at.toISOString(); }
   async getSetting(key: string) { return this.settings.get(key) ?? null; }
   async putSetting(key: string, sealed: string) { this.settings.set(key, sealed); }
   async compareAndSetSetting(key: string, expected: string | null, next: string) {
@@ -195,13 +197,21 @@ export class PgAgendaStore implements AgendaStore {
 
   async listPushSubscriptions(userId?: string) {
     const { rows } = userId
-      ? await this.pool.query('select endpoint, user_id, subscription from noirxu_ai.push_subscriptions where user_id = $1', [userId])
-      : await this.pool.query('select endpoint, user_id, subscription from noirxu_ai.push_subscriptions');
-    return rows as PushSubscriptionRow[];
+      ? await this.pool.query('select endpoint, user_id, subscription, user_agent, created_at, last_success_at from noirxu_ai.push_subscriptions where user_id = $1', [userId])
+      : await this.pool.query('select endpoint, user_id, subscription, user_agent, created_at, last_success_at from noirxu_ai.push_subscriptions');
+    return rows.map(row => ({
+      ...row,
+      created_at: row.created_at ? new Date(row.created_at).toISOString() : undefined,
+      last_success_at: row.last_success_at ? new Date(row.last_success_at).toISOString() : null
+    })) as PushSubscriptionRow[];
   }
 
   async deletePushSubscription(endpoint: string) {
     await this.pool.query('delete from noirxu_ai.push_subscriptions where endpoint = $1', [endpoint]);
+  }
+
+  async markPushSuccess(endpoint: string, at: Date) {
+    await this.pool.query('update noirxu_ai.push_subscriptions set last_success_at = $2 where endpoint = $1', [endpoint, at.toISOString()]);
   }
 
   async getSetting(key: string) {

@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from 'react';
 import type { Page } from '../TopBar';
 import { Icon, type IconName } from '../components/Icon';
 import { callTool } from '../components/shared';
-import { Clock } from './Core';
+import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Inbox } from './Inbox';
 import { activeId, deleteConversation, legacyImports, listConversations, onConversationsChanged, renameConversation, SOFT_LIMIT, type ConversationMeta, type SaveResult } from './conversations';
 
 function warnIfFailed(result: SaveResult) {
@@ -30,9 +32,9 @@ export function SasukeMark({ size = 28 }: { size?: number }) {
   );
 }
 
-function currentConversation(): string | null {
-  if (typeof window === 'undefined') return null;
-  return new URLSearchParams(window.location.search).get('c') ?? activeId();
+/** A fresh URL each time, so the chat starts over even when already on a new conversation. */
+export function newConversationHref() {
+  return `/?c=new&t=${Date.now().toString(36)}`;
 }
 
 /** Sidebar sections by last activity, Taipei calendar days. */
@@ -58,11 +60,12 @@ function History({ onNavigate }: { onNavigate: () => void }) {
   const [active, setActive] = useState<string | null>(null);
   const [imports, setImports] = useState(0);
 
+  const params = useSearchParams();
   useEffect(() => {
-    const refresh = () => { setList(listConversations()); setActive(currentConversation()); setImports(legacyImports().length); };
+    const refresh = () => { setList(listConversations()); setActive(params.get('c') ?? activeId()); setImports(legacyImports().length); };
     refresh();
     return onConversationsChanged(refresh);
-  }, []);
+  }, [params]);
 
   const shown = query.trim() ? list.filter(c => c.title.toLowerCase().includes(query.trim().toLowerCase())) : list;
   const groups = groupByDay(shown);
@@ -86,7 +89,7 @@ function History({ onNavigate }: { onNavigate: () => void }) {
                     </form>
                   ) : (
                     <>
-                      <a href={`/?c=${c.id}`} onClick={onNavigate} title={c.title}>{c.title}</a>
+                      <Link href={`/?c=${c.id}`} onClick={onNavigate} title={c.title} prefetch={false}>{c.title}</Link>
                       <span className="history-actions">
                         <button type="button" aria-label={`重新命名：${c.title}`} onClick={() => { setEditing(c.id); setDraft(c.title); }}><Icon name="edit" size={14} /></button>
                         <button type="button" aria-label={`刪除：${c.title}`} onClick={() => { if (confirm(`刪除「${c.title}」？這只會刪除這台裝置上的紀錄。`)) { const r = deleteConversation(c.id); warnIfFailed(r); if (r.ok && c.id === active) window.location.href = '/'; } }}><Icon name="close" size={14} /></button>
@@ -153,6 +156,7 @@ export function WaterChip() {
 export function SasukeNav({ current, water }: { current: Page; water: boolean }) {
   const [collapsed, setCollapsed] = useState(false);
   const [drawer, setDrawer] = useState(false);
+  const router = useRouter();
 
   useEffect(() => { try { setCollapsed(localStorage.getItem(COLLAPSE_KEY) === '1'); } catch { /* storage unavailable */ } }, []);
   useEffect(() => { document.documentElement.classList.toggle('sidebar-collapsed', collapsed); }, [collapsed]);
@@ -165,15 +169,15 @@ export function SasukeNav({ current, water }: { current: Page; water: boolean })
   const panel = (
     <>
       <div className="sk-brand">
-        <a href="/" aria-label="SASUKE 首頁"><SasukeMark size={26} /><span className="sk-word"><b>SASUKE</b><small>NOIRXU · PERSONAL AI</small></span></a>
+        <Link href="/" aria-label="SASUKE 首頁"><SasukeMark size={26} /><span className="sk-word"><b>SASUKE</b><small>NOIRXU · PERSONAL AI</small></span></Link>
         <button type="button" className="sk-icon sk-collapse" onClick={toggle} aria-label={collapsed ? '展開側邊欄' : '收合側邊欄'}><Icon name="arrow" size={16} /></button>
       </div>
-      <a href="/?c=new" className="sk-new" onClick={() => setDrawer(false)}><Icon name="plus" size={16} /><span>新對話</span></a>
+      <button type="button" className="sk-new" onClick={() => { setDrawer(false); router.push(newConversationHref()); }}><Icon name="plus" size={16} /><span>新對話</span></button>
       <History onNavigate={() => setDrawer(false)} />
       <nav className="sk-secondary" aria-label="其他頁面">
-        {current !== 'chat' && <a href="/"><Icon name="chat" size={17} /><span>SASUKE</span></a>}
+        {current !== 'chat' && <Link href="/"><Icon name="chat" size={17} /><span>SASUKE</span></Link>}
         {SECONDARY.map(item => (
-          <a key={item.id} href={item.href} aria-current={current === item.id ? 'page' : undefined}><Icon name={item.icon} size={17} /><span>{item.label}</span></a>
+          <Link key={item.id} href={item.href} aria-current={current === item.id ? 'page' : undefined} onClick={() => setDrawer(false)}><Icon name={item.icon} size={17} /><span>{item.label}</span></Link>
         ))}
       </nav>
       <div className="sk-foot">
@@ -188,9 +192,9 @@ export function SasukeNav({ current, water }: { current: Page; water: boolean })
       <aside className="sk-sidebar" aria-label="SASUKE 導覽">{panel}</aside>
       <header className="sk-top">
         <button type="button" className="sk-icon" onClick={() => setDrawer(true)} aria-label="開啟選單"><Icon name="menu" size={20} /></button>
-        <a href="/" className="sk-top-title"><SasukeMark size={22} /><b>SASUKE</b></a>
+        <Link href="/" className="sk-top-title"><SasukeMark size={22} /><b>SASUKE</b></Link>
       </header>
-      <div className="sk-water-slot"><Clock />{water && <WaterChip />}</div>
+      <div className="sk-water-slot"><Inbox />{water && <WaterChip />}</div>
       {drawer && <div className="sk-scrim" onClick={() => setDrawer(false)} />}
       <aside className={`sk-drawer ${drawer ? 'open' : ''}`} aria-hidden={!drawer} aria-label="SASUKE 選單">
         <button type="button" className="sk-icon sk-drawer-close" onClick={() => setDrawer(false)} aria-label="關閉選單"><Icon name="close" size={18} /></button>

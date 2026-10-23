@@ -1,7 +1,5 @@
 import type { Metadata, Viewport } from 'next';
 import '@fontsource-variable/inter';
-import '@fontsource/jetbrains-mono/400.css';
-import '@fontsource/jetbrains-mono/500.css';
 import './globals.css';
 import { ServiceWorker } from './components/ServiceWorker';
 import { uiMode } from '@/server/ui-mode';

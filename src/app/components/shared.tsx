@@ -72,7 +72,7 @@ function AgendaEditor({ item, onClose, onChanged }: { item: AgendaView; onClose:
       <input className="full" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} maxLength={1000} placeholder="備註（選填）" aria-label="備註" />
       {error && <p className="full status-error">{error}</p>}
       <div className="actions">
-        <button className="primary grow" disabled={busy}>儲存</button>
+        <button className="primary grow" disabled={busy} data-loading={busy || undefined}>儲存</button>
         <button type="button" className="ghost" disabled={busy} onClick={onClose}>取消</button>
         <button type="button" className="danger" disabled={busy} onClick={() => void save({ status: 'cancelled' })}>刪除</button>
       </div>
@@ -280,7 +280,7 @@ export function ProposalCard({ result, onDone }: { result: Extract<InvokeResult,
       {result.preview.warnings?.length ? <ul className="warn">{result.preview.warnings.map(w => <li key={w}>{w}</li>)}</ul> : null}
       {state === 'pending' || state === 'busy' ? (
         <div className="actions">
-          <button className="primary" disabled={state === 'busy'} onClick={() => act('confirm')}>{state === 'busy' ? '處理中…' : '確認執行'}</button>
+          <button className="primary" disabled={state === 'busy'} data-loading={state === 'busy' || undefined} onClick={() => act('confirm')}>{state === 'busy' ? '處理中…' : '確認執行'}</button>
           <button disabled={state === 'busy'} onClick={() => act('reject')}>取消</button>
         </div>
       ) : null}

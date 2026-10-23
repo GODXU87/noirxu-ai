@@ -1,3 +1,5 @@
+import { TokenVault } from '@/connections/vault';
+import { DeliveryService } from '@/notify/delivery';
 import { describe, expect, it, vi } from 'vitest';
 import { MemoryAgendaStore } from '@/agenda/store';
 import { Executor } from '@/hub/executor';
@@ -7,6 +9,8 @@ import { agendaTools } from '@/tools/agenda/tools';
 import { z } from 'zod';
 
 vi.mock('server-only', () => ({}));
+const testVault = new TokenVault('test-passphrase-0123456789abcdef0123456789');
+const ACCEPTED = { sent: 1, failed: 0, noSubscription: false, devices: [{ device: 'd1', platform: 'iPhone', outcome: 'accepted', retryable: false }] };
 const { runTick } = await import('@/server/tick');
 
 // 2026-10-21 12:00 Taipei
@@ -68,10 +72,12 @@ describe('runTick', () => {
     const sent: any[] = [];
     const hub: any = {
       agenda,
-      push: { send: vi.fn(async (_user: string, message: any) => { sent.push(message); return { sent: 1, failed: 0 }; }) },
+      push: { send: vi.fn(async (_user: string, message: any) => { sent.push(message); return ACCEPTED; }) },
       isConnected: async () => false,
       executor: { invoke: vi.fn() }
     };
+    hub.vault = testVault;
+    hub.delivery = new DeliveryService(agenda, testVault, (u: string, m: any, n: Date) => hub.push.send(u, m, n));
     return { hub, sent };
   }
 

@@ -26,3 +26,14 @@ self.addEventListener('notificationclick', event => {
     return self.clients.openWindow(url);
   })());
 });
+
+// The browser can replace a subscription (expiry, key rotation). Re-register the new one so
+// reminders keep arriving; the diagnostics panel shows a mismatch if this ever fails.
+self.addEventListener('pushsubscriptionchange', event => {
+  event.waitUntil((async () => {
+    const key = event.oldSubscription?.options?.applicationServerKey;
+    const subscription = event.newSubscription || (key ? await self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key }) : null);
+    if (!subscription) return;
+    await fetch('/api/push/subscribe', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscription }) });
+  })());
+});

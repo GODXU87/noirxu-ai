@@ -7,8 +7,9 @@ import { money } from '@/lib/tool-labels';
 import { BrandMark, Icon, type IconName } from './components/Icon';
 import { AssistantCard, WaterMeter } from './components/assistant';
 import { importLegacySession, loadConversation, newConversationId, resumeActive, saveConversation, touchActive } from './sasuke/conversations';
-import { SasukeMark } from './sasuke/SasukeNav';
-import { Core } from './sasuke/Core';
+import { useRouter } from 'next/navigation';
+import { newConversationHref, SasukeMark } from './sasuke/SasukeNav';
+import { flash } from './components/feedback';
 import { callTool, ProposalCard, RichText, ToolCard, type InvokeResult } from './components/shared';
 
 type Item =
@@ -72,7 +73,7 @@ function greeting() {
   return hour < 5 ? '夜深了' : hour < 11 ? '早安' : hour < 14 ? '午安' : hour < 18 ? '下午好' : '晚上好';
 }
 
-interface Brief { lines: string[]; today: number; overdue: number; expense: string | null; top: Array<{ id: string; title: string; due_label: string; priority: string }> }
+interface Brief { failed?: boolean; lines: string[]; today: number; overdue: number; expense: string | null; top: Array<{ id: string; title: string; due_label: string; priority: string }> }
 
 /** One-line status for the home screen, from the same morning report as /早報. */
 function useBrief(enabled: boolean) {
@@ -80,7 +81,7 @@ function useBrief(enabled: boolean) {
   useEffect(() => {
     if (!enabled) return;
     void callTool('assistant.briefing.morning', {}).then(result => {
-      if (result.status !== 'ok') return;
+      if (result.status !== 'ok') { setBrief({ failed: true, lines: ['今日資料暫時無法讀取'], today: 0, overdue: 0, expense: null, top: [] }); return; }
       const d = result.data as any;
       const lines: string[] = [];
       lines.push(d.today_items.length ? `今天 ${d.today_items.length} 件事` : '今天沒有排定的事');
@@ -109,6 +110,7 @@ function turns(items: Item[]) {
 
 export function Chat({ connected, features, variant = 'classic', ai = null }: { connected: Record<string, boolean>; features: FeatureFlags; variant?: 'classic' | 'sasuke'; ai?: string | null }) {
   const sasuke = variant === 'sasuke';
+  const router = useRouter();
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [storageError, setStorageError] = useState<string | null>(null);
   const [items, setItems] = useState<Item[]>([]);
@@ -137,7 +139,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
       if (outcome.status === 'failed') setStorageError(`原版對話匯入失敗（${outcome.reason}），下次開啟會自動再試。原版資料沒有被刪除。`);
       const requested = new URLSearchParams(window.location.search).get('c');
       const id = requested && requested !== 'new' ? requested : (requested !== 'new' && resumeActive()) || newConversationId();
-      if (requested === 'new') window.history.replaceState(null, '', '/');
+      if (requested === 'new') window.history.replaceState(window.history.state, '', '/');
       setConversationId(id);
       saved = loadConversation(id) as Saved | null;
     } else {
@@ -255,9 +257,15 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
     }
   }
 
-  async function logWater(ml: number) {
+  async function logWater(ml: number, button?: HTMLButtonElement) {
+    button?.setAttribute('data-loading', '');
     const result = await callTool('health.water.log', { ml });
-    if (result.status === 'ok') { setWater(result.data); window.dispatchEvent(new CustomEvent('noirxu-water', { detail: result.data })); }
+    button?.removeAttribute('data-loading');
+    if (result.status === 'ok') {
+      setWater(result.data);
+      window.dispatchEvent(new CustomEvent('noirxu-water', { detail: result.data }));
+      flash(button, 'success');
+    } else flash(button, 'error');
   }
 
   // "/" or Cmd/Ctrl+K anywhere jumps to the input.
@@ -316,7 +324,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
     return <div key={index} className={`msg ${item.kind}`}>{item.text}</div>;
   }
 
-  const newConversation = () => { if (sasuke) { window.location.href = '/?c=new'; return; } setItems([]); setHistory([]); setNotes([]); };
+  const newConversation = () => { if (sasuke) { router.push(newConversationHref()); return; } setItems([]); setHistory([]); setNotes([]); };
   const placeholder = !features.commands ? '交代我一件事…' : empty ? '交代我一件事，或輸入 / 使用快捷指令' : '繼續交代，或輸入 /';
 
   const composer = (
@@ -365,47 +373,61 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
         {storageError && <p className="banner storage-warning" role="alert">{storageError}</p>}
         {empty && sasuke && (
           <section className="sk-home">
-            <div className="hud-core"><Core size={168} state={busy ? 'thinking' : 'idle'} /></div>
-            <p className="hud-status"><span className="hud-dot" />SASUKE ONLINE<span className="hud-sep">//</span>{SYSTEMS.filter(([id]) => connected[id]).length} / {SYSTEMS.length} LINKS</p>
-            <h1 className="hud-title">{greeting()}，先生。</h1>
-            <p className="hud-lead">今天要我處理什麼？</p>
+            <header className="mc-head">
+              <span className="mc-avatar"><SasukeMark size={22} /></span>
+              <div><small>{greeting()}，</small><b>先生</b></div>
+              <span className={ai ? 'mc-online' : 'mc-online off'}><i />{ai ? 'SASUKE 待命中' : 'AI 未設定'}</span>
+            </header>
+
+            <div className="mc-hero">
+              {brief === null ? <div className="mc-skeleton" aria-hidden="true"><i /><i /><i /></div> : (
+                <>
+                  <small>{brief.expense ? '本月支出' : '今日要務'}</small>
+                  <strong>{brief.failed ? '—' : brief.expense ?? `${brief.today} 件`}</strong>
+                  <p>{brief.lines.filter(l => !l.startsWith('本月支出')).join(' · ') || '今天沒有排定的事'}</p>
+                </>
+              )}
+              <div className="mc-hero-actions">
+                {features.commands && <button type="button" onClick={() => pick('/記帳 ', false)}><Icon name="wallet" size={16} />記一筆帳</button>}
+                {features.briefings && <button type="button" className="accent" onClick={() => pick('/早報', true)}><Icon name="calendar" size={16} />今日早報</button>}
+              </div>
+            </div>
+
             {composer}
-            <nav className="hud-cmds" aria-label="常用指令">
-              {CHIPS.filter(c => !c.feature || features[c.feature]).slice(0, 4).map(c => <button key={c.label} type="button" onClick={() => pick(c.text, c.run)}><Icon name={c.icon} size={14} />{c.label}</button>)}
+            <nav className="mc-pills" aria-label="常用指令">
+              {CHIPS.filter(c => !c.feature || features[c.feature]).filter(c => c.label !== '早報' && c.label !== '記一筆帳').map(c => <button key={c.label} type="button" onClick={() => pick(c.text, c.run)}><Icon name={c.icon} size={14} />{c.label}</button>)}
             </nav>
-            <div className="hud-grid">
-              {brief && (
-                <button type="button" className="hud-tile" onClick={() => void send('最近有什麼事？依重要程度排給我。')}>
-                  <span className="hud-label">TODAY · 今日要務</span>
-                  <span className="hud-value">{brief.today}<small>件{brief.overdue > 0 ? ` · ${brief.overdue} 件過期` : ''}</small></span>
-                  {brief.top.length > 0
-                    ? <ul className="hud-list">{brief.top.slice(0, 3).map(t => <li key={t.id} className={`prio-${t.priority}`}><b>{t.title}</b><small>{t.due_label}</small></li>)}</ul>
-                    : <span className="hud-note">沒有待辦事項</span>}
-                </button>
-              )}
-              {brief?.expense && (
-                <button type="button" className="hud-tile" onClick={() => void send('這個月花了多少錢？哪一類最多？')}>
-                  <span className="hud-label">LEDGER · 本月支出</span>
-                  <span className="hud-value num">{brief.expense}</span>
-                  <span className="hud-note">點一下看分類分析 →</span>
-                </button>
-              )}
-              {water && (
-                <div className="hud-tile">
-                  <span className="hud-label">HYDRATION · 今日飲水</span>
-                  <div className="hud-water">
-                    <svg viewBox="0 0 44 44" width="56" height="56" aria-hidden="true"><circle cx="22" cy="22" r="19" className="ring-bg" /><circle cx="22" cy="22" r="19" className="ring-fg" strokeDasharray={`${Math.min(100, water.percent) * 1.194} 200`} /></svg>
-                    <span className="hud-value">{Number(water.total_ml).toLocaleString('en-US')}<small>/ {Number(water.goal_ml).toLocaleString('en-US')} ml</small></span>
+
+            <div className="mc-section"><h2>今日概況</h2></div>
+            <div className="mc-grid">
+              <button type="button" className="mc-card" onClick={() => void send('最近有什麼事？依重要程度排給我。')} disabled={!brief}>
+                <span className="mc-label"><Icon name="calendar" size={14} />要務</span>
+                {brief ? (
+                  <>
+                    <strong>{brief.failed ? '—' : brief.today}<small> 件今天到期{brief.overdue ? ` · ${brief.overdue} 件過期` : ''}</small></strong>
+                    {brief.top.length > 0
+                      ? <ul className="mc-list">{brief.top.slice(0, 3).map(t => <li key={t.id} className={`prio-${t.priority}`}><b>{t.title}</b><small>{t.due_label}</small></li>)}</ul>
+                      : <span className="mc-note">沒有待辦</span>}
+                  </>
+                ) : <div className="mc-skeleton" aria-hidden="true"><i /><i /></div>}
+              </button>
+              {water ? (
+                <div className="mc-card">
+                  <span className="mc-label"><Icon name="drop" size={14} />飲水</span>
+                  <div className="mc-water">
+                    <svg viewBox="0 0 44 44" width="48" height="48" aria-hidden="true"><circle cx="22" cy="22" r="19" className="ring-bg" /><circle cx="22" cy="22" r="19" className="ring-fg" strokeDasharray={`${Math.min(100, water.percent) * 1.194} 200`} /></svg>
+                    <strong>{Number(water.total_ml).toLocaleString('en-US')}<small> / {Number(water.goal_ml).toLocaleString('en-US')} ml</small></strong>
                   </div>
-                  <div className="hud-actions">
-                    <button type="button" onClick={() => void logWater(250)}>+250</button>
-                    <button type="button" onClick={() => void logWater(500)}>+500</button>
+                  <div className="mc-actions">
+                    <button type="button" onClick={e => void logWater(250, e.currentTarget)}>+250</button>
+                    <button type="button" onClick={e => void logWater(500, e.currentTarget)}>+500</button>
                   </div>
                 </div>
-              )}
-              <a className="hud-tile" href="/connections">
-                <span className="hud-label">SYSTEMS · 系統連線</span>
-                <ul className="hud-links">{SYSTEMS.map(([id, label]) => <li key={id} className={connected[id] ? 'on' : ''}><i />{label}<small>{connected[id] ? 'ONLINE' : 'OFFLINE'}</small></li>)}</ul>
+              ) : features.water && <div className="mc-card"><span className="mc-label"><Icon name="drop" size={14} />飲水</span><div className="mc-skeleton" aria-hidden="true"><i /><i /></div></div>}
+              <a className="mc-card" href="/connections">
+                <span className="mc-label"><Icon name="link" size={14} />系統</span>
+                <strong>{SYSTEMS.filter(([id]) => connected[id]).length}<small> / {SYSTEMS.length} 已連線</small></strong>
+                <ul className="mc-links">{SYSTEMS.map(([id, label]) => <li key={id} className={connected[id] ? 'on' : ''}><i />{label}</li>)}</ul>
               </a>
             </div>
           </section>
@@ -455,9 +477,9 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
         ))}
         {busy && (
           <div className="agent-turn">
-            <span className="agent-avatar thinking" aria-hidden="true">{sasuke ? <Core size={28} state="thinking" /> : <BrandMark size={26} />}</span>
+            <span className="agent-avatar thinking" aria-hidden="true">{sasuke ? <SasukeMark size={22} /> : <BrandMark size={26} />}</span>
             <div className="agent-body">{sasuke
-              ? <p className="sk-working" aria-live="polite"><span>{busy === '思考中' ? 'PROCESSING' : 'WORKING'}</span>{busy === '思考中' ? '正在思考' : busy}<i aria-hidden="true" /></p>
+              ? <p className="sk-working" aria-live="polite"><i aria-hidden="true" /><i aria-hidden="true" /><i aria-hidden="true" /><span>{busy === '思考中' ? 'SASUKE 正在處理' : busy}</span></p>
               : <p className="working" aria-live="polite">{busy}<span className="typing"><span /><span /><span /></span></p>}</div>
           </div>
         )}
