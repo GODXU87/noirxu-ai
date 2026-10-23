@@ -381,8 +381,8 @@ button[data-state="error"] { border-color: var(--danger) !important; animation: 
   --line: rgba(255, 255, 255, .06);
   --line-strong: rgba(255, 255, 255, .12);
   --text: #f4f4f5;
-  --text-soft: #b4b6bb;
-  --muted: #7d8087;
+  --text-soft: #c6c8cd;
+  --muted: #9195a0;
   --accent: #2bc4dc;
   --accent-dim: rgba(43, 196, 220, .12);
   --accent-ink: #03161b;
@@ -403,8 +403,8 @@ button[data-state="error"] { border-color: var(--danger) !important; animation: 
 .ui-sasuke .tab-bar, .ui-sasuke .mobile-top, .ui-sasuke .sidebar { display: none !important; }
 .ui-sasuke .shell { padding: 68px 16px 24px; }
 .ui-sasuke .shell.chat-page { padding-bottom: 0; }
-.ui-sasuke .shell > :not(.sk-sidebar):not(.sk-top):not(.sk-drawer):not(.sk-scrim):not(.sk-water-slot) { animation: page-in .22s ease both; }
-@keyframes page-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.ui-sasuke .shell > * { animation: page-in .16s ease both; }
+@keyframes page-in { from { opacity: .001; } to { opacity: 1; } }
 @media (min-width: 900px) {
   .ui-sasuke { --sk-side: 256px; }
   .ui-sasuke.sidebar-collapsed { --sk-side: 72px; }
@@ -707,3 +707,69 @@ button[data-state="error"] { border-color: var(--danger) !important; animation: 
 .cost-table td:not(:first-child), .cost-table th:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
 .sk-enter-hint { margin-left: auto; font-size: 12px; color: var(--accent); animation: fade-in .15s ease both; }
 .sk-enter-hint + .sk-send { margin-left: 8px; }
+
+/* SASUKE presence (state-aware mark, home, composer menu, tooltips, reminder card) */
+.sasuke-mark .mk-ring { transform-origin: 16px 16px; transform-box: view-box; transition: opacity .3s ease; }
+.sasuke-mark .mk-core { transition: opacity .3s ease; }
+.sasuke-mark .mk-signal { fill: transparent; transition: fill .3s ease; }
+.sasuke-mark.mk-thinking .mk-ring { animation: mk-turn 2.8s linear infinite; }
+.sasuke-mark.mk-thinking .mk-core { animation: mk-breathe 1.4s ease-in-out infinite; }
+.sasuke-mark.mk-confirm .mk-ring circle { stroke: var(--warn); }
+.sasuke-mark.mk-confirm .mk-signal { fill: var(--warn); animation: mk-pulse 1s ease-in-out 2; }
+.sasuke-mark.mk-error .mk-ring circle { stroke: var(--danger); }
+.sasuke-mark.mk-error .mk-signal { fill: var(--danger); }
+.sasuke-mark.mk-error { animation: btn-nudge .3s ease 1; }
+@keyframes mk-turn { to { transform: rotate(360deg); } }
+@keyframes mk-breathe { 50% { opacity: .55; } }
+@keyframes mk-pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .sasuke-mark .mk-ring, .sasuke-mark .mk-core, .sasuke-mark .mk-signal, .sasuke-mark.mk-error { animation: none !important; } }
+
+.ui-sasuke .feed.home { justify-content: center; min-height: calc(100dvh - 96px); padding-top: 0; padding-bottom: 16vh; }
+.sk-home-mark { margin-bottom: 14px; }
+.sk-home-name { font-size: 11.5px; font-weight: 600; letter-spacing: .32em; color: var(--muted); margin-bottom: 14px; padding-left: .32em; }
+.ui-sasuke .sk-hello { font-size: 28px; font-weight: 650; margin-bottom: 6px; }
+@media (min-width: 900px) { .ui-sasuke .sk-hello { font-size: 32px; } }
+.sk-ask { font-size: 15px; color: var(--text-soft); margin-bottom: 26px; }
+.ui-sasuke .sk-home .composer form.sk-composer { padding: 18px 14px 12px 20px; border-color: rgba(43, 196, 220, .28); box-shadow: 0 0 0 6px rgba(43, 196, 220, .05), 0 24px 70px -24px rgba(43, 196, 220, .35), var(--shadow); }
+.ui-sasuke .sk-home .composer form.sk-composer:focus-within { border-color: rgba(43, 196, 220, .6); }
+.ui-sasuke .sk-home .composer.docked-center .sk-composer textarea { min-height: 64px; font-size: 17px; }
+
+.sk-agent-menu { position: relative; }
+.ui-sasuke .sk-agent { gap: 7px; height: 30px; padding: 0 10px 0 12px; font-size: 12px; font-weight: 600; letter-spacing: .14em; background: transparent; color: var(--text-soft); min-height: 0; }
+.ui-sasuke .sk-agent:hover:not(:disabled) { background: var(--surface-2); color: var(--text); }
+.sk-agent-caret { transform: rotate(90deg); opacity: .6; }
+.sk-pulse.off { background: var(--muted); }
+.sk-menu { position: absolute; left: 0; bottom: calc(100% + 10px); z-index: 12; width: 260px; display: grid; gap: 4px; padding: 10px; border-radius: 18px; background: var(--surface-2); box-shadow: 0 24px 60px -16px rgba(0, 0, 0, .8); animation: pop-in .16s ease both; transform-origin: bottom left; }
+.sk-menu-row { display: grid; gap: 4px; padding: 8px 10px; font-size: 12px; color: var(--muted); }
+.sk-menu-row b { font-size: 13.5px; font-weight: 500; color: var(--text); }
+.ui-sasuke .sk-menu-row select { height: 34px; padding: 0 10px; font-size: 13.5px; background-color: var(--surface-3); border-radius: 10px; }
+.sk-menu-item { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-radius: 12px; font-size: 13.5px; color: var(--text-soft); background: none; justify-content: flex-start; min-height: 0; }
+.ui-sasuke .sk-menu-item { background: transparent; border-radius: 12px; font-weight: 400; }
+.ui-sasuke .sk-menu-item:hover { background: var(--surface-3); color: var(--text); }
+
+/* Tooltips for icon buttons (pointer devices) */
+@media (hover: hover) and (pointer: fine) {
+  [data-tip] { position: relative; }
+  [data-tip]::after { content: attr(data-tip); position: absolute; top: calc(100% + 8px); right: 50%; transform: translateX(50%) translateY(-2px); padding: 5px 9px; border-radius: 8px; background: #2b2c31; color: var(--text); font-size: 12px; font-weight: 500; letter-spacing: 0; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .14s ease .25s, transform .14s ease .25s; z-index: 30; box-shadow: 0 8px 24px rgba(0, 0, 0, .4); }
+  [data-tip]:hover::after, [data-tip]:focus-visible::after { opacity: 1; transform: translateX(50%) translateY(0); }
+  .sk-agent[data-tip]::after { top: auto; bottom: calc(100% + 8px); right: auto; left: 0; transform: none; }
+}
+
+/* Function nav: clearer hover / pressed */
+.ui-sasuke .sk-nav a, .ui-sasuke .sk-bottom > a { transition: background-color .14s ease, color .14s ease, transform .1s ease; }
+.ui-sasuke .sk-nav a:active, .ui-sasuke .sk-bottom > a:active { transform: scale(.98); background: var(--surface-2); }
+.ui-sasuke .sk-head-btn, .ui-sasuke .inbox-btn { transition: background-color .14s ease, color .14s ease, transform .1s ease; }
+
+/* Reminder card in the chat */
+.reminder-card { display: grid; gap: 8px; }
+.reminder-head { display: flex; align-items: center; gap: 8px; }
+.reminder-head svg { color: var(--accent); flex: none; }
+.reminder-head b { font-size: 15px; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reminder-time { display: grid; gap: 2px; font-size: 22px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.reminder-time small { font-size: 12px; font-weight: 400; color: var(--muted); }
+.reminder-card.is-cancelled .reminder-time { font-size: 14px; font-weight: 400; color: var(--muted); }
+.reminder-actions { gap: 8px; }
+@media (hover: hover) and (pointer: fine) { .inbox-btn[data-tip]::after { right: 0; transform: translateY(-2px); } .inbox-btn[data-tip]:hover::after { transform: none; } }
+@media (hover: hover) and (pointer: fine) { [data-tip][aria-expanded="true"]::after { display: none; } }
+.ui-sasuke a.sk-menu-item { color: var(--text-soft); }
+.ui-sasuke a.sk-menu-item:hover { color: var(--text); }

@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { money, toolLabel, toolSystem } from '@/lib/tool-labels';
+import { flash } from './feedback';
 import { Icon } from './Icon';
 
 export interface Link { label: string; url: string }
@@ -107,6 +108,38 @@ export function AgendaList({ items, onChanged, emptyText = '目前沒有待辦�
   );
 }
 
+/** An explicit reminder in the chat: when it fires, its state, and cancel / change. */
+function ReminderCard({ data }: { data: any }) {
+  const [state, setState] = useState<'scheduled' | 'cancelled' | 'editing' | 'busy'>('scheduled');
+  const [item, setItem] = useState(data.item);
+  const [error, setError] = useState('');
+  const reminder = data.reminders[0];
+  const changed = () => window.dispatchEvent(new Event('noirxu-reminders-changed'));
+  async function cancel(button: HTMLButtonElement) {
+    setState('busy'); setError('');
+    const result = await callTool('agenda.items.update', { id: item.id, status: 'cancelled' });
+    if (result.status === 'ok') { setState('cancelled'); changed(); } else { setState('scheduled'); setError(result.status === 'error' ? result.message : '取消失敗'); flash(button, 'error'); }
+  }
+  return (
+    <div className={`reminder-card is-${state}`}>
+      <div className="reminder-head">
+        <Icon name="bell" size={16} />
+        <b>{item.title}</b>
+        <span className={`state-chip ${state === 'cancelled' ? 'error' : 'ok'}`}>{state === 'cancelled' ? '已取消' : '已排程'}</span>
+      </div>
+      <p className="reminder-time">{state === 'cancelled' ? '這則提醒不會再送出。' : item.due_label ?? reminder.local}{state !== 'cancelled' && <small>提醒時間 {item.due_date && item.due_time ? `${Number(item.due_date.slice(5, 7))}/${Number(item.due_date.slice(8))} ${item.due_time}` : reminder.local}（台灣時間）</small>}</p>
+      {state !== 'cancelled' && state !== 'editing' && (
+        <div className="row reminder-actions">
+          <button type="button" disabled={state === 'busy'} data-loading={state === 'busy' || undefined} onClick={e => void cancel(e.currentTarget)}>取消提醒</button>
+          <button type="button" className="ghost" disabled={state === 'busy'} onClick={() => setState('editing')}>修改時間</button>
+        </div>
+      )}
+      {state === 'editing' && <AgendaEditor item={item} onClose={() => setState('scheduled')} onChanged={() => { setState('scheduled'); changed(); void callTool('agenda.items.list', { days: 365, include_done: true }).then(r => { const next = r.status === 'ok' ? (r.data as any).items.find((i: any) => i.id === item.id) : null; if (next) setItem(next); }); }} />}
+      {error && <p className="hint tone-error">{error}</p>}
+    </div>
+  );
+}
+
 const STATUS_TONE: Record<string, 'accent' | 'warn' | 'danger'> = { safe: 'accent', warning: 'warn', over: 'danger', unset: 'accent' };
 
 /** Readable views for the common tools; everything else falls back to the raw data. */
@@ -180,6 +213,7 @@ export function ToolData({ tool, data }: { tool: string; data: any }): ReactNode
     case 'agenda.items.list':
       return <AgendaList items={data.items} />;
     case 'agenda.items.create':
+      if (data.kind === 'reminder' && data.reminders?.length) return <ReminderCard data={data} />;
       return (
         <div className="view">
           <AgendaList items={[data.item]} onChanged={() => window.dispatchEvent(new Event('noirxu-reminders-changed'))} />
@@ -224,12 +258,16 @@ export function Collapsible({ children, limit = 360 }: { children: ReactNode; li
   );
 }
 
+/** Tools that only read; anything else that returns 'ok' has changed something. */
+const READ_ONLY = /\.(list|get|search|status|summary|analyze|scan|read|statistics)$/;
+
 export function ToolCard({ result }: { result: Extract<InvokeResult, { status: 'ok' | 'error' }> }) {
   const ok = result.status === 'ok';
   const view = ok ? ToolData({ tool: result.tool, data: result.data }) : null;
+  const reminder = ok && result.tool === 'agenda.items.create' && (result.data as { kind?: string })?.kind === 'reminder';
   return (
     <div className="tool">
-      <header><span><span className="sys">{toolSystem(result.tool)}</span>{toolLabel(result.tool)}</span><span className={ok ? 'status-ok' : 'status-error'}>{ok ? '✓ 已讀取' : '✕ 失敗'}</span></header>
+      <header><span><span className="sys">{reminder ? '提醒' : toolSystem(result.tool)}</span>{reminder ? '建立提醒' : toolLabel(result.tool)}</span><span className={ok ? 'status-ok' : 'status-error'}>{!ok ? '✕ 失敗' : READ_ONLY.test(result.tool) ? '✓ 已讀取' : '✓ 已完成'}</span></header>
       {ok ? (
         <>
           <Collapsible>{view}</Collapsible>

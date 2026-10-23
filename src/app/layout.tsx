@@ -2,7 +2,9 @@ import type { Metadata, Viewport } from 'next';
 import '@fontsource-variable/inter';
 import './globals.css';
 import { ServiceWorker } from './components/ServiceWorker';
+import { Suspense } from 'react';
 import { uiMode } from '@/server/ui-mode';
+import { SasukeNav } from './sasuke/SasukeNav';
 
 export const metadata: Metadata = {
   title: 'NOIRXU AI',
@@ -16,5 +18,15 @@ export async function generateViewport(): Promise<Viewport> {
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const ui = await uiMode();
-  return <html lang="zh-Hant" className={ui === 'sasuke' ? 'ui-sasuke' : undefined}><body>{children}<ServiceWorker /></body></html>;
+  return (
+    <html lang="zh-Hant" className={ui === 'sasuke' ? 'ui-sasuke' : undefined} suppressHydrationWarning>
+      <body>
+        {/* Apply the saved sidebar width before first paint so the layout never jumps. */}
+        {ui === 'sasuke' && <script dangerouslySetInnerHTML={{ __html: "try{if(localStorage.getItem('noirxu-ui-sidebar-collapsed')==='1')document.documentElement.classList.add('sidebar-collapsed')}catch(e){}" }} />}
+        {ui === 'sasuke' && <Suspense fallback={null}><SasukeNav /></Suspense>}
+        {children}
+        <ServiceWorker />
+      </body>
+    </html>
+  );
 }
