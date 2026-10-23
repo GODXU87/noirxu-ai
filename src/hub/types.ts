@@ -57,6 +57,12 @@ export interface ToolDefinition<I extends z.ZodType = z.ZodType, O extends z.Zod
   preview?: (input: z.output<I>, ctx: ToolContext) => Promise<ProposalPreview>;
   run: (input: z.output<I>, ctx: ToolContext, meta: RunMeta) => Promise<ToolRunResult<z.output<O>>>;
   /**
+   * Read tools only: reuse a successful result for this long (per user, per input). Only for
+   * data that changes slowly (e.g. end-of-day market data, category lists); never for
+   * balances, positions, transactions or mail. Any write by the same user clears the cache.
+   */
+  cacheTtlMs?: number;
+  /**
    * Optional: after an OUTCOME_UNKNOWN failure, look for records that may have been created,
    * so the user can check instead of the hub re-sending blindly.
    */

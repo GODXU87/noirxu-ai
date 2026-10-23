@@ -618,7 +618,11 @@ button[data-state="error"] { border-color: var(--danger) !important; animation: 
 .ui-sasuke .sk-head-btn:hover:not(:disabled) { color: var(--text); background: var(--surface-2); }
 .ui-sasuke .feed.home { justify-content: center; min-height: calc(100dvh - 120px); padding-bottom: 8vh; }
 .sk-home { display: grid; justify-items: center; gap: 0; text-align: center; animation: sk-in .3s ease both; }
-.sk-home-mark { display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%; background: var(--surface); margin-bottom: 18px; }
+.sk-home-mark { position: relative; display: grid; place-items: center; width: 76px; height: 76px; border-radius: 24px; margin-bottom: 20px; color: var(--text);
+  background: linear-gradient(var(--surface), var(--surface)) padding-box, linear-gradient(140deg, rgba(143, 240, 255, .55), rgba(59, 123, 255, .15) 45%, rgba(255, 255, 255, .04) 70%, rgba(143, 240, 255, .35)) border-box;
+  border: 1px solid transparent; box-shadow: 0 0 0 6px rgba(43, 196, 220, .04), 0 18px 50px -20px rgba(43, 196, 220, .45); }
+.sk-home-mark::after { content: ""; position: absolute; inset: 22px; border-radius: 50%; background: radial-gradient(circle, rgba(95, 224, 242, .28), transparent 70%); filter: blur(6px); pointer-events: none; }
+.sk-hello span { background: linear-gradient(120deg, #8ff0ff, #4d8bff); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .sk-hello { font-size: 28px; font-weight: 650; letter-spacing: -.01em; margin-bottom: 22px; }
 @media (min-width: 900px) { .sk-hello { font-size: 34px; } }
 .ui-sasuke .sk-home .composer { width: 100%; text-align: left; }
@@ -659,6 +663,9 @@ button[data-state="error"] { border-color: var(--danger) !important; animation: 
 .fp-inbox small { font-size: 11.5px; color: var(--muted); }
 @media (prefers-reduced-motion: reduce) { .sk-home, .sk-modal, .sk-modal-panel { animation: none; } }
 
+.ui-sasuke .msg-via { display: inline-flex; margin-top: 6px; font-size: 11px; color: var(--muted); letter-spacing: .02em; }
+.ui-sasuke .msg-via::before { content: ""; width: 5px; height: 5px; margin: auto 6px auto 0; border-radius: 50%; background: var(--accent); opacity: .7; }
+
 /* Notification diagnostics (both interfaces) */
 .notify-diag { display: grid; gap: 16px; }
 .diag-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
@@ -681,3 +688,20 @@ button[data-state="error"] { border-color: var(--danger) !important; animation: 
 .diag-history li > div { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
 .diag-guide summary { cursor: pointer; font-size: 13.5px; color: var(--text-soft); }
 .diag-guide ol { margin: 10px 0; padding-left: 20px; display: grid; gap: 6px; font-size: 13.5px; color: var(--text-soft); }
+
+/* AI cost guard */
+.cost-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; margin: 0; }
+.cost-grid > div { padding: 14px 16px; border-radius: 18px; background: var(--surface); }
+.cost-grid dt { font-size: 12px; color: var(--muted); }
+.cost-grid dd { margin: 6px 0 0; font-size: 22px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.cost-grid dd small { display: block; margin-top: 4px; font-size: 12px; font-weight: 400; color: var(--muted); }
+.cost-modes { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; }
+.cost-modes button { display: grid; justify-items: start; gap: 4px; padding: 14px; border-radius: 16px; text-align: left; white-space: normal; font-weight: 400; }
+.cost-modes button.on { box-shadow: inset 0 0 0 1.5px var(--accent); }
+.cost-modes button span { font-size: 12.5px; color: var(--text-soft); line-height: 1.5; }
+.cost-limits { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; align-items: end; }
+.cost-limits label { display: grid; gap: 6px; font-size: 12.5px; color: var(--text-soft); }
+.cost-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.cost-table th, .cost-table td { padding: 8px 6px; text-align: left; border-bottom: 1px solid var(--line); }
+.cost-table th { color: var(--muted); font-weight: 500; }
+.cost-table td:not(:first-child), .cost-table th:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }

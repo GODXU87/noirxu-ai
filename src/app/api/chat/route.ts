@@ -2,12 +2,10 @@ import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import { z } from 'zod';
 import { ToolError } from '@/hub/errors';
-import { REPLY_STYLES, runAgentTurn, type ProgressEvent } from '@/server/agent';
-import { pickProvider } from '@/server/config';
+import { REPLY_STYLES } from '@/server/agent';
+import { handleChat } from '@/server/chat-turn';
 import { getHub } from '@/server/hub';
 import { errorResponse, json, requireContext } from '@/server/http';
-import { historyProviderOf } from '@/server/providers/history';
-import { runOpenAITurn } from '@/server/providers/openai';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -28,18 +26,8 @@ export async function POST(request: Request) {
     if (Number(request.headers.get('content-length') ?? 0) > MAX_BODY_BYTES) throw new ToolError('INVALID_INPUT', '對話太長，請開新對話。');
     const parsed = body.safeParse(await request.json().catch(() => null));
     if (!parsed.success) throw new ToolError('INVALID_INPUT', '訊息格式不正確。');
-    const provider = pickProvider();
-    if (!provider) throw new ToolError('NOT_CONFIGURED', 'AI 金鑰尚未設定（ANTHROPIC_API_KEY 或 OPENAI_API_KEY）。');
     const hub = getHub();
-    // History written by the other provider has an incompatible format: start a fresh context
-    // (the conversation on screen is kept).
-    const historyProvider = parsed.data.provider ?? historyProviderOf(parsed.data.history);
-    const contextReset = historyProvider !== null && historyProvider !== provider;
-    const history = contextReset ? [] : parsed.data.history;
-    const common = { registry: hub.registry, executor: hub.executor, ctx, userText: parsed.data.text, style: parsed.data.style };
-    const run = (onProgress?: (event: ProgressEvent) => void) => provider === 'openai'
-      ? runOpenAITurn({ ...common, onProgress, client: new OpenAI(), model: hub.config.openai.model, reasoningEffort: hub.config.openai.reasoningEffort, history })
-      : runAgentTurn({ ...common, onProgress, client: new Anthropic(), model: hub.config.anthropicModel, history: history as Anthropic.Beta.Messages.BetaMessageParam[] }).then(turn => ({ provider: 'anthropic' as const, ...turn }));
+    const options = { text: parsed.data.text, style: parsed.data.style, history: parsed.data.history, provider: parsed.data.provider };
 
     // NDJSON stream: tool progress as it happens, then the finished turn. Clients that do
     // not ask for it get the single JSON response as before.
@@ -49,8 +37,7 @@ export async function POST(request: Request) {
         async start(controller) {
           const write = (line: unknown) => controller.enqueue(encoder.encode(`${JSON.stringify(line)}\n`));
           try {
-            const turn = await run(event => write(event));
-            write({ type: 'done', ok: true, ...turn, contextReset });
+            write({ type: 'done', ...(await handleChat(hub, ctx, { ...options, onProgress: event => write(event) })) });
           } catch (error) {
             write({ type: 'done', ...(await errorBody(error)) });
           } finally {
@@ -60,7 +47,8 @@ export async function POST(request: Request) {
       });
       return new Response(stream, { headers: { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' } });
     }
-    return json({ ok: true, ...(await run()), contextReset });
+    const result = await handleChat(hub, ctx, options);
+    return json(result, result.ok ? 200 : result.error.code === 'BUDGET_EXCEEDED' ? 429 : 400);
   } catch (error) {
     if (error instanceof Anthropic.APIError || error instanceof OpenAI.APIError) return json(await errorBody(error), 502);
     return errorResponse(error);

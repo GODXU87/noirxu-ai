@@ -19,6 +19,13 @@ export class ToolRegistry {
   list(): ToolDefinition[] {
     return [...this.tools.values()];
   }
+
+  /** A view with only the tools whose name starts with one of `prefixes` (what the model is shown). */
+  subset(prefixes: string[]): ToolRegistry {
+    const view = new ToolRegistry();
+    for (const tool of this.tools.values()) if (prefixes.some(p => tool.name.startsWith(p))) view.tools.set(tool.name, tool);
+    return view;
+  }
 }
 
 /** Defines a tool while keeping input/output types linked to their Zod schemas. */

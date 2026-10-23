@@ -16,6 +16,8 @@ import { RadarClient, radarTools } from '@/tools/radar/tools';
 import { MemoryAgendaStore, PgAgendaStore, type AgendaStore } from '@/agenda/store';
 import { PushService } from '@/push/service';
 import { DeliveryService } from '@/notify/delivery';
+import { CostGuard } from '@/cost/guard';
+import type { MemorySource } from '@/router/memory';
 import { agendaTools } from '@/tools/agenda/tools';
 import { assistantTools } from '@/tools/assistant/tools';
 import { healthTools } from '@/tools/health/tools';
@@ -37,6 +39,9 @@ export interface Hub {
   agenda: AgendaStore;
   push: PushService;
   delivery: DeliveryService;
+  cost: CostGuard;
+  /** Long-term memory (Phase C2) once approved; null until then. */
+  memory: MemorySource | null;
   vault: TokenVault;
   water: WaterService;
   isConnected: (userId: string, connection: ConnectionId) => Promise<boolean>;
@@ -94,6 +99,7 @@ function build(): Hub {
   const push = new PushService(agenda, vault);
   const delivery = new DeliveryService(agenda, vault, (userId, message, now) => push.send(userId, message, now));
   const water = new WaterService(agenda, vault);
+  const cost = new CostGuard(agenda, vault);
   const ledger = new SupabaseUserConnection('ledger', config.ledger.supabase, credentials);
   const journal = new SupabaseUserConnection('journal', config.journal.supabase, credentials);
   const radar = new RadarClient(config.radar);
@@ -124,7 +130,7 @@ function build(): Hub {
   };
 
   executor = new Executor({ registry, store, isConnected });
-  return { config, features, storageMode, registry, executor, ledger, journal, radar, gmail, agenda, push, delivery, vault, water, isConnected };
+  return { config, features, storageMode, registry, executor, ledger, journal, radar, gmail, agenda, push, delivery, cost, memory: null, vault, water, isConnected };
 }
 
 const globalHub = globalThis as unknown as { __noirxuHub?: Hub };

@@ -144,6 +144,7 @@ export function ledgerTools(deps: LedgerDeps): ToolDefinition[] {
       description: '列出使用者在 NOIRXU Ledger 的分類（含 id）。新增收支前用來取得正確的 category_id。',
       connection: 'ledger',
       kind: 'read',
+      cacheTtlMs: 10 * 60_000, // category names; cleared by any write
       input: categoriesListInput,
       output: categoriesListOutput,
       async run(value, ctx) {

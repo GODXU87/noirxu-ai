@@ -135,6 +135,8 @@ export function Connections({ initial, gmailResult, redirectUri }: { initial: Co
         <div className="conn-list cards two">{statuses.map(status => <Connection key={status.id} status={status} onChange={refresh} redirectUri={redirectUri} />)}</div>
       </div>
       <div>
+        <p className="section-label">AI 成本保護</p>
+        <section className="card"><p className="hint">本地能回答的問題不呼叫付費 AI；可設定每日、每月上限並查看實際用量。</p><div className="row"><a href="/cost"><button type="button">查看與設定</button></a></div></section>
         <p className="section-label">通知</p>
         <section className="card"><Notifications /></section>
       </div>

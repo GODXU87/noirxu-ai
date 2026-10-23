@@ -5,6 +5,9 @@ import type { ToolRegistry } from './registry';
 import type { HubStore } from './store';
 import type { ConfirmResult, InvokeResult, Proposal, ToolContext, ToolDefinition } from './types';
 
+/** Bump to discard every cached tool result after a format change. */
+const CACHE_VERSION = 'v1';
+
 const PROPOSAL_TTL_MS = 15 * 60 * 1000;
 
 export interface ExecutorOptions {
@@ -19,6 +22,15 @@ function issuesMessage(error: z.ZodError): string {
 }
 
 export class Executor {
+  /** App-level cache for slow-changing read results (see ToolDefinition.cacheTtlMs). */
+  private readonly cache = new Map<string, { expires: number; result: InvokeResult }>();
+  cacheHits = 0;
+
+  /** Drops this user's cached results, after any write. */
+  invalidate(userId: string) {
+    for (const key of this.cache.keys()) if (key.split('|')[1] === userId) this.cache.delete(key);
+  }
+
   constructor(private readonly options: ExecutorOptions) {}
 
   private resolve(name: string): ToolDefinition {
@@ -50,11 +62,17 @@ export class Executor {
       await this.requireConnection(tool, ctx);
 
       if (tool.kind === 'read' || tool.requiresConfirmation === false) {
+        const cacheKey = tool.kind === 'read' && tool.cacheTtlMs ? `${CACHE_VERSION}|${ctx.userId}|${tool.name}|${JSON.stringify(input)}` : null;
+        const cached = cacheKey ? this.cache.get(cacheKey) : undefined;
+        if (cached && cached.expires > Date.now()) { this.cacheHits += 1; return cached.result; }
+        if (tool.kind !== 'read') this.invalidate(ctx.userId);
         const result = await tool.run(input, ctx, { idempotencyKey: randomUUID(), startedAt: ctx.now() });
         const output = tool.output.safeParse(result.data);
         if (!output.success) throw new ToolError('INVALID_OUTPUT', '來源系統回傳的資料格式不符，已停止處理。');
         await this.options.store.appendAudit({ at: ctx.now().toISOString(), userId: ctx.userId, tool: tool.name, kind: tool.kind, event: tool.kind === 'read' ? 'read' : 'executed', durationMs: Date.now() - started });
-        return { status: 'ok', tool: tool.name, data: output.data, links: result.links ?? [] };
+        const ok: InvokeResult = { status: 'ok', tool: tool.name, data: output.data, links: result.links ?? [] };
+        if (cacheKey) this.cache.set(cacheKey, { expires: Date.now() + tool.cacheTtlMs!, result: ok });
+        return ok;
       }
 
       const preview = await tool.preview!(input, ctx);
@@ -117,6 +135,7 @@ export class Executor {
         throw new ToolError('OUTCOME_UNKNOWN', '來源系統已回應，但回應格式不符，請到原網站確認是否已建立。');
       }
       const links = result.links ?? [];
+      this.invalidate(ctx.userId);
       await store.transitionProposal(proposalId, 'executing', 'succeeded', { finishedAt: ctx.now().toISOString(), result: output.data, recordId: result.recordId, links });
       await store.appendAudit({ at: ctx.now().toISOString(), userId: ctx.userId, tool: tool.name, kind: tool.kind, event: 'succeeded', proposalId, recordId: result.recordId, durationMs: ctx.now().getTime() - startedAt.getTime() });
       return { status: 'succeeded', tool: tool.name, proposalId, data: output.data, recordId: result.recordId, links };
