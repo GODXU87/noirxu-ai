@@ -26,9 +26,27 @@ export function ServiceWorker() {
       if (document.visibilityState !== 'visible' || location.pathname.startsWith('/login')) return;
       void fetch('/api/cron/catchup', { method: 'POST' }).catch(() => undefined);
     };
+    // While the app is open, fire delivery exactly when a reminder is due instead of waiting
+    // for the background schedule. Timers are re-planned when reminders change.
+    let timers: number[] = [];
+    const plan = async () => {
+      timers.forEach(t => window.clearTimeout(t));
+      timers = [];
+      if (location.pathname.startsWith('/login')) return;
+      const body = await fetch('/api/reminders/upcoming').then(r => r.json()).catch(() => null);
+      if (!body?.ok) return;
+      const offset = Date.parse(body.now) - Date.now();
+      for (const { at } of body.reminders as Array<{ at: string }>) {
+        const wait = Date.parse(at) - offset - Date.now() + 1500;
+        if (wait > 0 && wait < 12 * 60 * 60_000) timers.push(window.setTimeout(() => { void fetch('/api/cron/catchup?due=1', { method: 'POST' }).then(() => window.dispatchEvent(new Event('noirxu-inbox-changed'))).catch(() => undefined); }, wait));
+      }
+    };
+    const onVisible = () => { catchUp(); if (document.visibilityState === 'visible') void plan(); };
     catchUp();
-    document.addEventListener('visibilitychange', catchUp);
-    return () => document.removeEventListener('visibilitychange', catchUp);
+    void plan();
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('noirxu-reminders-changed', plan);
+    return () => { timers.forEach(t => window.clearTimeout(t)); document.removeEventListener('visibilitychange', onVisible); window.removeEventListener('noirxu-reminders-changed', plan); };
   }, []);
   return null;
 }

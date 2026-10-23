@@ -58,9 +58,9 @@ describe('reminderSchedule', () => {
     const r = reminderSchedule({ due_date: '2026-11-11', due_time: null, importance: 2 }, now);
     expect(r.map(x => x.at.toISOString())).toEqual(['2026-11-10T12:00:00.000Z', '2026-11-11T00:30:00.000Z']);
   });
-  it('adds 3-days-before for important items and 1-hour-before for timed items', () => {
+  it('evening before plus 1 hour before for timed items; no blanket 3-days-before', () => {
     const r = reminderSchedule({ due_date: '2026-11-11', due_time: '14:00', importance: 3 }, now);
-    expect(r.map(x => x.label)).toEqual(['3 天後', '明天', '今天', '1 小時後']);
+    expect(r.map(x => x.label)).toEqual(['明天', '1 小時後']);
     expect(r.at(-1)!.at.toISOString()).toBe('2026-11-11T05:00:00.000Z');
   });
   it('drops reminders already in the past', () => {

@@ -15,8 +15,9 @@ import type { DeviceResult, PushMessage, SendReport } from '@/push/service';
 // Records live in the existing settings table (sealed, compare-and-set) so this works with the
 // current database grants. A dedicated table is prepared in supabase/pending for approval.
 
-export type DeliveryStatus = 'pending' | 'claimed' | 'sending' | 'provider_accepted' | 'retry_pending' | 'failed' | 'expired';
-const TERMINAL: DeliveryStatus[] = ['provider_accepted', 'failed', 'expired'];
+/** 'grouped' = sent as part of a combined notification (see digest_key), not on its own. */
+export type DeliveryStatus = 'pending' | 'claimed' | 'sending' | 'provider_accepted' | 'retry_pending' | 'failed' | 'expired' | 'grouped';
+const TERMINAL: DeliveryStatus[] = ['provider_accepted', 'failed', 'expired', 'grouped'];
 
 export interface DeliveryRecord {
   key: string;
@@ -33,6 +34,8 @@ export interface DeliveryRecord {
   accepted_at?: string;
   last_error?: string;
   devices?: DeviceResult[];
+  /** For 'grouped': the combined notification that carried this one. */
+  digest_key?: string;
 }
 
 export interface InboxEntry { key: string; kind: string; title: string; body: string; url?: string; created_at: string; read: boolean }
@@ -74,7 +77,7 @@ export class DeliveryService {
    * record the first time (and files it in the in-app inbox), then sends only when the
    * notification is due for an attempt and no other run holds the lease.
    */
-  async deliver(input: { key: string; kind: string; userId: string; message: PushMessage; expiresAt: Date; now: Date }): Promise<DeliveryRecord> {
+  async deliver(input: { key: string; kind: string; userId: string; message: PushMessage; expiresAt: Date; now: Date; inbox?: boolean }): Promise<DeliveryRecord> {
     const { key, now } = input;
     const k = this.settingKey(key);
     let sealed = await this.store.getSetting(k);
@@ -85,7 +88,7 @@ export class DeliveryService {
         key, kind: input.kind, user_id: input.userId, message: input.message, status: 'pending', attempts: 0,
         created_at: now.toISOString(), updated_at: now.toISOString(), expires_at: input.expiresAt.toISOString()
       };
-      if (await this.transition(key, null, fresh)) await this.addToInbox(input.userId, { key, kind: input.kind, title: input.message.title, body: input.message.body, url: input.message.url, created_at: now.toISOString(), read: false });
+      if (await this.transition(key, null, fresh) && input.inbox !== false) await this.addToInbox(input.userId, { key, kind: input.kind, title: input.message.title, body: input.message.body, url: input.message.url, created_at: now.toISOString(), read: false });
       sealed = await this.store.getSetting(k);
       record = this.open<DeliveryRecord>(sealed, k)!;
     }
@@ -129,6 +132,24 @@ export class DeliveryService {
     next.updated_at = new Date().toISOString();
     await this.transition(key, sendingSealed, next);
     return next;
+  }
+
+  /**
+   * Keeps the record and inbox entry of a notification that goes out inside a combined
+   * notification (digest) instead of on its own. Idempotent.
+   */
+  async recordGrouped(input: { key: string; kind: string; userId: string; message: PushMessage; digestKey: string; expiresAt: Date; now: Date }): Promise<DeliveryRecord> {
+    const existing = await this.get(input.key);
+    if (existing) return existing;
+    const record: DeliveryRecord = {
+      key: input.key, kind: input.kind, user_id: input.userId, message: input.message, status: 'grouped', attempts: 0,
+      created_at: input.now.toISOString(), updated_at: input.now.toISOString(), expires_at: input.expiresAt.toISOString(), digest_key: input.digestKey
+    };
+    if (await this.transition(input.key, null, record)) {
+      await this.addToInbox(input.userId, { key: input.key, kind: input.kind, title: input.message.title, body: input.message.body, url: input.message.url, created_at: input.now.toISOString(), read: false });
+      return record;
+    }
+    return (await this.get(input.key))!;
   }
 
   // In-app inbox: every notification is filed here when it is created, so nothing is lost

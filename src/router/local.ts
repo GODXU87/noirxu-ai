@@ -17,7 +17,7 @@ export interface LocalTurn {
   events: ToolEvent[];
 }
 
-interface Deps { executor: Executor; ctx: ToolContext; memory: MemorySource | null; isConnected: (connection: string) => Promise<boolean> }
+interface Deps { executor: Executor; ctx: ToolContext; memory: MemorySource | null; isConnected: (connection: string) => Promise<boolean>; schedulerAgeMinutes?: () => Promise<number | null> }
 
 const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
 const WEEKDAY = ['日', '一', '二', '三', '四', '五', '六'];
@@ -122,6 +122,26 @@ export async function runLocal(intent: LocalIntent, deps: Deps): Promise<LocalTu
         ? `${name}還沒有支出紀錄。`
         : `${name}支出 ${a.currency} ${fmt(a.summary.expense)}，共 ${a.summary.expenseCount} 筆${top ? `；最多是${top.name} ${fmt(top.amount)}（${Math.round(top.percentage)}%）` : ''}。`;
       return { level: 'L1', source: 'tool', intent: intent.kind, reply: withSir(reply, seed), events: [event] };
+    }
+    case 'reminder_create': {
+      const input = { text: intent.text };
+      const result = await executor.invoke('agenda.items.create', input, ctx);
+      const event = { tool: 'agenda.items.create', input, result };
+      // A failed parse or a recurring request is reported as such; nothing is pretended.
+      if (result.status !== 'ok') return { level: 'L1', source: 'tool', intent: intent.kind, reply: result.status === 'error' ? result.message : '提醒沒有建立。', events: [] };
+      const data = result.data as { item: { title: string }; scheduled: boolean; reminders: Array<{ at: string; local: string }> };
+      const first = data.reminders[0];
+      if (!data.scheduled || !first) return { level: 'L1', source: 'tool', intent: intent.kind, reply: '這個時間已經過了，提醒沒有排上。請給我一個未來的時間。', events: [event] };
+      const at = new Date(first.at);
+      const minutesAway = Math.round((at.getTime() - now.getTime()) / 60_000);
+      const hhmm = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Taipei', hour: '2-digit', minute: '2-digit', hour12: false }).format(at);
+      const when = minutesAway < 60 ? `${minutesAway} 分鐘後（${hhmm}）` : minutesAway < 24 * 60 && taipeiDate(at) === taipeiDate(now) ? `今天 ${hhmm}` : first.local;
+      let reply = `${sirFor(seed) ? 'Sir，' : ''}已設定 ${when}提醒你${data.item.title === '提醒' ? '' : data.item.title}。`;
+      if (minutesAway <= 60) {
+        const age = await deps.schedulerAgeMinutes?.().catch(() => null);
+        reply += `App 開著時會準時提醒；App 關閉時要靠背景排程${age === null || age === undefined ? '' : `（最近一次執行在 ${age} 分鐘前）`}，可能會晚到。`;
+      }
+      return { level: 'L1', source: 'tool', intent: intent.kind, reply, events: [event] };
     }
     case 'memory_recall': {
       const subject = intent.subject.replace(/^(的)/, '');

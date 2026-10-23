@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { dueLabel } from '@/agenda/briefing';
 import { parseAgendaText } from '@/agenda/parse';
-import { PRIORITY_LABEL, daysUntil, priorityOf, rankItems, reminderSchedule, type AgendaItem } from '@/agenda/rank';
+import { DEFAULT_REMINDER_PREFS, PRIORITY_LABEL, daysUntil, priorityOf, rankItems, reminderSchedule, taipeiInstant, type AgendaItem, type ReminderPrefs } from '@/agenda/rank';
+import { isRecurring, isReminderRequest, parseReminderTime, reminderTitle, taipeiLabel } from '@/agenda/when';
 import type { AgendaStore } from '@/agenda/store';
 import { ToolError } from '@/hub/errors';
 import { defineTool } from '@/hub/registry';
@@ -35,15 +36,33 @@ export function agendaView(item: AgendaItem, today: string): z.output<typeof ite
   };
 }
 
-function schedule(item: AgendaItem, now: Date) {
-  return reminderSchedule(item, now).map(r => ({ id: randomUUID(), remind_at: r.at.toISOString(), label: r.label }));
+export const REMINDER_PREFS_KEY = 'reminder:prefs';
+
+export async function reminderPrefs(store: AgendaStore): Promise<ReminderPrefs> {
+  try { return { ...DEFAULT_REMINDER_PREFS, ...JSON.parse((await store.getSetting(REMINDER_PREFS_KEY)) ?? '{}') }; } catch { return DEFAULT_REMINDER_PREFS; }
+}
+
+/**
+ * Reminders for an item. An explicit reminder (source 'reminder') fires once, exactly at the
+ * time the user asked; other items get the advance notices from the user's preferences.
+ */
+async function schedule(store: AgendaStore, item: AgendaItem, now: Date, exactAt?: Date) {
+  if (item.source === 'reminder') {
+    const at = exactAt ?? (item.due_date && item.due_time ? taipeiInstant(item.due_date, item.due_time) : null);
+    return at && at.getTime() > now.getTime() ? [{ id: randomUUID(), remind_at: at.toISOString(), label: '提醒' }] : [];
+  }
+  return reminderSchedule(item, now, await reminderPrefs(store)).map(r => ({ id: randomUUID(), remind_at: r.at.toISOString(), label: r.label }));
+}
+
+function taipeiHHMM(at: Date) {
+  return new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Taipei', hour: '2-digit', minute: '2-digit', hour12: false }).format(at);
 }
 
 export function agendaTools(store: AgendaStore): ToolDefinition[] {
   return [
     defineTool({
       name: 'agenda.items.create',
-      description: '把使用者說的事情記進 NOIRXU AI 的行程/記事（例如「11/11 要教學演示」）。可直接傳原句 text，系統會解析日期、時間與重要程度；也可傳結構化欄位。會自動排定提醒（前一晚、當天早上、重要事項提前 3 天、有時間的提前 1 小時）。這是 NOIRXU AI 自己的記事，不需確認。',
+      description: '把使用者說的事情記進 NOIRXU AI 的行程/記事，或建立提醒。使用者要求「提醒我」（例如「兩分鐘後提醒我看電腦」「明天9點提醒我開會」）時，直接把原句傳 text：系統會用伺服器時間精確算出提醒時間並只在那個時間提醒一次；算不出時間會回傳錯誤，這時請問使用者時間，不可改建無日期記事。一般記事（例如「11/11 要教學演示」）會依使用者設定加上提前通知。同一件事有多個時段時，建立一筆並在 notes 註明時段，不要拆成很多筆。不支援重複提醒（每天、每週）。這是 NOIRXU AI 自己的記事，不需確認。',
       connection: 'internal',
       kind: 'write',
       requiresConfirmation: false,
@@ -55,12 +74,29 @@ export function agendaTools(store: AgendaStore): ToolDefinition[] {
         importance: importance.optional().describe('1 低 / 2 中 / 3 高'),
         notes: z.string().trim().max(1000).default('')
       }).strict().refine(v => v.text || v.title, '需要 text 或 title'),
-      output: z.object({ item: itemView, reminders: z.array(z.object({ at: z.string(), label: z.string() })) }),
+      output: z.object({
+        item: itemView,
+        kind: z.enum(['reminder', 'event', 'note']),
+        scheduled: z.boolean(),
+        reminders: z.array(z.object({ id: z.string(), at: z.string(), local: z.string(), label: z.string(), status: z.literal('scheduled') }))
+      }),
       async run(value, ctx) {
         const now = ctx.now();
         const today = taipeiDate(now);
-        const parsed = value.text ? parseAgendaText(value.text, today) : null;
-        const item: AgendaItem = {
+        let explicit: { at: Date; title: string } | null = null;
+        if (value.text && isReminderRequest(value.text)) {
+          if (isRecurring(value.text)) throw new ToolError('INVALID_INPUT', '重複提醒（每天、每週）目前還不支援，這次沒有建立任何提醒。可以先設定下一次的時間，例如「明天 9 點提醒我…」。');
+          const when = parseReminderTime(value.text, now);
+          // An explicit "remind me" without a time is never stored as an undated note.
+          if (!when) throw new ToolError('INVALID_INPUT', '要提醒你，但這句話裡沒有我能確定的時間。請告訴我幾點或多久之後，例如「兩分鐘後」「明天 9 點」。這次沒有建立任何提醒。');
+          explicit = { at: when.at, title: value.title ?? reminderTitle(value.text, when.phrase) };
+        }
+        const parsed = value.text && !explicit ? parseAgendaText(value.text, today) : null;
+        const item: AgendaItem = explicit ? {
+          id: randomUUID(), user_id: ctx.userId, title: explicit.title, notes: value.notes,
+          due_date: taipeiDate(explicit.at), due_time: taipeiHHMM(explicit.at), importance: value.importance ?? 2,
+          status: 'open', source: 'reminder', created_at: now.toISOString(), updated_at: now.toISOString()
+        } : {
           id: randomUUID(),
           user_id: ctx.userId,
           title: value.title ?? parsed!.title,
@@ -74,9 +110,17 @@ export function agendaTools(store: AgendaStore): ToolDefinition[] {
           updated_at: now.toISOString()
         };
         if (item.due_date && item.due_date < today) throw new ToolError('INVALID_INPUT', `日期 ${item.due_date} 已經過去，請確認日期。`);
-        const reminders = schedule(item, now);
+        const reminders = await schedule(store, item, now, explicit?.at);
         await store.createItem(item, reminders);
-        return { data: { item: agendaView(item, today), reminders: reminders.map(r => ({ at: r.remind_at, label: r.label })) }, recordId: item.id };
+        return {
+          data: {
+            item: agendaView(item, today),
+            kind: explicit ? 'reminder' as const : item.due_date ? 'event' as const : 'note' as const,
+            scheduled: reminders.length > 0,
+            reminders: reminders.map(r => ({ id: r.id, at: r.remind_at, local: taipeiLabel(new Date(r.remind_at)), label: r.label, status: 'scheduled' as const }))
+          },
+          recordId: item.id
+        };
       }
     }),
     defineTool({
@@ -116,8 +160,10 @@ export function agendaTools(store: AgendaStore): ToolDefinition[] {
         const { id, ...patch } = value;
         const updated = await store.updateItem(ctx.userId, id, patch);
         if (!updated) throw new ToolError('NOT_FOUND', '找不到這件記事。');
-        if ('due_date' in patch || 'due_time' in patch || 'importance' in patch || patch.status === 'open') {
-          await store.replaceReminders(ctx.userId, id, updated.status === 'open' ? schedule(updated, ctx.now()) : []);
+        // Done or cancelled items lose their pending reminders, so nothing fires afterwards.
+        if (patch.status === 'done' || patch.status === 'cancelled') await store.replaceReminders(ctx.userId, id, []);
+        else if ('due_date' in patch || 'due_time' in patch || 'importance' in patch || patch.status === 'open') {
+          await store.replaceReminders(ctx.userId, id, updated.status === 'open' ? await schedule(store, updated, ctx.now()) : []);
         }
         return { data: { item: agendaView(updated, taipeiDate(ctx.now())) }, recordId: id };
       }

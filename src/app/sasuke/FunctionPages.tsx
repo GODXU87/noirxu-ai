@@ -103,7 +103,7 @@ export function MailView({ connected }: { connected: Record<string, boolean> }) 
 }
 
 interface InboxRow { key: string; title: string; body: string; created_at: string; read: boolean; status: string }
-const STATUS: Record<string, string> = { provider_accepted: '已推播', retry_pending: '待重試', failed: '推播失敗', expired: '未推播', pending: '等待中', sending: '發送中' };
+const STATUS: Record<string, string> = { provider_accepted: '已推播', grouped: '已合併通知', retry_pending: '待重試', failed: '推播失敗', expired: '未推播', pending: '等待中', sending: '發送中' };
 
 export function LifeView({ water: waterEnabled }: { water: boolean }) {
   const [water, setWater] = useState<any>(null);

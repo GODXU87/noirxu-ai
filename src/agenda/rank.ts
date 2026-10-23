@@ -66,23 +66,32 @@ export function taipeiInstant(date: string, time: string): Date {
  * Default reminders: the evening before (20:00), the morning of (08:30), and one hour
  * before a timed item. Reminders already in the past are dropped.
  */
-export function reminderSchedule(item: Pick<AgendaItem, 'due_date' | 'due_time' | 'importance'>, now: Date): Array<{ at: Date; label: string }> {
+/**
+ * Extra advance notices for an agenda item (not for explicit reminders, which fire once at
+ * the time the user asked). Each kind can be switched off; there is no blanket "3 days
+ * before" for important items any more — that sent many notices at once.
+ */
+export interface ReminderPrefs {
+  /** 20:00 the evening before. */
+  day_before: boolean;
+  /** 08:30 on the day, for items without a time (timed items get the lead time instead). */
+  morning_of: boolean;
+  /** Minutes before a timed item; null = off. */
+  lead_minutes: number | null;
+}
+export const DEFAULT_REMINDER_PREFS: ReminderPrefs = { day_before: true, morning_of: true, lead_minutes: 60 };
+
+export function reminderSchedule(item: Pick<AgendaItem, 'due_date' | 'due_time' | 'importance'>, now: Date, prefs: ReminderPrefs = DEFAULT_REMINDER_PREFS): Array<{ at: Date; label: string }> {
   if (!item.due_date) return [];
   const [y, m, d] = item.due_date.split('-').map(Number);
   const prev = new Date(Date.UTC(y, m - 1, d - 1));
   const prevDate = `${prev.getUTCFullYear()}-${String(prev.getUTCMonth() + 1).padStart(2, '0')}-${String(prev.getUTCDate()).padStart(2, '0')}`;
-  const out: Array<{ at: Date; label: string }> = [
-    { at: taipeiInstant(prevDate, '20:00'), label: '明天' },
-    { at: taipeiInstant(item.due_date, '08:30'), label: '今天' }
-  ];
-  if (item.importance === 3) {
-    const threeDays = new Date(Date.UTC(y, m - 1, d - 3));
-    const date = `${threeDays.getUTCFullYear()}-${String(threeDays.getUTCMonth() + 1).padStart(2, '0')}-${String(threeDays.getUTCDate()).padStart(2, '0')}`;
-    out.unshift({ at: taipeiInstant(date, '20:00'), label: '3 天後' });
-  }
+  const out: Array<{ at: Date; label: string }> = [];
+  if (prefs.day_before) out.push({ at: taipeiInstant(prevDate, '20:00'), label: '明天' });
   if (item.due_time) {
-    const due = taipeiInstant(item.due_date, item.due_time);
-    out.push({ at: new Date(due.getTime() - 60 * 60_000), label: '1 小時後' });
+    if (prefs.lead_minutes) out.push({ at: new Date(taipeiInstant(item.due_date, item.due_time).getTime() - prefs.lead_minutes * 60_000), label: prefs.lead_minutes >= 60 && prefs.lead_minutes % 60 === 0 ? `${prefs.lead_minutes / 60} 小時後` : `${prefs.lead_minutes} 分鐘後` });
+  } else if (prefs.morning_of) {
+    out.push({ at: taipeiInstant(item.due_date, '08:30'), label: '今天' });
   }
   return out.filter(r => r.at.getTime() > now.getTime()).sort((a, b) => a.at.getTime() - b.at.getTime());
 }

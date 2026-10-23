@@ -20,7 +20,7 @@ const MODES: Array<[Mode, string, string]> = [
   ['quality', '品質優先', '本地能答的仍不呼叫 AI；需要 AI 時一律用完整模式與較長的回覆上限。']
 ];
 const FEATURE: Record<string, string> = { chat_L2: '對話（輕量）', chat_L3: '對話（完整）' };
-const INTENT: Record<string, string> = { greeting: '問候', identity: '介紹', datetime: '日期時間', calc: '計算', water_status: '飲水查詢', agenda: '待辦查詢', ledger_month: '月支出查詢', memory_recall: '記憶查詢' };
+const INTENT: Record<string, string> = { greeting: '問候', identity: '介紹', datetime: '日期時間', calc: '計算', water_status: '飲水查詢', agenda: '待辦查詢', ledger_month: '月支出查詢', memory_recall: '記憶查詢', reminder_create: '建立提醒' };
 
 const usd = (n: number) => `US$${n < 1 ? n.toFixed(4) : n.toFixed(2)}`;
 const num = (n: number) => n.toLocaleString('en-US');

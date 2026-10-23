@@ -182,8 +182,10 @@ export function ToolData({ tool, data }: { tool: string; data: any }): ReactNode
     case 'agenda.items.create':
       return (
         <div className="view">
-          <AgendaList items={[data.item]} />
-          {data.reminders?.length ? <p className="hint">會提醒：{data.reminders.map((r: any) => `${new Date(r.at).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}（${r.label}）`).join('、')}</p> : <p className="hint">沒有日期，不會自動提醒。</p>}
+          <AgendaList items={[data.item]} onChanged={() => window.dispatchEvent(new Event('noirxu-reminders-changed'))} />
+          {data.reminders?.length
+            ? <p className="hint">{data.kind === 'reminder' ? '已排程提醒' : '會提醒'}：{data.reminders.map((r: any) => `${r.local ?? new Date(r.at).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}${data.kind === 'reminder' ? '' : `（${r.label}）`}`).join('、')}。點一下事項可以修改時間或刪除。</p>
+            : <p className="hint">{data.item?.due_date ? '提醒時間都已經過了，沒有排上提醒。' : '這是記事，沒有日期，不會提醒。'}</p>}
         </div>
       );
     case 'agenda.items.update':

@@ -6,7 +6,7 @@ import { Icon } from '../components/Icon';
 
 interface Entry { key: string; kind: string; title: string; body: string; url?: string; created_at: string; read: boolean; status: string }
 
-const STATUS: Record<string, string> = { provider_accepted: '已推播', retry_pending: '待重試', failed: '推播失敗', expired: '未推播', pending: '等待中', sending: '發送中', claimed: '發送中' };
+const STATUS: Record<string, string> = { provider_accepted: '已推播', grouped: '已合併通知', retry_pending: '待重試', failed: '推播失敗', expired: '未推播', pending: '等待中', sending: '發送中', claimed: '發送中' };
 
 function when(iso: string) {
   return new Intl.DateTimeFormat('zh-TW', { timeZone: 'Asia/Taipei', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso));
@@ -32,7 +32,8 @@ export function Inbox() {
     const close = (e: MouseEvent) => { if (box.current && !box.current.contains(e.target as Node)) setOpen(false); };
     document.addEventListener('visibilitychange', onVisible);
     document.addEventListener('click', close);
-    return () => { document.removeEventListener('visibilitychange', onVisible); document.removeEventListener('click', close); };
+    window.addEventListener('noirxu-inbox-changed', load);
+    return () => { document.removeEventListener('visibilitychange', onVisible); document.removeEventListener('click', close); window.removeEventListener('noirxu-inbox-changed', load); };
   }, [load]);
 
   if (!items) return null;

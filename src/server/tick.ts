@@ -1,5 +1,6 @@
 import 'server-only';
-import { buildBriefing, reminderMessage } from '@/agenda/briefing';
+import { createHash } from 'node:crypto';
+import { buildBriefing, digestMessage, reminderMessage } from '@/agenda/briefing';
 import { taipeiDate } from '@/lib/dates';
 import { dueWaterSlot, waterReminder } from '@/health/water';
 import type { PushMessage } from '@/push/service';
@@ -55,6 +56,69 @@ export async function lastTick(hub: Hub): Promise<TickHealth | null> {
   return sealed ? JSON.parse(hub.vault.open(sealed, TICK_KEY)) as TickHealth : null;
 }
 
+export const LATE_PUSH_MS = 30 * 60_000;
+export const REMINDER_EXPIRE_MS = 12 * 60 * 60_000;
+export const MAX_PUSHES_PER_RUN = 3;
+
+/**
+ * Due reminders → as few notifications as possible, nothing lost:
+ * - on time (≤ 30 min late): one notification per task; several reminders of the same task
+ *   that are due together become one combined notification; more than three notifications in
+ *   one run collapse into a single summary;
+ * - 30 min – 12 h late (scheduler delay, app reopened): one "missed" summary, not a burst;
+ * - over 12 h late: kept in the in-app inbox only.
+ * Every reminder keeps its own record and inbox entry; a reminder leaves the due list only
+ * when its notification is finished (accepted, failed after retries, or expired).
+ */
+async function deliverReminders(hub: Hub, due: Awaited<ReturnType<Hub['agenda']['dueReminders']>>, now: Date, today: string, onPushed: (n: number) => void) {
+  let delivered = 0;
+  const lateness = (d: (typeof due)[number]) => now.getTime() - Date.parse(d.remind_at);
+  const expiry = (d: (typeof due)[number]) => new Date(Date.parse(d.remind_at) + REMINDER_EXPIRE_MS);
+  const finished = (status: string) => status === 'provider_accepted' || status === 'failed' || status === 'expired';
+  const accepted = (record: { status: string; devices?: Array<{ outcome: string }> }, before: string | undefined) => {
+    if (record.status === 'provider_accepted' && before !== 'provider_accepted') onPushed(record.devices?.filter(d => d.outcome === 'accepted').length ?? 0);
+  };
+
+  for (const d of due.filter(d => lateness(d) > REMINDER_EXPIRE_MS)) {
+    await hub.delivery.deliver({ key: `reminder:${d.id}`, kind: 'reminder', userId: d.user_id, message: reminderMessage(d.item, d.label, today), expiresAt: expiry(d), now });
+    await hub.agenda.markReminderSent(d.id, now);
+  }
+
+  const onTime = due.filter(d => lateness(d) <= LATE_PUSH_MS);
+  const late = due.filter(d => lateness(d) > LATE_PUSH_MS && lateness(d) <= REMINDER_EXPIRE_MS);
+  const byTask = new Map<string, typeof due>();
+  for (const d of onTime) byTask.set(`${d.user_id}|${d.item.title.trim()}`, [...(byTask.get(`${d.user_id}|${d.item.title.trim()}`) ?? []), d]);
+  let batches: Array<{ members: typeof due; missed: boolean }> = [...byTask.values()].map(members => ({ members, missed: false }));
+  if (batches.length > MAX_PUSHES_PER_RUN) batches = [{ members: onTime, missed: false }];
+  if (late.length) batches.push({ members: late, missed: true });
+
+  for (const { members, missed } of batches) {
+    const userId = members[0].user_id;
+    if (members.length === 1 && !missed) {
+      const d = members[0];
+      const key = `reminder:${d.id}`;
+      const before = (await hub.delivery.get(key))?.status;
+      const record = await hub.delivery.deliver({ key, kind: 'reminder', userId, message: reminderMessage(d.item, d.label, today), expiresAt: expiry(d), now });
+      accepted(record, before);
+      if (record.status === 'provider_accepted') delivered += 1;
+      if (record.status === 'provider_accepted') await hub.agenda.claimNotification(key, userId, 'reminder').catch(() => false);
+      if (finished(record.status)) await hub.agenda.markReminderSent(d.id, now);
+      continue;
+    }
+    const ids = members.map(m => m.id).sort();
+    const digestKey = `digest:${createHash('sha256').update(ids.join(',')).digest('hex').slice(0, 16)}`;
+    const expiresAt = new Date(Math.min(...members.map(m => expiry(m).getTime())));
+    for (const m of members) await hub.delivery.recordGrouped({ key: `reminder:${m.id}`, kind: 'reminder', userId, message: reminderMessage(m.item, m.label, today), digestKey, expiresAt: expiry(m), now });
+    const before = (await hub.delivery.get(digestKey))?.status;
+    const record = await hub.delivery.deliver({ key: digestKey, kind: 'digest', userId, message: digestMessage(members.map(m => m.item), today, { missed }), expiresAt, now, inbox: false });
+    accepted(record, before);
+    if (record.status === 'provider_accepted') delivered += members.length;
+    if (record.status === 'provider_accepted') for (const m of members) await hub.agenda.claimNotification(`reminder:${m.id}`, userId, 'reminder').catch(() => false);
+    if (finished(record.status)) for (const m of members) await hub.agenda.markReminderSent(m.id, now);
+  }
+  return delivered;
+}
+
 /**
  * Runs from the scheduler (and as a catch-up when the app is opened). Every notification goes
  * through the delivery service: it is filed in the inbox, sent when due, retried with backoff
@@ -74,12 +138,8 @@ export async function runTick(hub: Hub, now = new Date()): Promise<TickResult> {
     return record;
   };
 
-  for (const due of await hub.agenda.dueReminders(now)) {
-    const record = await count(`reminder:${due.id}`, 'reminder', due.user_id, reminderMessage(due.item, due.label, today), new Date(Date.parse(due.remind_at) + 12 * 60 * 60_000));
-    if (record.status === 'provider_accepted') reminders += 1;
-    // Only finished deliveries leave the due list; failed attempts are retried next run.
-    if (record.status === 'provider_accepted' || record.status === 'failed' || record.status === 'expired') await hub.agenda.markReminderSent(due.id, now);
-  }
+  const result = await deliverReminders(hub, await hub.agenda.dueReminders(now), now, today, (n: number) => { pushed += n; });
+  reminders += result;
 
   let briefing = false;
   const hour = taipeiHour(now);

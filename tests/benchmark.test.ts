@@ -23,7 +23,7 @@ const TASKS: Array<{ text: string; expect?: string; needsTool?: string }> = [
   { text: '幫我看最近一筆餐飲花費正不正常', needsTool: 'ledger__analytics__get' },
   { text: '比較這個月和上個月的支出差異', needsTool: 'ledger__analytics__get' },
   { text: '幫我深入研究 2330 的風險與失效條件', needsTool: 'radar__stock__analyze' },
-  { text: '明天下午三點提醒我開會', needsTool: 'agenda__items__create' },
+  { text: '明天下午三點提醒我開會', expect: '提醒你開會' },
   { text: '整理一下我這週的行程，指出時間衝突', needsTool: 'agenda__items__list' }
 ];
 
@@ -99,8 +99,8 @@ run with the provider's prices** (not run: needs approval).
 ${line('Baseline', before)}
 ${line('Optimized', after)}
 
-Local answers (7 tasks): ${localRows.length} / ${localRows.length} correct against the source data, 0 model calls.
-Model tasks (5): every one still reached the model with the tool it needs.
+Local answers (8 tasks): ${localRows.length} / ${localRows.length} correct against the source data, 0 model calls.
+Model tasks (4): every one still reached the model with the tool it needs.
 
 ## Per task
 
@@ -110,7 +110,7 @@ ${perTask}
 
 Model-path savings come from: recent turns only (6 for light, 12 for full), tools limited to the
 task's domain for light tasks, and lower output caps. Deep research (2330) keeps every tool.
-Baseline correctness of the 7 local tasks depends on the model and is not measurable offline.
+Baseline correctness of the 8 local tasks depends on the model and is not measurable offline.
 `);
     }
   });
