@@ -1,24 +1,19 @@
 import type { Metadata, Viewport } from 'next';
 import '@fontsource-variable/inter';
-import '@fontsource/noto-serif-tc/300.css';
-import '@fontsource/noto-serif-tc/500.css';
-import '@fontsource/noto-sans-tc/300.css';
-import '@fontsource/noto-sans-tc/400.css';
+import '@fontsource/jetbrains-mono/400.css';
+import '@fontsource/jetbrains-mono/500.css';
 import './globals.css';
 import { ServiceWorker } from './components/ServiceWorker';
 import { uiMode } from '@/server/ui-mode';
 
-export async function generateMetadata(): Promise<Metadata> {
-  const ui = await uiMode();
-  return {
-    title: 'NOIRXU AI',
-    description: '在一個對話中查詢與操作 NOIRXU Ledger、Trading Journal、RADAR 與 Gmail。',
-    appleWebApp: { capable: true, title: 'NOIRXU AI', statusBarStyle: ui === 'sasuke' ? 'default' : 'black-translucent' }
-  };
-}
+export const metadata: Metadata = {
+  title: 'NOIRXU AI',
+  description: '在一個對話中查詢與操作 NOIRXU Ledger、Trading Journal、RADAR 與 Gmail。',
+  appleWebApp: { capable: true, title: 'NOIRXU AI', statusBarStyle: 'black-translucent' }
+};
 export async function generateViewport(): Promise<Viewport> {
   const ui = await uiMode();
-  return { width: 'device-width', initialScale: 1, viewportFit: 'cover', themeColor: ui === 'sasuke' ? '#f6f4ef' : '#0b0d0d' };
+  return { width: 'device-width', initialScale: 1, viewportFit: 'cover', themeColor: ui === 'sasuke' ? '#04060a' : '#0b0d0d' };
 }
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
