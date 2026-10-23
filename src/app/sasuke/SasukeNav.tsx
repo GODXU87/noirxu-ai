@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Page } from '../TopBar';
 import { Icon, type IconName } from '../components/Icon';
 import { callTool } from '../components/shared';
+import { Clock } from './Core';
 import { activeId, deleteConversation, legacyImports, listConversations, onConversationsChanged, renameConversation, SOFT_LIMIT, type ConversationMeta, type SaveResult } from './conversations';
 
 function warnIfFailed(result: SaveResult) {
@@ -24,18 +25,7 @@ export function SasukeMark({ size = 28 }: { size?: number }) {
     <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" className="sasuke-mark">
       <circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" strokeWidth="1.2" opacity=".55" />
       <circle cx="16" cy="16" r="7.5" fill="none" stroke="currentColor" strokeWidth="1.2" />
-      <rect x="17.4" y="11.4" width="3.6" height="3.6" fill="var(--seal, var(--accent))" />
-    </svg>
-  );
-}
-
-/** Vermilion seal 「執」 — the butler's mark. One per screen at most. */
-export function SasukeSeal({ size = 40 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 40 40" aria-hidden="true" className="sasuke-seal">
-      <rect x="1" y="1" width="38" height="38" rx="4" fill="var(--seal)" transform="rotate(-3 20 20)" />
-      <rect x="5" y="5" width="30" height="30" rx="2.5" fill="none" stroke="#f3e4e0" strokeWidth="1.2" transform="rotate(-3 20 20)" />
-      <text x="20" y="27.5" textAnchor="middle" fontSize="21" fill="#f8edea" fontFamily="var(--serif)" fontWeight="500" transform="rotate(-3 20 20)">執</text>
+      <circle cx="16" cy="16" r="3" fill="var(--accent)" />
     </svg>
   );
 }
@@ -175,7 +165,7 @@ export function SasukeNav({ current, water }: { current: Page; water: boolean })
   const panel = (
     <>
       <div className="sk-brand">
-        <a href="/" aria-label="SASUKE 首頁"><SasukeMark size={26} /><span className="sk-word"><b>SASUKE</b><small>NOIRXU 私人執事</small></span></a>
+        <a href="/" aria-label="SASUKE 首頁"><SasukeMark size={26} /><span className="sk-word"><b>SASUKE</b><small>NOIRXU · PERSONAL AI</small></span></a>
         <button type="button" className="sk-icon sk-collapse" onClick={toggle} aria-label={collapsed ? '展開側邊欄' : '收合側邊欄'}><Icon name="arrow" size={16} /></button>
       </div>
       <a href="/?c=new" className="sk-new" onClick={() => setDrawer(false)}><Icon name="plus" size={16} /><span>新對話</span></a>
@@ -200,7 +190,7 @@ export function SasukeNav({ current, water }: { current: Page; water: boolean })
         <button type="button" className="sk-icon" onClick={() => setDrawer(true)} aria-label="開啟選單"><Icon name="menu" size={20} /></button>
         <a href="/" className="sk-top-title"><SasukeMark size={22} /><b>SASUKE</b></a>
       </header>
-      {water && <div className="sk-water-slot"><WaterChip /></div>}
+      <div className="sk-water-slot"><Clock />{water && <WaterChip />}</div>
       {drawer && <div className="sk-scrim" onClick={() => setDrawer(false)} />}
       <aside className={`sk-drawer ${drawer ? 'open' : ''}`} aria-hidden={!drawer} aria-label="SASUKE 選單">
         <button type="button" className="sk-icon sk-drawer-close" onClick={() => setDrawer(false)} aria-label="關閉選單"><Icon name="close" size={18} /></button>

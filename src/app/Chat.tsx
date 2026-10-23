@@ -7,7 +7,8 @@ import { money } from '@/lib/tool-labels';
 import { BrandMark, Icon, type IconName } from './components/Icon';
 import { AssistantCard, WaterMeter } from './components/assistant';
 import { importLegacySession, loadConversation, newConversationId, resumeActive, saveConversation, touchActive } from './sasuke/conversations';
-import { SasukeMark, SasukeSeal } from './sasuke/SasukeNav';
+import { SasukeMark } from './sasuke/SasukeNav';
+import { Core } from './sasuke/Core';
 import { callTool, ProposalCard, RichText, ToolCard, type InvokeResult } from './components/shared';
 
 type Item =
@@ -254,6 +255,22 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
     }
   }
 
+  async function logWater(ml: number) {
+    const result = await callTool('health.water.log', { ml });
+    if (result.status === 'ok') { setWater(result.data); window.dispatchEvent(new CustomEvent('noirxu-water', { detail: result.data })); }
+  }
+
+  // "/" or Cmd/Ctrl+K anywhere jumps to the input.
+  useEffect(() => {
+    if (!sasuke) return;
+    const onKey = (e: KeyboardEvent) => {
+      const typing = e.target instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
+      if ((e.key === 'k' && (e.metaKey || e.ctrlKey)) || (e.key === '/' && !typing)) { e.preventDefault(); input.current?.focus(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [sasuke]);
+
   function pick(value: string, run: boolean) {
     if (run) { void send(value); return; }
     setText(value);
@@ -348,37 +365,49 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
         {storageError && <p className="banner storage-warning" role="alert">{storageError}</p>}
         {empty && sasuke && (
           <section className="sk-home">
-            <header className="sk-mast">
-              <span>NOIRXU</span>
-              <span>{new Intl.DateTimeFormat('zh-TW', { timeZone: 'Asia/Taipei', month: 'long', day: 'numeric', weekday: 'long' }).format(new Date())}</span>
-            </header>
-            <div className="sk-hello">
-              <h1>{greeting()}，先生。</h1>
-              <SasukeSeal size={44} />
-            </div>
-            <p className="sk-lead">今天要我處理什麼？</p>
-            {(brief || water) && (
-              <dl className="sk-stats">
-                {brief && <div><dt>今日要務</dt><dd>{brief.today}<small>件</small>{brief.overdue > 0 && <em>{brief.overdue} 件過期</em>}</dd></div>}
-                {brief?.expense && <div><dt>本月支出</dt><dd className="num">{brief.expense}</dd></div>}
-                {water && <div><dt>今日飲水</dt><dd>{Number(water.total_ml).toLocaleString('en-US')}<small>/ {Number(water.goal_ml).toLocaleString('en-US')} ml</small></dd></div>}
-              </dl>
-            )}
+            <div className="hud-core"><Core size={168} state={busy ? 'thinking' : 'idle'} /></div>
+            <p className="hud-status"><span className="hud-dot" />SASUKE ONLINE<span className="hud-sep">//</span>{SYSTEMS.filter(([id]) => connected[id]).length} / {SYSTEMS.length} LINKS</p>
+            <h1 className="hud-title">{greeting()}，先生。</h1>
+            <p className="hud-lead">今天要我處理什麼？</p>
             {composer}
-            <nav className="sk-chips" aria-label="常用">
-              {CHIPS.filter(c => !c.feature || features[c.feature]).slice(0, 4).map(c => <button key={c.label} type="button" onClick={() => pick(c.text, c.run)}>{c.label}</button>)}
+            <nav className="hud-cmds" aria-label="常用指令">
+              {CHIPS.filter(c => !c.feature || features[c.feature]).slice(0, 4).map(c => <button key={c.label} type="button" onClick={() => pick(c.text, c.run)}><Icon name={c.icon} size={14} />{c.label}</button>)}
             </nav>
-            {brief && brief.top.length > 0 && (
-              <section className="sk-agenda">
-                <h2>本日要務</h2>
-                <ol>
-                  {brief.top.map((t, i) => <li key={t.id} className={`prio-${t.priority}`}><span className="sk-no">{String(i + 1).padStart(2, '0')}</span><b>{t.title}</b><small>{t.due_label}</small></li>)}
-                </ol>
-              </section>
-            )}
-            {SYSTEMS.some(([id]) => !connected[id]) && (
-              <a className="sk-missing" href="/connections">{SYSTEMS.filter(([id]) => !connected[id]).map(([, label]) => label).join('、')} 尚未連接 →</a>
-            )}
+            <div className="hud-grid">
+              {brief && (
+                <button type="button" className="hud-tile" onClick={() => void send('最近有什麼事？依重要程度排給我。')}>
+                  <span className="hud-label">TODAY · 今日要務</span>
+                  <span className="hud-value">{brief.today}<small>件{brief.overdue > 0 ? ` · ${brief.overdue} 件過期` : ''}</small></span>
+                  {brief.top.length > 0
+                    ? <ul className="hud-list">{brief.top.slice(0, 3).map(t => <li key={t.id} className={`prio-${t.priority}`}><b>{t.title}</b><small>{t.due_label}</small></li>)}</ul>
+                    : <span className="hud-note">沒有待辦事項</span>}
+                </button>
+              )}
+              {brief?.expense && (
+                <button type="button" className="hud-tile" onClick={() => void send('這個月花了多少錢？哪一類最多？')}>
+                  <span className="hud-label">LEDGER · 本月支出</span>
+                  <span className="hud-value num">{brief.expense}</span>
+                  <span className="hud-note">點一下看分類分析 →</span>
+                </button>
+              )}
+              {water && (
+                <div className="hud-tile">
+                  <span className="hud-label">HYDRATION · 今日飲水</span>
+                  <div className="hud-water">
+                    <svg viewBox="0 0 44 44" width="56" height="56" aria-hidden="true"><circle cx="22" cy="22" r="19" className="ring-bg" /><circle cx="22" cy="22" r="19" className="ring-fg" strokeDasharray={`${Math.min(100, water.percent) * 1.194} 200`} /></svg>
+                    <span className="hud-value">{Number(water.total_ml).toLocaleString('en-US')}<small>/ {Number(water.goal_ml).toLocaleString('en-US')} ml</small></span>
+                  </div>
+                  <div className="hud-actions">
+                    <button type="button" onClick={() => void logWater(250)}>+250</button>
+                    <button type="button" onClick={() => void logWater(500)}>+500</button>
+                  </div>
+                </div>
+              )}
+              <a className="hud-tile" href="/connections">
+                <span className="hud-label">SYSTEMS · 系統連線</span>
+                <ul className="hud-links">{SYSTEMS.map(([id, label]) => <li key={id} className={connected[id] ? 'on' : ''}><i />{label}<small>{connected[id] ? 'ONLINE' : 'OFFLINE'}</small></li>)}</ul>
+              </a>
+            </div>
           </section>
         )}
         {empty && !sasuke && (
@@ -426,9 +455,9 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
         ))}
         {busy && (
           <div className="agent-turn">
-            <span className="agent-avatar thinking" aria-hidden="true">{sasuke ? <SasukeMark size={24} /> : <BrandMark size={26} />}</span>
+            <span className="agent-avatar thinking" aria-hidden="true">{sasuke ? <Core size={28} state="thinking" /> : <BrandMark size={26} />}</span>
             <div className="agent-body">{sasuke
-              ? <p className="sk-working" aria-live="polite"><i aria-hidden="true" />{busy === '思考中' ? '正在思考' : busy}</p>
+              ? <p className="sk-working" aria-live="polite"><span>{busy === '思考中' ? 'PROCESSING' : 'WORKING'}</span>{busy === '思考中' ? '正在思考' : busy}<i aria-hidden="true" /></p>
               : <p className="working" aria-live="polite">{busy}<span className="typing"><span /><span /><span /></span></p>}</div>
           </div>
         )}
