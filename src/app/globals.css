@@ -640,3 +640,26 @@ button.link { background: none; border: 0; padding: 0; color: var(--accent); fon
 @media (prefers-reduced-motion: reduce) {
   .core-ring, .core-glow, .hud-dot, .sk-working i::after, .ui-sasuke .feed > .msg, .ui-sasuke .feed > .agent-turn { animation: none; }
 }
+
+/* Notification diagnostics (both interfaces) */
+.notify-diag { display: grid; gap: 16px; }
+.diag-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.diag-head b { font-size: 15px; }
+.diag-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1px; margin: 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--line); }
+.diag-grid > div { padding: 10px 12px; background: var(--surface); min-width: 0; }
+.diag-grid dt { font-size: 11.5px; color: var(--muted); }
+.diag-grid dd { margin: 3px 0 0; font-size: 13.5px; overflow-wrap: anywhere; }
+.tone-ok { color: var(--up); }
+.tone-warn { color: var(--warn); }
+.tone-error { color: var(--danger); }
+.tone-muted { color: var(--text-soft); }
+.diag-actions { flex-wrap: wrap; gap: 8px; }
+.diag-feedback { padding: 10px 12px; border-radius: 10px; border: 1px solid currentColor; font-size: 13.5px; background: transparent; }
+.diag-feedback p { color: var(--text); }
+.diag-feedback ul { margin: 6px 0 0; padding-left: 18px; color: var(--text-soft); }
+.diag-devices ul, .diag-history ul { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
+.diag-devices li, .diag-history li { display: grid; gap: 3px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.diag-devices span, .diag-history small { font-size: 12.5px; color: var(--muted); }
+.diag-history li > div { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.diag-guide summary { cursor: pointer; font-size: 13.5px; color: var(--text-soft); }
+.diag-guide ol { margin: 10px 0; padding-left: 20px; display: grid; gap: 6px; font-size: 13.5px; color: var(--text-soft); }
