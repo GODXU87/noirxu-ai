@@ -49,7 +49,8 @@ export async function eveningBriefing(hub: Hub, userId: string, now: Date) {
     report.overdue.length ? `逾期 ${report.overdue.length} 件` : null,
     report.tomorrow.length ? `明天：${report.tomorrow.slice(0, 3).map(i => i.title).join('、')}` : '明天沒有排定的事'
   ].filter(Boolean);
-  return { title: '晚報', body: lines.join('\n') };
+  const urgent = (i: { priority: string }) => i.priority === 'urgent' || i.priority === 'high';
+  return { title: '晚報', body: lines.join('\n'), important: report.overdue.length > 0 || report.tomorrow.some(urgent) || report.still_open_today.some(urgent) };
 }
 
 /** Taipei wall-clock HH:MM on `date` as an instant. */

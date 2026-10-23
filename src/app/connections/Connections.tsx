@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ConnectionStatus } from '@/server/connections';
 import { toolLabel } from '@/lib/tool-labels';
 import { Notifications } from '../components/Notifications';
@@ -120,7 +120,7 @@ function Connection({ status, onChange, redirectUri }: { status: ConnectionStatu
   );
 }
 
-export function Connections({ initial, gmailResult, redirectUri }: { initial: ConnectionStatus[]; gmailResult: string | null; redirectUri: string | null }) {
+export function Connections({ initial, gmailResult, redirectUri, garmin = false }: { initial: ConnectionStatus[]; gmailResult: string | null; redirectUri: string | null; garmin?: boolean }) {
   const [statuses, setStatuses] = useState(initial);
   async function refresh() {
     const response = await fetch('/api/connections');
@@ -132,7 +132,7 @@ export function Connections({ initial, gmailResult, redirectUri }: { initial: Co
       {gmailResult && GMAIL_MESSAGES[gmailResult] && <p className="banner">{GMAIL_MESSAGES[gmailResult]}</p>}
       <div>
         <p className="section-label">資料來源</p>
-        <div className="conn-list cards two">{statuses.map(status => <Connection key={status.id} status={status} onChange={refresh} redirectUri={redirectUri} />)}</div>
+        <div className="conn-list cards two">{statuses.map(status => <Connection key={status.id} status={status} onChange={refresh} redirectUri={redirectUri} />)}{garmin && <GarminCard />}</div>
       </div>
       <div>
         <p className="section-label">AI 成本保護</p>
@@ -141,5 +141,51 @@ export function Connections({ initial, gmailResult, redirectUri }: { initial: Co
         <section className="card"><Notifications /></section>
       </div>
     </main>
+  );
+}
+
+/** Garmin Connect Personal API key (feature 'garmin'). The key is sent once, sealed on the server and never shown again. */
+function GarminCard() {
+  const [status, setStatus] = useState<any>(null);
+  const [key, setKey] = useState('');
+  const [expires, setExpires] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  useEffect(() => { void fetch('/api/garmin').then(r => r.json()).then(b => setStatus(b.ok ? b.garmin : null)); }, []);
+  async function call(method: 'POST' | 'DELETE', body?: unknown) {
+    setBusy(true); setMessage('');
+    const res = await fetch('/api/garmin', { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }).then(r => r.json()).catch(() => null);
+    setBusy(false);
+    if (!res?.ok) { setMessage(res?.error?.message ?? '操作失敗'); return; }
+    setStatus(res.garmin); setKey('');
+    if (res.check) setMessage(res.check.message);
+  }
+  return (
+    <section className="card conn">
+      <div className="conn-head"><b>Garmin Connect</b><span className={`state-chip ${status?.connected ? (status.key_expired || status.last_error ? 'error' : 'ok') : ''}`}>{status?.connected ? (status.key_expired ? '金鑰已過期' : status.last_error ? '需要處理' : '已設定') : '未連接'}</span></div>
+      <p className="hint">唯讀，只讀你自己的 Garmin 資料。使用 Garmin 官方 Personal API，不需要也不會詢問 Garmin 帳號密碼。運動與健康指標僅供參考，不是醫療診斷。</p>
+      {status?.connected ? (
+        <>
+          <p className="hint">金鑰 {status.key_hint}{status.key_expires_on ? ` · 到期 ${status.key_expires_on}` : ''} · 最後檢查 {status.last_check_at ? new Date(status.last_check_at).toLocaleString('zh-TW') : '—'}{status.last_check_status ? `（HTTP ${status.last_check_status}）` : ''}</p>
+          <p className="hint">資料同步：等 Garmin Swagger 文件核對完欄位後開放（目前不讀取任何健康資料）。</p>
+          <div className="row" style={{ gap: 8 }}>
+            <button type="button" disabled={busy} onClick={() => void call('POST', { action: 'verify' })}>重新檢查金鑰</button>
+            <button type="button" className="ghost" disabled={busy} onClick={() => { if (window.confirm('中斷 Garmin 連接並刪除保存的金鑰？')) void call('DELETE'); }}>中斷連接</button>
+          </div>
+        </>
+      ) : (
+        <form className="stack" onSubmit={e => { e.preventDefault(); void call('POST', { api_key: key, key_expires_on: expires || null }); }}>
+          <ol className="hint">
+            <li>用電腦登入 Garmin Connect 網頁 → 設定 → Personal API Key（connect.garmin.com/app/settings/personalApiToken）。</li>
+            <li>按 Create Key，閱讀並接受條款，選擇到期時間，再按 Create。</li>
+            <li>金鑰只會顯示一次：複製後貼到下面（不要貼在聊天裡）。</li>
+          </ol>
+          <input type="password" autoComplete="off" value={key} onChange={e => setKey(e.target.value)} placeholder="貼上 Garmin Personal API Key" aria-label="Garmin Personal API Key" />
+          <label className="hint">金鑰到期日（選填）<input type="date" value={expires} onChange={e => setExpires(e.target.value)} /></label>
+          <button className="primary" disabled={busy || key.trim().length < 16}>儲存並檢查</button>
+        </form>
+      )}
+      {message && <p className="hint">{message}</p>}
+    </section>
   );
 }

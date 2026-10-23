@@ -23,7 +23,7 @@ export default async function ConnectionsPage({ searchParams }: { searchParams: 
       <Frame current="connections" />
       <PageHeader eyebrow="設定" title="連線" />
       {hub.storageMode === 'memory' && <p className="banner">開發模式：連線只存在伺服器記憶體，重新啟動後需重新連接。</p>}
-      <Connections initial={await connectionStatuses(hub, userId)} gmailResult={gmail ?? null} redirectUri={hub.config.google.redirectUri} />
+      <Connections initial={await connectionStatuses(hub, userId)} gmailResult={gmail ?? null} redirectUri={hub.config.google.redirectUri} garmin={hub.features.garmin} />
     </div>
   );
 }

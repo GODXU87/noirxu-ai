@@ -11,14 +11,22 @@ self.addEventListener('push', event => {
     tag: data.tag || undefined,
     icon: '/apple-icon.png',
     badge: '/apple-icon.png',
-    data: { url: data.url || '/' }
-  }));
+    data: { url: data.url || '/', key: data.key }
+  }).then(() => receipt(data.key, 'displayed')));
 });
+
+// Tells the server the notification was really shown / tapped. Best effort: a failed
+// receipt only means the app keeps saying "push service accepted" instead of "displayed".
+function receipt(key, event) {
+  if (!key) return Promise.resolve();
+  return fetch('/api/notify/receipt', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key, event }) }).catch(() => undefined);
+}
 
 self.addEventListener('notificationclick', event => {
   event.notification.close();
   const url = new URL(event.notification.data?.url || '/', self.location.origin).href;
   event.waitUntil((async () => {
+    await receipt(event.notification.data?.key, 'opened');
     const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const client of windows) {
       if ('focus' in client) { await client.navigate(url); return client.focus(); }

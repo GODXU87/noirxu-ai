@@ -36,7 +36,8 @@ export const TOOL_LABELS: Record<string, string> = {
   'tasks.create': '建立自動任務',
   'tasks.list': '自動任務',
   'tasks.update': '更新自動任務',
-  'tasks.history.get': '任務執行紀錄'
+  'tasks.history.get': '任務執行紀錄',
+  'tasks.halt': '緊急停止自動任務'
 };
 
 export const SYSTEM_OF: Record<string, string> = { assistant: '助理', health: '健康', agenda: '記事', ledger: 'Ledger', journal: 'Journal', radar: 'RADAR', gmail: 'Gmail', tasks: '任務' };

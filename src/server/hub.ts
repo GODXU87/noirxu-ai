@@ -16,6 +16,7 @@ import { RadarClient, radarTools } from '@/tools/radar/tools';
 import { MemoryAgendaStore, PgAgendaStore, type AgendaStore } from '@/agenda/store';
 import { PushService } from '@/push/service';
 import { DeliveryService } from '@/notify/delivery';
+import { ProactiveNotifier } from '@/notify/policy';
 import { CostGuard } from '@/cost/guard';
 import type { MemorySource } from '@/router/memory';
 import { agendaTools } from '@/tools/agenda/tools';
@@ -103,6 +104,7 @@ function build(): Hub {
   const credentials = new CredentialStore(backend, vault);
   const push = new PushService(agenda, vault);
   const delivery = new DeliveryService(agenda, vault, (userId, message, now) => push.send(userId, message, now));
+  const proactiveNotifier = new ProactiveNotifier(agenda, vault, delivery);
   const water = new WaterService(agenda, vault);
   const cost = new CostGuard(agenda, vault);
   const ledger = new SupabaseUserConnection('ledger', config.ledger.supabase, credentials);
@@ -118,8 +120,15 @@ function build(): Hub {
   const invoke: Executor['invoke'] = (name, input, ctx) => executor!.invoke(name, input, ctx);
   const tasks = features.tasks ? new TaskService({
     store: agenda, vault, executor: { invoke }, proposals: { getProposal: id => store.getProposal(id) },
-    notify: async ({ key, userId, message, now }) => delivery.deliver({ key, kind: 'task', userId, message, now, expiresAt: new Date(now.getTime() + 12 * 60 * 60_000) }),
-    briefing: async (which, userId, now) => (which === 'morning' ? morningBriefing(hub!, userId, now) : eveningBriefing(hub!, userId, now)),
+    notify: async ({ key, userId, message, now, proactive }) => {
+      const expiresAt = new Date(now.getTime() + 12 * 60 * 60_000);
+      return proactive ? proactiveNotifier.notify({ key, kind: 'task', userId, message, now, expiresAt, priority: 'normal' }) : delivery.deliver({ key, kind: 'task', userId, message, now, expiresAt });
+    },
+    briefing: async (which, userId, now) => {
+      if (which === 'evening') return eveningBriefing(hub!, userId, now);
+      const brief = await morningBriefing(hub!, userId, now);
+      return { ...brief, important: brief.lines.some(l => /^【(緊急|重要)】/.test(l)) };
+    },
     redeliver: async (key, now) => {
       const record = await delivery.get(key);
       if (!record) return null;

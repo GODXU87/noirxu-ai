@@ -295,6 +295,8 @@ export function ToolData({ tool, data }: { tool: string; data: any }): ReactNode
       return <TaskCard task={data.task} />;
     case 'tasks.history.get':
       return <TaskCard task={data.task} />;
+    case 'tasks.halt':
+      return <p className="hint">{data.halted ? '所有背景自動任務已停止，任務與紀錄都保留。' : '背景自動任務已恢復。'}</p>;
     case 'tasks.list':
       return <div className="view task-list">{data.tasks.map((t: any) => <TaskCard key={t.id} task={t} />)}{!data.tasks.length && <p className="hint">目前沒有自動任務。</p>}</div>;
     case 'radar.status':

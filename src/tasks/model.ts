@@ -29,14 +29,16 @@ export const conditionSchema = z.discriminatedUnion('type', [
 export type TaskCondition = z.infer<typeof conditionSchema>;
 
 export const stepSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('notify'), title: z.string().min(1).max(80), body: z.string().max(200).default('') }),
-  z.object({ type: z.literal('briefing'), which: z.enum(['morning', 'evening']) }),
+  /** include_results: the body lists what the earlier tool steps of this run found. */
+  z.object({ type: z.literal('notify'), title: z.string().min(1).max(80), body: z.string().max(200).default(''), include_results: z.boolean().default(false) }),
+  /** only_if_important: notify only when the briefing has something urgent (otherwise the run is recorded, no push). */
+  z.object({ type: z.literal('briefing'), which: z.enum(['morning', 'evening']), only_if_important: z.boolean().default(false) }),
   z.object({ type: z.literal('tool'), tool: z.string().min(3).max(80), input: z.record(z.string(), z.unknown()).default({}) })
 ]);
-export type TaskStep = z.infer<typeof stepSchema>;
+export type TaskStep = z.input<typeof stepSchema>;
 
 export interface StepResult { step: number; type: TaskStep['type']; tool?: string; status: 'ok' | 'error' | 'waiting_approval' | 'skipped'; summary: string; proposal_id?: string; delivery_key?: string; delivery_status?: string }
-export interface TaskRun { id: string; slot: string; started_at: string; finished_at?: string; status: 'completed' | 'failed' | 'waiting_approval' | 'outcome_unknown' | 'skipped' | 'not_met'; steps: StepResult[]; error?: string; late_minutes?: number }
+export interface TaskRun { id: string; slot: string; started_at: string; finished_at?: string; status: 'completed' | 'failed' | 'waiting_approval' | 'outcome_unknown' | 'skipped' | 'not_met'; steps: StepResult[]; error?: string; late_minutes?: number; tool_calls?: number; llm_tokens?: number }
 
 export interface Task {
   id: string;
@@ -69,6 +71,8 @@ export const MAX_RUNS_KEPT = 20;
 /** A recurring slot missed by more than this is skipped rather than run late. */
 export const MISSED_SLOT_MS = 6 * 60 * 60_000;
 export const LEASE_MS = 2 * 60_000;
+/** A single tool step longer than this is stopped (a Vercel request cannot run forever). */
+export const STEP_TIMEOUT_MS = 45_000;
 
 function taipeiParts(at: Date) {
   const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit', hour12: false, weekday: 'short' }).formatToParts(at).map(x => [x.type, x.value]));
