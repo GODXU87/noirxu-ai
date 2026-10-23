@@ -17,7 +17,8 @@ function aiLabel(): string | null {
 
 export const dynamic = 'force-dynamic';
 
-export default async function HomePage() {
+export default async function HomePage({ searchParams }: { searchParams: Promise<{ c?: string; t?: string }> }) {
+  const { c, t } = await searchParams;
   const userId = await currentUser();
   if (!userId) redirect('/login');
   const { connected, storageMode, problem } = await pageState(userId);
@@ -27,7 +28,7 @@ export default async function HomePage() {
       <Frame current="chat" />
       {problem && <p className="banner danger">{problem}</p>}
       {storageMode === 'memory' && <p className="banner">開發模式：資料只存在伺服器記憶體，重新啟動後會清空。</p>}
-      <Chat connected={connected} features={getFeatures()} variant={ui} ai={aiLabel()} />
+      <Chat key={`${c ?? 'home'}:${t ?? ''}`} connected={connected} features={getFeatures()} variant={ui} ai={aiLabel()} />
     </div>
   );
 }

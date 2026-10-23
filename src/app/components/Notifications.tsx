@@ -187,9 +187,9 @@ export function Notifications() {
       </dl>
 
       <div className="row diag-actions">
-        {!subscribed && device.supported && <button className="primary" disabled={Boolean(busy)} data-loading={busy === 'subscribe' || undefined} onClick={() => void run('subscribe', subscribe)}>{busy === 'subscribe' ? '開啟中…' : '開啟通知'}</button>}
+        {!subscribed && device.supported && device.permission !== 'denied' && <button className="primary" disabled={Boolean(busy)} data-loading={busy === 'subscribe' || undefined} onClick={() => void run('subscribe', subscribe)}>{busy === 'subscribe' ? '開啟中…' : '開啟通知'}</button>}
         {subscribed && <button className="primary" disabled={Boolean(busy)} data-loading={busy === 'test' || undefined} onClick={() => void run('test', test)}>{busy === 'test' ? '發送中…' : '傳送測試通知'}</button>}
-        {device.supported && <button disabled={Boolean(busy)} data-loading={busy === 'resubscribe' || undefined} onClick={() => void run('resubscribe', resubscribe)}>{busy === 'resubscribe' ? '重新訂閱中…' : '重新建立訂閱'}</button>}
+        {device.supported && device.permission !== 'denied' && <button disabled={Boolean(busy)} data-loading={busy === 'resubscribe' || undefined} onClick={() => void run('resubscribe', resubscribe)}>{busy === 'resubscribe' ? '重新訂閱中…' : '重新建立訂閱'}</button>}
         <button disabled={Boolean(busy)} data-loading={busy === 'scheduler' || undefined} onClick={() => void run('scheduler', checkScheduler)}>{busy === 'scheduler' ? '檢查中…' : '檢查排程'}</button>
         <button className="ghost" disabled={Boolean(busy)} onClick={() => setShowHistory(s => !s)}>{showHistory ? '收起通知紀錄' : '查看通知紀錄'}</button>
         {subscribed && <button className="ghost" disabled={Boolean(busy)} onClick={() => void run('disable', disable)}>取消這台裝置的通知</button>}
@@ -224,7 +224,7 @@ export function Notifications() {
         </div>
       )}
 
-      <details className="diag-guide">
+      <details className="diag-guide" open={device.permission === 'denied' || needsInstall}>
         <summary>收不到通知？排除步驟</summary>
         {apple ? (
           <ol>
