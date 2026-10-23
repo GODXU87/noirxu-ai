@@ -17,7 +17,12 @@ export type ToolErrorCode =
   | 'PROPOSAL_NOT_PENDING'
   | 'INTERNAL';
 
+// A global brand, so a ToolError is recognised even when it was created by another bundle
+// (the shared hub can be built inside a different route's bundle than the one catching).
+const BRAND = Symbol.for('noirxu-ai.ToolError');
+
 export class ToolError extends Error {
+  readonly [BRAND] = true;
   readonly code: ToolErrorCode;
   readonly details?: Record<string, unknown>;
 
@@ -29,8 +34,12 @@ export class ToolError extends Error {
   }
 }
 
+export function isToolError(error: unknown): error is ToolError {
+  return error instanceof ToolError || Boolean(error && typeof error === 'object' && (error as Record<symbol, unknown>)[BRAND] === true);
+}
+
 export function toToolError(error: unknown): ToolError {
-  if (error instanceof ToolError) return error;
+  if (isToolError(error)) return error;
   return new ToolError('INTERNAL', '內部錯誤，操作未完成。');
 }
 

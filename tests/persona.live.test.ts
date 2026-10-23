@@ -10,13 +10,17 @@ import { PERSONA_CASES } from './persona/cases';
 vi.mock('server-only', () => ({}));
 
 // Costs real API calls: runs only with ANTHROPIC_API_KEY and NOIRXU_PERSONA_LIVE=1.
+// Stops as soon as the accumulated estimate passes NOIRXU_PERSONA_MAX_USD (default 5).
 const live = Boolean(process.env.ANTHROPIC_API_KEY && process.env.NOIRXU_PERSONA_LIVE === '1');
+const MAX_USD = Number(process.env.NOIRXU_PERSONA_MAX_USD ?? 5);
+let spent = 0;
 
 describe.skipIf(!live)('SASUKE persona evaluation: live model', () => {
   for (const c of PERSONA_CASES.filter(c => !c.events.some(e => e.status === 'succeeded'))) {
     it(`${c.domain}/${c.id}`, async () => {
       const { default: Anthropic } = await import('@anthropic-ai/sdk');
-      const { runAgentTurn } = await import('@/server/agent');
+      const { runAgentTurn, estimateCostUsd } = await import('@/server/agent');
+      if (spent >= MAX_USD) throw new Error(`已達測試費用上限 US$${MAX_USD}，停止後續案例（目前估計 US$${spent.toFixed(2)}）`);
       const registry = new ToolRegistry();
       for (const e of c.events) {
         registry.register(defineTool({
@@ -32,8 +36,10 @@ describe.skipIf(!live)('SASUKE persona evaluation: live model', () => {
         client: new Anthropic(), model: process.env.NOIRXU_AI_MODEL ?? 'claude-opus-5-5',
         registry, executor, ctx: { userId: 'owner', now: () => new Date('2026-10-23T02:00:00Z') }, history: [], userText: c.user
       });
+      const cost = estimateCostUsd(process.env.NOIRXU_AI_MODEL ?? 'claude-opus-5-5', turn.usage) ?? 0;
+      spent += cost;
       const findings = evaluateReply(c, turn.reply);
-      console.log(`[${c.id}] ${turn.reply}\n  findings: ${JSON.stringify(findings)}`);
+      console.log(`[${c.id}] ${turn.reply}\n  findings: ${JSON.stringify(findings)}\n  usage: ${JSON.stringify(turn.usage)} ≈ US$${cost.toFixed(4)} (累計 US$${spent.toFixed(2)})`);
       expect(findings).toEqual([]);
     }, 120_000);
   }

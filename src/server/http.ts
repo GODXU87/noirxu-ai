@@ -1,6 +1,6 @@
 import 'server-only';
 import { NextResponse } from 'next/server';
-import { ToolError, toToolError } from '@/hub/errors';
+import { isToolError, ToolError, toToolError } from '@/hub/errors';
 import type { ToolContext } from '@/hub/types';
 import { currentUser } from './session';
 
@@ -13,7 +13,7 @@ export function json(body: unknown, status = 200) {
 export function errorResponse(error: unknown) {
   const failure = toToolError(error);
   const status = { UNAUTHORIZED: 401, FORBIDDEN: 403, NOT_FOUND: 404, PROPOSAL_NOT_FOUND: 404, INVALID_INPUT: 400, PROPOSAL_EXPIRED: 410, PROPOSAL_NOT_PENDING: 409, CONFLICT: 409, NOT_CONFIGURED: 503 }[failure.code as string] ?? 500;
-  if (status === 500 && !(error instanceof ToolError)) console.error('[noirxu-ai]', error instanceof Error ? error.name : 'error');
+  if (status === 500 && !isToolError(error)) console.error('[noirxu-ai]', error instanceof Error ? error.name : 'error');
   return json({ ok: false, error: { code: failure.code, message: failure.message } }, status);
 }
 
