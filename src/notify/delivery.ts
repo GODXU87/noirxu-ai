@@ -98,14 +98,15 @@ export class DeliveryService {
     if ((record.status === 'sending' || record.status === 'claimed') && record.lease_until && Date.parse(record.lease_until) > now.getTime()) return record;
     if (record.status === 'retry_pending' && record.next_retry_at && Date.parse(record.next_retry_at) > now.getTime()) return record;
 
-    const sending: DeliveryRecord = { ...record, status: 'sending', attempts: record.attempts + 1, lease_until: new Date(now.getTime() + LEASE_MS).toISOString(), updated_at: now.toISOString() };
+    // Retries send the caller's current message (e.g. today's water total), not the first draft.
+    const sending: DeliveryRecord = { ...record, message: input.message, status: 'sending', attempts: record.attempts + 1, lease_until: new Date(now.getTime() + LEASE_MS).toISOString(), updated_at: now.toISOString() };
     if (!(await this.transition(key, sealed, sending))) return (await this.get(key))!;
     const sendingSealed = await this.store.getSetting(k);
 
     let report: SendReport | null = null;
     let error: string | undefined;
     try {
-      report = await this.send(record.user_id, record.message, now);
+      report = await this.send(record.user_id, sending.message, now);
     } catch (e) {
       error = e instanceof Error ? e.message.slice(0, 200) : '發送時發生錯誤';
     }

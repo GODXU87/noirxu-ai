@@ -5,7 +5,7 @@ import type { Executor } from '@/hub/executor';
 import type { ToolRegistry } from '@/hub/registry';
 import type { ToolContext, ToolDefinition } from '@/hub/types';
 import { taipeiDate } from '@/lib/dates';
-import { systemPrompt, toClaudeName, toolResultText, type ReplyStyle, type ToolEvent, type TurnUsage } from '../agent';
+import { systemPrompt, toClaudeName, toolResultText, type ProgressEvent, type ReplyStyle, type ToolEvent, type TurnUsage } from '../agent';
 
 // OpenAI provider for the same SASUKE engine: same system prompt, same tool registry and
 // executor (so confirmation cards, duplicate protection and the audit log are unchanged),
@@ -52,6 +52,7 @@ export async function runOpenAITurn(options: {
   userText: string;
   style?: ReplyStyle;
   reasoningEffort?: 'low' | 'medium' | 'high' | null;
+  onProgress?: (event: ProgressEvent) => void;
 }): Promise<OpenAITurn> {
   const { client, model, registry, executor, ctx } = options;
   const tools = openAITools(registry);
@@ -89,6 +90,7 @@ export async function runOpenAITurn(options: {
 
     const outputs = await Promise.all(calls.map(async call => {
       const name = byName.get(call.name) ?? call.name;
+      options.onProgress?.({ type: 'tool_start', tool: name });
       let args: unknown;
       try {
         args = JSON.parse(call.arguments || '{}');
@@ -99,6 +101,7 @@ export async function runOpenAITurn(options: {
         ? { status: 'error' as const, tool: name, code: 'INVALID_INPUT' as const, message: '工具參數不是有效的 JSON。' }
         : await executor.invoke(name, args, ctx);
       events.push({ tool: name, input: args, result });
+      options.onProgress?.({ type: 'tool_done', tool: name, result });
       return { type: 'function_call_output' as const, call_id: call.call_id, output: toolResultText(result).content };
     }));
     input.push(...outputs);

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { evaluateReply } from '@/persona/evaluate';
+import { evaluateReply, evaluateSet } from '@/persona/evaluate';
 import { ToolRegistry } from '@/hub/registry';
-import { PERSONA_CASES } from './persona/cases';
+import { PERSONA_CASES, SET_CASES } from './persona/cases';
 
 vi.mock('server-only', () => ({}));
 const { systemPrompt } = await import('@/server/agent');
@@ -19,6 +19,12 @@ describe('SASUKE persona evaluation: grader', () => {
   }
 });
 
+describe('SASUKE persona evaluation: across replies', () => {
+  it('accepts the reference set', () => expect(evaluateSet(SET_CASES.good)).toEqual([]));
+  it('catches opening with Sir every time', () => expect(evaluateSet(SET_CASES.sirEveryTime).map(f => f.rule)).toContain('sir-opener-repetition'));
+  it('catches a recycled catchphrase', () => expect(evaluateSet(SET_CASES.catchphrase).map(f => f.rule)).toContain('repeated-phrasing'));
+});
+
 describe('SASUKE persona: system prompt', () => {
   const prompt = systemPrompt(new ToolRegistry(), '2026-10-23');
 
@@ -32,9 +38,13 @@ describe('SASUKE persona: system prompt', () => {
     expect(prompt).toContain('一律以資料與安全規則為準');
   });
 
-  it('sets the honorific rules and the exact status vocabulary', () => {
-    expect(prompt).toContain('以「先生」為主');
-    expect(prompt).toContain('一則回覆最多一次');
+  it('sets the Sir rules, humor limits and the exact status vocabulary', () => {
+    expect(prompt).toContain('稱呼使用者為「Sir」（S 大寫）');
+    expect(prompt).toContain('不使用「先生」「老闆」');
+    expect(prompt).toContain('一則回覆最多出現一次 Sir');
+    expect(prompt).toContain('不要固定用「Sir，」開頭');
+    expect(prompt).toContain('不開玩笑');
+    expect(prompt).toContain('不引用、不模仿任何電影或作品的台詞');
     for (const word of ['「建議」', '「待確認」', '「執行中」', '「已完成」', '「失敗」', '「結果不明」']) expect(prompt).toContain(word);
   });
 

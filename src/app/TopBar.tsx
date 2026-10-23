@@ -1,6 +1,6 @@
 import { BrandMark, Icon, type IconName } from './components/Icon';
 
-export type Page = 'chat' | 'overview' | 'report' | 'connections';
+export type Page = 'chat' | 'overview' | 'report' | 'connections' | 'tasks' | 'research' | 'mail' | 'life' | 'memory';
 
 const NAV: Array<{ id: Page; href: string; label: string; icon: IconName }> = [
   { id: 'chat', href: '/', label: '助理', icon: 'chat' },

@@ -88,6 +88,13 @@ describe('notification delivery state machine', () => {
     expect(backoffMs(10)).toBe(2 * 60 * 60_000);
   });
 
+  it('retries with the current message, not the first draft', async () => {
+    const { delivery, send } = setup([none, accepted]);
+    await delivery.deliver({ ...input(t0), message: { title: '該喝水了', body: '今天 0 ml' } });
+    await delivery.deliver({ ...input(later(6)), message: { title: '該喝水了', body: '今天 300 ml' } });
+    expect(send.mock.calls[1]).toEqual(['owner', { title: '該喝水了', body: '今天 300 ml' }, later(6)]);
+  });
+
   it('marks inbox entries read', async () => {
     const { delivery } = setup([accepted]);
     await delivery.deliver(input(t0));

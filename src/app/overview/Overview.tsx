@@ -10,9 +10,9 @@ const EXPENSE_METHODS = ['信用卡', '現金', '轉帳', 'LINE Pay', 'Apple Pay
 const INCOME_METHODS = ['轉帳', '現金', 'LINE Pay', '其他'];
 const NAMES: Record<string, string> = { ledger: 'Ledger', journal: 'Journal', radar: 'RADAR', gmail: 'Gmail' };
 
-type Loaded = InvokeResult | null | undefined;
+export type Loaded = InvokeResult | null | undefined;
 
-function Panel({ label, result, children }: { label: string; result: Loaded; children?: React.ReactNode }) {
+export function Panel({ label, result, children }: { label: string; result: Loaded; children?: React.ReactNode }) {
   if (result === null) return null;
   return (
     <section className="card">
@@ -45,7 +45,7 @@ function Hero({ analytics, assets, month }: { analytics: Loaded; assets: Loaded;
   );
 }
 
-function AgendaCard() {
+export function AgendaCard() {
   const [items, setItems] = useState<AgendaView[] | null>(null);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);

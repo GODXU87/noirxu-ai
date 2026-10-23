@@ -9,13 +9,12 @@ import { AssistantCard, WaterMeter } from './components/assistant';
 import { importLegacySession, loadConversation, newConversationId, resumeActive, saveConversation, touchActive } from './sasuke/conversations';
 import { useRouter } from 'next/navigation';
 import { newConversationHref, SasukeMark } from './sasuke/SasukeNav';
-import { flash } from './components/feedback';
 import { callTool, ProposalCard, RichText, ToolCard, type InvokeResult } from './components/shared';
 
 type Item =
   | { kind: 'user'; text: string }
   | { kind: 'assistant'; text: string }
-  | { kind: 'error'; text: string }
+  | { kind: 'error'; text: string; retry?: string }
   | { kind: 'tool'; result: InvokeResult }
   | { kind: 'notice'; text: string }
   | { kind: 'help'; items: Array<{ command: string; description: string }> };
@@ -46,11 +45,21 @@ const CHIPS: Array<{ label: string; text: string; run: boolean; icon: IconName; 
   { label: '晚報', text: '/晚報', run: true, icon: 'report', feature: 'briefings' }
 ];
 
+/** The few tools on the home screen; everything else is one message away. */
+const QUICK: Array<{ label: string; text: string; run: boolean; icon: IconName; feature?: keyof FeatureFlags }> = [
+  { label: '今日早報', text: '/早報', run: true, icon: 'calendar', feature: 'briefings' },
+  { label: '記一筆帳', text: '/記帳 ', run: false, icon: 'wallet', feature: 'commands' },
+  { label: '記錄喝水', text: '/喝水 ', run: false, icon: 'drop', feature: 'water' }
+];
+
 const WORKING: Partial<Record<CommandName, string>> = {
   morning: '正在整理早報', evening: '正在整理晚報', water: '更新喝水紀錄', ledger: '正在整理記帳草稿', triage: '正在分析文字', help: '讀取指令'
 };
 
 const SYSTEMS = [['ledger', 'Ledger'], ['journal', 'Journal'], ['radar', 'RADAR'], ['gmail', 'Gmail']] as const;
+
+const TOOL_LABELS: Record<string, string> = { ledger: 'Ledger', journal: 'Journal', radar: 'RADAR', gmail: 'Gmail', agenda: '提醒', health: '飲水紀錄', assistant: '助理工具', memory: '記憶', research: '研究' };
+function toolLabel(tool: string) { return TOOL_LABELS[tool.split('.')[0]] ?? tool; }
 
 interface Saved { items: Item[]; history: unknown[]; notes: string[] }
 
@@ -70,7 +79,7 @@ function currentStyle(fallback: ReplyStyle): ReplyStyle {
 
 function greeting() {
   const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Taipei', hour: '2-digit', hour12: false }).format(new Date()));
-  return hour < 5 ? '夜深了' : hour < 11 ? '早安' : hour < 14 ? '午安' : hour < 18 ? '下午好' : '晚上好';
+  return hour < 5 ? '夜深了' : hour < 11 ? '早安' : hour < 14 ? '午安' : hour < 18 ? '午後好' : '晚上好';
 }
 
 interface Brief { failed?: boolean; lines: string[]; today: number; overdue: number; expense: string | null; top: Array<{ id: string; title: string; due_label: string; priority: string }> }
@@ -93,6 +102,16 @@ function useBrief(enabled: boolean) {
     });
   }, [enabled]);
   return brief;
+}
+
+/** Unread in-app notifications (reminders that fired), newest first. */
+function useInbox(enabled: boolean) {
+  const [items, setItems] = useState<Array<{ key: string; title: string }>>([]);
+  useEffect(() => {
+    if (!enabled) return;
+    void fetch('/api/inbox').then(r => r.json()).then(body => { if (body?.ok) setItems(body.items.filter((i: { read: boolean }) => !i.read)); }).catch(() => undefined);
+  }, [enabled]);
+  return items;
 }
 
 /** Splits the feed into turns: each user message followed by everything the assistant produced. */
@@ -124,9 +143,15 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   const input = useRef<HTMLTextAreaElement>(null);
   const empty = items.length === 0;
   const brief = useBrief(empty && features.briefings);
+  const inbox = useInbox(empty && sasuke);
+  // Shown only when something real needs attention: overdue items or unread notifications.
+  const notices = [
+    ...(brief && !brief.failed && brief.overdue > 0 ? [{ key: 'overdue', tone: 'prio-urgent', text: `${brief.overdue} 件事已過期`, ask: '有哪些事已經過期了？' }] : []),
+    ...inbox.slice(0, 2).map(i => ({ key: i.key, tone: 'prio-high', text: i.title, ask: `關於這則提醒：「${i.title}」，現在狀況如何？` }))
+  ];
   const [water, setWater] = useState<any>(null);
   useEffect(() => {
-    if (!empty || !features.water) return;
+    if (!empty || !features.water || sasuke) return;
     void callTool('health.water.status', {}).then(result => { if (result.status === 'ok') setWater(result.data); });
   }, [empty, features.water, sasuke]);
 
@@ -238,34 +263,57 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   async function chat(message: string) {
     setBusy('思考中');
     const payload = notes.length ? `[系統紀錄]\n${notes.join('\n')}\n\n${message}` : message;
+    const request = { method: 'POST', headers: { 'Content-Type': 'application/json', ...(sasuke ? { Accept: 'application/x-ndjson' } : {}) }, body: JSON.stringify({ text: payload, history, style: currentStyle(style) }) };
+    const shown = new Set<number>();
     try {
-      const response = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: payload, history, style: currentStyle(style) }) });
-      const body = await response.json();
-      if (!body.ok) { setItems(prev => [...prev, { kind: 'error', text: body.error?.message ?? '發生錯誤' }]); return; }
+      const response = await fetch('/api/chat', request);
+      let body: any;
+      if ((response.headers.get('content-type') ?? '').includes('application/x-ndjson') && response.body) {
+        // Live progress: each tool appears as soon as the executor finishes it.
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let index = 0;
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          let newline: number;
+          while ((newline = buffer.indexOf('\n')) >= 0) {
+            const line = buffer.slice(0, newline).trim();
+            buffer = buffer.slice(newline + 1);
+            if (!line) continue;
+            const event = JSON.parse(line);
+            if (event.type === 'tool_start') setBusy(`正在使用 ${toolLabel(event.tool)}`);
+            else if (event.type === 'tool_done') { shown.add(index++); setItems(prev => [...prev, { kind: 'tool', result: event.result }]); scroll(); setBusy('整理結果'); }
+            else if (event.type === 'done') body = event;
+          }
+        }
+        if (!body) throw new Error('stream ended early');
+      } else {
+        body = await response.json();
+      }
+      if (!body.ok) { setItems(prev => [...prev, { kind: 'error', text: body.error?.message ?? '發生錯誤', retry: body.error?.code === 'MODEL_UNAVAILABLE' ? message : undefined }]); return; }
       setNotes([]);
       setHistory(body.messages);
       if (body.contextReset) setItems(prev => [...prev, { kind: 'notice', text: `AI 已改用 ${body.provider === 'openai' ? 'OpenAI' : 'Claude'}，之前的對話脈絡沒有帶過去；畫面上的紀錄都還在。` }]);
       setItems(prev => [
         ...prev,
-        ...body.events.map((e: { result: InvokeResult }) => ({ kind: 'tool' as const, result: e.result })),
+        ...body.events.filter((_: unknown, i: number) => !shown.has(i)).map((e: { result: InvokeResult }) => ({ kind: 'tool' as const, result: e.result })),
         ...(body.reply ? [{ kind: 'assistant' as const, text: body.reply }] : [])
       ]);
     } catch {
-      setItems(prev => [...prev, { kind: 'error', text: '網路錯誤，訊息沒有送出。' }]);
+      setItems(prev => [...prev, shown.size
+        ? { kind: 'error', text: '連線中斷：上方已顯示的工具結果是真的已執行的部分，AI 的回覆沒有收到。' }
+        : { kind: 'error', text: '網路錯誤，訊息沒有送出。', retry: message }]);
     } finally {
       setBusy(null); scroll();
     }
   }
 
-  async function logWater(ml: number, button?: HTMLButtonElement) {
-    button?.setAttribute('data-loading', '');
-    const result = await callTool('health.water.log', { ml });
-    button?.removeAttribute('data-loading');
-    if (result.status === 'ok') {
-      setWater(result.data);
-      window.dispatchEvent(new CustomEvent('noirxu-water', { detail: result.data }));
-      flash(button, 'success');
-    } else flash(button, 'error');
+  function retry(index: number, message: string) {
+    setItems(prev => prev.filter((_, i) => i !== index));
+    void chat(message);
   }
 
   // "/" or Cmd/Ctrl+K anywhere jumps to the input.
@@ -278,6 +326,18 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [sasuke]);
+
+  // Function pages open a conversation with a ready question: /?c=new&ask=…
+  const asked = useRef(false);
+  useEffect(() => {
+    if (!sasuke || !conversationId || asked.current) return;
+    const ask = new URLSearchParams(window.location.search).get('ask');
+    if (!ask) return;
+    asked.current = true;
+    window.history.replaceState(window.history.state, '', '/');
+    void send(ask.slice(0, 2000));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sasuke, conversationId]);
 
   function pick(value: string, run: boolean) {
     if (run) { void send(value); return; }
@@ -320,6 +380,10 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
           <ul className="help-list">{item.items.map(h => <li key={h.command}><button type="button" className="link" onClick={() => pick(h.command.replace(/\s.*$/, ' '), false)}>{h.command}</button><span className="muted">{h.description}</span></li>)}</ul>
         </div>
       );
+    }
+    if (item.kind === 'error' && item.retry) {
+      const message = item.retry;
+      return <div key={index} className="msg error">{item.text}<button type="button" className="retry" disabled={Boolean(busy)} onClick={() => retry(index, message)}>重試</button></div>;
     }
     return <div key={index} className={`msg ${item.kind}`}>{item.text}</div>;
   }
@@ -373,63 +437,17 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
         {storageError && <p className="banner storage-warning" role="alert">{storageError}</p>}
         {empty && sasuke && (
           <section className="sk-home">
-            <header className="mc-head">
-              <span className="mc-avatar"><SasukeMark size={22} /></span>
-              <div><small>{greeting()}，</small><b>先生</b></div>
-              <span className={ai ? 'mc-online' : 'mc-online off'}><i />{ai ? 'SASUKE 待命中' : 'AI 未設定'}</span>
-            </header>
-
-            <div className="mc-hero">
-              {brief === null ? <div className="mc-skeleton" aria-hidden="true"><i /><i /><i /></div> : (
-                <>
-                  <small>{brief.expense ? '本月支出' : '今日要務'}</small>
-                  <strong>{brief.failed ? '—' : brief.expense ?? `${brief.today} 件`}</strong>
-                  <p>{brief.lines.filter(l => !l.startsWith('本月支出')).join(' · ') || '今天沒有排定的事'}</p>
-                </>
-              )}
-              <div className="mc-hero-actions">
-                {features.commands && <button type="button" onClick={() => pick('/記帳 ', false)}><Icon name="wallet" size={16} />記一筆帳</button>}
-                {features.briefings && <button type="button" className="accent" onClick={() => pick('/早報', true)}><Icon name="calendar" size={16} />今日早報</button>}
-              </div>
-            </div>
-
+            <span className="sk-home-mark"><SasukeMark size={44} /></span>
+            <h1 className="sk-hello">{greeting()}，Sir。</h1>
+            {notices.length > 0 && (
+              <ul className="sk-notices" aria-label="重要通知">
+                {notices.map(n => <li key={n.key}><span className={`sk-dot ${n.tone}`} /><button type="button" className="sk-notice" onClick={() => pick(n.ask, true)}>{n.text}</button></li>)}
+              </ul>
+            )}
             {composer}
-            <nav className="mc-pills" aria-label="常用指令">
-              {CHIPS.filter(c => !c.feature || features[c.feature]).filter(c => c.label !== '早報' && c.label !== '記一筆帳').map(c => <button key={c.label} type="button" onClick={() => pick(c.text, c.run)}><Icon name={c.icon} size={14} />{c.label}</button>)}
+            <nav className="sk-quick" aria-label="常用">
+              {QUICK.filter(c => !c.feature || features[c.feature]).map(c => <button key={c.label} type="button" onClick={() => pick(c.text, c.run)}><Icon name={c.icon} size={14} />{c.label}</button>)}
             </nav>
-
-            <div className="mc-section"><h2>今日概況</h2></div>
-            <div className="mc-grid">
-              <button type="button" className="mc-card" onClick={() => void send('最近有什麼事？依重要程度排給我。')} disabled={!brief}>
-                <span className="mc-label"><Icon name="calendar" size={14} />要務</span>
-                {brief ? (
-                  <>
-                    <strong>{brief.failed ? '—' : brief.today}<small> 件今天到期{brief.overdue ? ` · ${brief.overdue} 件過期` : ''}</small></strong>
-                    {brief.top.length > 0
-                      ? <ul className="mc-list">{brief.top.slice(0, 3).map(t => <li key={t.id} className={`prio-${t.priority}`}><b>{t.title}</b><small>{t.due_label}</small></li>)}</ul>
-                      : <span className="mc-note">沒有待辦</span>}
-                  </>
-                ) : <div className="mc-skeleton" aria-hidden="true"><i /><i /></div>}
-              </button>
-              {water ? (
-                <div className="mc-card">
-                  <span className="mc-label"><Icon name="drop" size={14} />飲水</span>
-                  <div className="mc-water">
-                    <svg viewBox="0 0 44 44" width="48" height="48" aria-hidden="true"><circle cx="22" cy="22" r="19" className="ring-bg" /><circle cx="22" cy="22" r="19" className="ring-fg" strokeDasharray={`${Math.min(100, water.percent) * 1.194} 200`} /></svg>
-                    <strong>{Number(water.total_ml).toLocaleString('en-US')}<small> / {Number(water.goal_ml).toLocaleString('en-US')} ml</small></strong>
-                  </div>
-                  <div className="mc-actions">
-                    <button type="button" onClick={e => void logWater(250, e.currentTarget)}>+250</button>
-                    <button type="button" onClick={e => void logWater(500, e.currentTarget)}>+500</button>
-                  </div>
-                </div>
-              ) : features.water && <div className="mc-card"><span className="mc-label"><Icon name="drop" size={14} />飲水</span><div className="mc-skeleton" aria-hidden="true"><i /><i /></div></div>}
-              <a className="mc-card" href="/connections">
-                <span className="mc-label"><Icon name="link" size={14} />系統</span>
-                <strong>{SYSTEMS.filter(([id]) => connected[id]).length}<small> / {SYSTEMS.length} 已連線</small></strong>
-                <ul className="mc-links">{SYSTEMS.map(([id, label]) => <li key={id} className={connected[id] ? 'on' : ''}><i />{label}</li>)}</ul>
-              </a>
-            </div>
           </section>
         )}
         {empty && !sasuke && (
