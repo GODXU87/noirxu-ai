@@ -1,11 +1,11 @@
-import { Suspense } from 'react';
-import { loadFeatureFlags } from '@/lib/features';
 import { uiMode } from '@/server/ui-mode';
-import { SasukeNav } from './sasuke/SasukeNav';
 import { TopBar, type Page } from './TopBar';
 
-/** Picks the navigation for the chosen interface; the classic TopBar stays as the fallback. */
+/**
+ * Classic navigation per page. The SASUKE navigation lives once in the root layout, so it is
+ * not rebuilt (and does not flicker) when moving between pages.
+ */
 export async function Frame({ current }: { current: Page }) {
-  if ((await uiMode()) === 'sasuke') return <Suspense fallback={null}><SasukeNav current={current} water={loadFeatureFlags().water} /></Suspense>;
+  if ((await uiMode()) === 'sasuke') return null;
   return <TopBar current={current} />;
 }

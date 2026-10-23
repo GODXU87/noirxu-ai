@@ -46,7 +46,7 @@ export function Inbox() {
 
   return (
     <div className="inbox" ref={box}>
-      <button type="button" className="inbox-btn" onClick={() => { setOpen(o => !o); if (!open) void load(); }} aria-expanded={open} aria-label={unread ? `通知，${unread} 則未讀` : '通知'}>
+      <button type="button" className="inbox-btn" onClick={() => { setOpen(o => !o); if (!open) void load(); }} aria-expanded={open} aria-label={unread ? `通知，${unread} 則未讀` : '通知'} data-tip={unread ? `${unread} 則未讀通知` : '通知'}>
         <Icon name="bell" size={16} />
         {unread > 0 && <span className="inbox-badge">{unread > 9 ? '9+' : unread}</span>}
       </button>

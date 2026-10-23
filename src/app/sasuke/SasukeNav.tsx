@@ -4,7 +4,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { Page } from '../TopBar';
 import { Icon, type IconName } from '../components/Icon';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Inbox } from './Inbox';
 import { activeId, deleteConversation, legacyImports, listConversations, onConversationsChanged, renameConversation, SOFT_LIMIT, type ConversationMeta, type SaveResult } from './conversations';
 
@@ -25,14 +25,36 @@ const NAV: Array<{ id: Page; href: string; label: string; icon: IconName; also?:
 
 const COLLAPSE_KEY = 'noirxu-ui-sidebar-collapsed';
 
+export type AgentState = 'idle' | 'thinking' | 'confirm' | 'error';
+
+/** The chat announces SASUKE's real state; marks elsewhere (sidebar, phone header) follow it. */
+export function announceAgentState(state: AgentState) {
+  window.__noirxuAgentState = state;
+  window.dispatchEvent(new CustomEvent('noirxu-agent-state', { detail: state }));
+}
+
+export function useAgentState(): AgentState {
+  const [state, setState] = useState<AgentState>('idle');
+  useEffect(() => {
+    setState(window.__noirxuAgentState ?? 'idle');
+    const on = (e: Event) => setState((e as CustomEvent<AgentState>).detail);
+    window.addEventListener('noirxu-agent-state', on);
+    return () => window.removeEventListener('noirxu-agent-state', on);
+  }, []);
+  return state;
+}
+
+declare global { interface Window { __noirxuAgentState?: AgentState } }
+
 /**
  * Original mark for SASUKE: a segmented sensor ring around a diamond frame and a lit core.
- * Static (no animation) so it costs nothing; ids are unique per instance.
+ * It follows the agent's real state — steady while idle, a slow turn while working, amber
+ * while an action waits for confirmation, red after an error — and never animates otherwise.
  */
-export function SasukeMark({ size = 28 }: { size?: number }) {
+export function SasukeMark({ size = 28, state = 'idle' }: { size?: number; state?: AgentState }) {
   const id = useId().replace(/:/g, '');
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" className="sasuke-mark">
+    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" className={`sasuke-mark mk-${state}`}>
       <defs>
         <linearGradient id={`skg${id}`} x1="4" y1="4" x2="28" y2="28" gradientUnits="userSpaceOnUse">
           <stop offset="0" stopColor="#8ff0ff" />
@@ -44,10 +66,13 @@ export function SasukeMark({ size = 28 }: { size?: number }) {
           <stop offset="1" stopColor="#2f78ff" />
         </radialGradient>
       </defs>
-      <circle cx="16" cy="16" r="13" fill="none" stroke={`url(#skg${id})`} strokeWidth="1.3" strokeDasharray="16.4 4" transform="rotate(-36 16 16)" strokeLinecap="round" />
-      <path d="M16 2.2v2M16 27.8v2M2.2 16h2M27.8 16h2" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" opacity=".45" />
-      <path d="M16 8.2 23.8 16 16 23.8 8.2 16Z" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" opacity=".8" />
-      <circle cx="16" cy="16" r="3.6" fill={`url(#skc${id})`} />
+      <g className="mk-ring">
+        <circle cx="16" cy="16" r="13" fill="none" stroke={`url(#skg${id})`} strokeWidth="1.3" strokeDasharray="16.4 4" transform="rotate(-36 16 16)" strokeLinecap="round" />
+      </g>
+      <path className="mk-ticks" d="M16 2.2v2M16 27.8v2M2.2 16h2M27.8 16h2" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" opacity=".45" />
+      <path className="mk-frame" d="M16 8.2 23.8 16 16 23.8 8.2 16Z" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" opacity=".8" />
+      <circle className="mk-core" cx="16" cy="16" r="3.6" fill={`url(#skc${id})`} />
+      <circle className="mk-signal" cx="16" cy="16" r="3.6" />
     </svg>
   );
 }
@@ -151,14 +176,25 @@ export function HistoryDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-export function SasukeNav({ current }: { current: Page; water?: boolean }) {
+function pageOf(pathname: string): Page {
+  if (pathname === '/') return 'chat';
+  if (pathname.startsWith('/report')) return 'report';
+  if (pathname.startsWith('/overview')) return 'overview';
+  if (pathname.startsWith('/connections') || pathname.startsWith('/cost')) return 'connections';
+  return (['tasks', 'research', 'mail', 'life', 'memory'].find(p => pathname.startsWith(`/${p}`)) ?? 'chat') as Page;
+}
+
+export function SasukeNav() {
+  const pathname = usePathname();
+  const current = pageOf(pathname);
+  const agentState = useAgentState();
   const [collapsed, setCollapsed] = useState(false);
   const [drawer, setDrawer] = useState(false);
   const [history, setHistory] = useState(false);
   const router = useRouter();
   const closeHistory = useCallback(() => setHistory(false), []);
 
-  useEffect(() => { try { setCollapsed(localStorage.getItem(COLLAPSE_KEY) === '1'); } catch { /* storage unavailable */ } }, []);
+  useEffect(() => { setCollapsed(document.documentElement.classList.contains('sidebar-collapsed')); }, []);
   useEffect(() => { document.documentElement.classList.toggle('sidebar-collapsed', collapsed); }, [collapsed]);
   useEffect(() => { document.body.classList.toggle('drawer-open', drawer); }, [drawer]);
 
@@ -168,10 +204,12 @@ export function SasukeNav({ current }: { current: Page; water?: boolean }) {
   const close = () => setDrawer(false);
   const isCurrent = (item: (typeof NAV)[number]) => current === item.id || Boolean(item.also?.includes(current));
 
+  if (pathname.startsWith('/login')) return null;
+
   const panel = (
     <>
       <div className="sk-brand">
-        <Link href="/" aria-label="SASUKE 首頁" onClick={close}><SasukeMark size={26} /><span className="sk-word"><b>SASUKE</b><small>NOIRXU · PERSONAL AI</small></span></Link>
+        <Link href="/" aria-label="SASUKE 首頁" onClick={close}><SasukeMark size={26} state={agentState} /><span className="sk-word"><b>SASUKE</b><small>NOIRXU · PERSONAL AI</small></span></Link>
         <button type="button" className="sk-icon sk-collapse" onClick={toggle} aria-label={collapsed ? '展開側邊欄' : '收合側邊欄'}><Icon name="arrow" size={16} /></button>
       </div>
       <nav className="sk-nav" aria-label="功能">
@@ -196,13 +234,13 @@ export function SasukeNav({ current }: { current: Page; water?: boolean }) {
       <aside className="sk-sidebar" aria-label="SASUKE 導覽">{panel}</aside>
       <header className="sk-top">
         <button type="button" className="sk-icon" onClick={() => setDrawer(true)} aria-label="開啟選單"><Icon name="menu" size={20} /></button>
-        <Link href="/" className="sk-top-title"><SasukeMark size={22} /><b>SASUKE</b></Link>
+        <Link href="/" className="sk-top-title"><SasukeMark size={22} state={agentState} /><b>SASUKE</b></Link>
       </header>
       <div className="sk-water-slot">
         {current === 'chat' && (
           <>
-            <button type="button" className="sk-head-btn" onClick={() => setHistory(true)} aria-label="對話紀錄" title="對話紀錄"><Icon name="history" size={17} /></button>
-            <button type="button" className="sk-head-btn" onClick={() => router.push(newConversationHref())} aria-label="新對話" title="新對話"><Icon name="plus" size={17} /></button>
+            <button type="button" className="sk-head-btn" onClick={() => setHistory(true)} aria-label="對話紀錄" data-tip="對話紀錄"><Icon name="history" size={17} /></button>
+            <button type="button" className="sk-head-btn" onClick={() => router.push(newConversationHref())} aria-label="新對話" data-tip="新對話"><Icon name="plus" size={17} /></button>
           </>
         )}
         <Inbox />

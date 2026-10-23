@@ -8,7 +8,7 @@ import { BrandMark, Icon, type IconName } from './components/Icon';
 import { AssistantCard, WaterMeter } from './components/assistant';
 import { importLegacySession, loadConversation, newConversationId, resumeActive, saveConversation, touchActive } from './sasuke/conversations';
 import { useRouter } from 'next/navigation';
-import { newConversationHref, SasukeMark } from './sasuke/SasukeNav';
+import { announceAgentState, newConversationHref, SasukeMark, type AgentState } from './sasuke/SasukeNav';
 import { callTool, ProposalCard, RichText, ToolCard, type InvokeResult } from './components/shared';
 
 type Item =
@@ -84,6 +84,12 @@ function currentStyle(fallback: ReplyStyle): ReplyStyle {
   try { const s = localStorage.getItem(STYLE_KEY) as ReplyStyle | null; return s && STYLES.some(([id]) => id === s) ? s : fallback; } catch { return fallback; }
 }
 
+/** The question under the greeting, by time of day (Taipei). */
+function askLine() {
+  const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Taipei', hour: '2-digit', hour12: false }).format(new Date()));
+  return hour < 5 ? '夜深了，還有什麼需要我處理的？' : hour < 11 ? '今天早上有什麼需要我處理的？' : hour < 14 ? '中午有什麼需要我處理的？' : hour < 18 ? '今天下午有什麼需要我處理的？' : '今晚有什麼需要我處理的？';
+}
+
 function greeting() {
   const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Taipei', hour: '2-digit', hour12: false }).format(new Date()));
   return hour < 5 ? '夜深了' : hour < 11 ? '早安' : hour < 14 ? '午安' : hour < 18 ? '午後好' : '晚上好';
@@ -149,6 +155,9 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   const armed = useRef(0);
   const composedAt = useRef(0);
   const [enterHint, setEnterHint] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const menuBox = useRef<HTMLDivElement>(null);
+  const [pending, setPending] = useState<string[]>([]);
   const feedEnd = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const empty = items.length === 0;
@@ -295,7 +304,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
             if (!line) continue;
             const event = JSON.parse(line);
             if (event.type === 'tool_start') setBusy(`正在使用 ${toolLabel(event.tool)}`);
-            else if (event.type === 'tool_done') { shown.add(index++); setItems(prev => [...prev, { kind: 'tool', result: event.result }]); scroll(); setBusy('整理結果'); if (String(event.tool).startsWith('agenda.')) window.dispatchEvent(new Event('noirxu-reminders-changed')); }
+            else if (event.type === 'tool_done') { shown.add(index++); if (event.result?.status === 'confirmation_required') setPending(p => [...p, event.result.proposalId]); setItems(prev => [...prev, { kind: 'tool', result: event.result }]); scroll(); setBusy('整理結果'); if (String(event.tool).startsWith('agenda.')) window.dispatchEvent(new Event('noirxu-reminders-changed')); }
             else if (event.type === 'done') body = event;
           }
         }
@@ -310,7 +319,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
       if (body.contextReset) setItems(prev => [...prev, { kind: 'notice', text: `AI 已改用 ${body.provider === 'openai' ? 'OpenAI' : 'Claude'}，之前的對話脈絡沒有帶過去；畫面上的紀錄都還在。` }]);
       setItems(prev => [
         ...prev,
-        ...body.events.filter((_: unknown, i: number) => !shown.has(i)).map((e: { result: InvokeResult }) => ({ kind: 'tool' as const, result: e.result })),
+        ...body.events.filter((_: unknown, i: number) => !shown.has(i)).map((e: { result: InvokeResult }) => { if (e.result.status === 'confirmation_required') setPending(p => [...p, (e.result as { proposalId: string }).proposalId]); return { kind: 'tool' as const, result: e.result }; }),
         ...(body.reply ? [{ kind: 'assistant' as const, text: body.reply, via: routeLabel(body.route) }] : [])
       ]);
     } catch {
@@ -326,6 +335,20 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
     setItems(prev => prev.filter((_, i) => i !== index));
     void chat(message);
   }
+
+  // SASUKE's real state for its mark: working, waiting for a confirmation, or a failure.
+  const lastItem = items[items.length - 1];
+  const agentState: AgentState = busy ? 'thinking' : pending.length ? 'confirm' : lastItem?.kind === 'error' ? 'error' : 'idle';
+  useEffect(() => { if (sasuke) announceAgentState(agentState); }, [agentState, sasuke]);
+  useEffect(() => () => { if (sasuke) announceAgentState('idle'); }, [sasuke]);
+  useEffect(() => {
+    if (!menu) return;
+    const close = (e: MouseEvent) => { if (menuBox.current && !menuBox.current.contains(e.target as Node)) setMenu(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenu(false); };
+    document.addEventListener('click', close);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('click', close); document.removeEventListener('keydown', esc); };
+  }, [menu]);
 
   // "/" or Cmd/Ctrl+K anywhere jumps to the input.
   useEffect(() => {
@@ -385,7 +408,10 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   function renderReply({ item, index }: { item: Item; index: number }) {
     const addNote = (note: string) => setNotes(prev => [...prev, note]);
     if (item.kind === 'tool') {
-      if (item.result.status === 'confirmation_required') return <ProposalCard key={index} result={item.result} onDone={addNote} />;
+      if (item.result.status === 'confirmation_required') {
+        const id = item.result.proposalId;
+        return <ProposalCard key={index} result={item.result} onDone={note => { addNote(note); setPending(p => p.filter(x => x !== id)); }} />;
+      }
       if (item.result.status === 'ok' && (item.result.tool.startsWith('assistant.') || item.result.tool.startsWith('health.'))) {
         const source = items.slice(0, index).reverse().find(i => i.kind === 'user');
         const original = source?.kind === 'user' ? source.text.replace(/^[/／]\s*分診\s*/, '') : '';
@@ -431,14 +457,23 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
           <form className="sk-composer" onSubmit={event => { event.preventDefault(); void send(text); }}>
             <textarea ref={input} value={text} onChange={e => setText(e.target.value)} rows={1} aria-label="訊息" onKeyDown={onKeyDown} onCompositionEnd={() => { composedAt.current = Date.now(); }} onInput={() => { armed.current = 0; setEnterHint(false); }} placeholder={placeholder} />
             <div className="sk-tools">
-              <span className={ai ? 'sk-model' : 'sk-model off'} title={ai ? '目前回覆你的 AI 模型' : '尚未設定 AI 金鑰，只能使用快捷指令'}><span className="sk-pulse" />{ai ?? 'AI 未設定'}</span>
-              <label className="sk-style" title="回覆風格">
-                <select value={style} onChange={e => chooseStyle(e.target.value as ReplyStyle)} aria-label="回覆風格">
-                  {STYLES.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
-                </select>
-              </label>
-              {features.commands && <button type="button" className="sk-tool" onClick={() => { setText('/'); input.current?.focus(); }} aria-label="快捷指令" title="快捷指令"><Icon name="slash" size={15} /></button>}
-              {!empty && <button type="button" className="sk-tool" onClick={newConversation} aria-label="開新對話" title="開新對話"><Icon name="plus" size={16} /></button>}
+              <div className="sk-agent-menu" ref={menuBox}>
+                <button type="button" className="sk-agent" onClick={() => setMenu(m => !m)} aria-expanded={menu} aria-haspopup="dialog" data-tip="模型與回覆風格">
+                  <span className={ai ? 'sk-pulse' : 'sk-pulse off'} />SASUKE<Icon name="arrow" size={12} className="sk-agent-caret" />
+                </button>
+                {menu && (
+                  <div className="sk-menu" role="dialog" aria-label="SASUKE 設定">
+                    <div className="sk-menu-row"><span>目前模型</span><b>{ai ?? '未設定（只能使用本地功能）'}</b></div>
+                    <label className="sk-menu-row"><span>回覆風格</span>
+                      <select value={style} onChange={e => chooseStyle(e.target.value as ReplyStyle)}>
+                        {STYLES.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+                      </select>
+                    </label>
+                    {features.commands && <button type="button" className="sk-menu-item" onClick={() => { setMenu(false); setText('/'); input.current?.focus(); }}><Icon name="slash" size={14} />快捷指令</button>}
+                    <a className="sk-menu-item" href="/cost"><Icon name="settings" size={14} />AI 成本保護</a>
+                  </div>
+                )}
+              </div>
               {enterHint && <span className="sk-enter-hint" role="status">再按一次 Enter 送出</span>}
               <button className="sk-send" type="submit" disabled={Boolean(busy) || !text.trim()} aria-label="送出"><Icon name="up" size={18} /></button>
             </div>
@@ -460,8 +495,10 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
         {storageError && <p className="banner storage-warning" role="alert">{storageError}</p>}
         {empty && sasuke && (
           <section className="sk-home">
-            <span className="sk-home-mark"><SasukeMark size={44} /></span>
-            <h1 className="sk-hello">{greeting()} <span>Sir</span></h1>
+            <span className="sk-home-mark"><SasukeMark size={44} state={agentState} /></span>
+            <p className="sk-home-name">SASUKE</p>
+            <h1 className="sk-hello">{greeting()}，Sir。</h1>
+            <p className="sk-ask">{askLine()}</p>
             {notices.length > 0 && (
               <ul className="sk-notices" aria-label="重要通知">
                 {notices.map(n => <li key={n.key}><span className={`sk-dot ${n.tone}`} /><button type="button" className="sk-notice" onClick={() => pick(n.ask, true)}>{n.text}</button></li>)}
@@ -518,7 +555,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
         ))}
         {busy && (
           <div className="agent-turn">
-            <span className="agent-avatar thinking" aria-hidden="true">{sasuke ? <SasukeMark size={22} /> : <BrandMark size={26} />}</span>
+            <span className="agent-avatar thinking" aria-hidden="true">{sasuke ? <SasukeMark size={22} state="thinking" /> : <BrandMark size={26} />}</span>
             <div className="agent-body">{sasuke
               ? <p className="sk-working" aria-live="polite"><i aria-hidden="true" /><i aria-hidden="true" /><i aria-hidden="true" /><span>{busy === '思考中' ? 'SASUKE 正在處理' : busy}</span></p>
               : <p className="working" aria-live="polite">{busy}<span className="typing"><span /><span /><span /></span></p>}</div>
