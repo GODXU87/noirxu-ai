@@ -8,13 +8,16 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "eval:persona": "NOIRXU_PERSONA_LIVE=1 vitest run tests/persona.live.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.131.0",
+    "@fontsource-variable/inter": "5.3.0",
     "@supabase/supabase-js": "2.112.2",
     "jose": "6.2.12",
     "next": "15.5.24",
+    "openai": "7.43.0",
     "pg": "8.23.1",
     "react": "19.1.9",
     "react-dom": "19.1.9",
