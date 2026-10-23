@@ -24,6 +24,24 @@ export interface AgentTurn {
   reply: string;
   events: ToolEvent[];
   stopReason: string | null;
+  /** Tokens used across every model call in this turn (for cost tracking and caps). */
+  usage: TurnUsage;
+}
+
+export interface TurnUsage { calls: number; input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }
+
+/** USD per million tokens (Anthropic first-party list prices, 2026-10). */
+const PRICES: Record<string, { input: number; output: number; cacheRead: number }> = {
+  'claude-opus-5-5': { input: 4, output: 20, cacheRead: 0.2 },
+  'claude-sonnet-5-5': { input: 2, output: 10, cacheRead: 0.2 },
+  'claude-haiku-5-5': { input: 0.1, output: 0.5, cacheRead: 0.01 }
+};
+
+/** Estimated cost of a turn; null for a model without a known price. Cache writes are priced at 1.25x input. */
+export function estimateCostUsd(model: string, usage: TurnUsage): number | null {
+  const p = PRICES[model];
+  if (!p) return null;
+  return (usage.input_tokens * p.input + usage.cache_creation_input_tokens * p.input * 1.25 + usage.cache_read_input_tokens * p.cacheRead + usage.output_tokens * p.output) / 1_000_000;
 }
 
 const SYSTEM_PROMPT = `你是 SASUKE，NOIRXU AI 平台上的私人智慧管家，協助使用者在同一個對話中查詢與操作三個既有系統（NOIRXU Ledger 記帳、NOIRXU Trading Journal 交易紀錄、NOIRXU RADAR 台股研究）以及 Gmail。請以繁體中文回覆。
@@ -151,6 +169,7 @@ export async function runAgentTurn(options: {
   const byClaudeName = new Map(registry.list().map(tool => [toClaudeName(tool.name), tool.name]));
   const messages: MessageParam[] = [...options.history, { role: 'user', content: options.userText }];
   const events: ToolEvent[] = [];
+  const usage: TurnUsage = { calls: 0, input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
   const system = systemPrompt(registry, taipeiDate(ctx.now()), options.style, options.memories);
 
   for (let iteration = 0; iteration < MAX_ITERATIONS; iteration += 1) {
@@ -166,16 +185,21 @@ export async function runAgentTurn(options: {
       fallbacks: 'default'
     });
     messages.push({ role: 'assistant', content: response.content });
+    usage.calls += 1;
+    usage.input_tokens += response.usage?.input_tokens ?? 0;
+    usage.output_tokens += response.usage?.output_tokens ?? 0;
+    usage.cache_read_input_tokens += response.usage?.cache_read_input_tokens ?? 0;
+    usage.cache_creation_input_tokens += response.usage?.cache_creation_input_tokens ?? 0;
 
     if (response.stop_reason === 'refusal') {
-      return { messages, reply: '這個請求無法處理。', events, stopReason: 'refusal' };
+      return { messages, reply: '這個請求無法處理。', events, stopReason: 'refusal', usage };
     }
     if (response.stop_reason === 'pause_turn') continue;
 
     const toolUses = response.content.filter((block): block is Anthropic.Beta.Messages.BetaToolUseBlock => block.type === 'tool_use');
     if (response.stop_reason !== 'tool_use' || toolUses.length === 0) {
       const reply = response.content.filter(block => block.type === 'text').map(block => (block as { text: string }).text).join('\n').trim();
-      return { messages, reply, events, stopReason: response.stop_reason };
+      return { messages, reply, events, stopReason: response.stop_reason, usage };
     }
 
     const results: ToolResult[] = await Promise.all(toolUses.map(async block => {
@@ -188,5 +212,5 @@ export async function runAgentTurn(options: {
     messages.push({ role: 'user', content: results });
   }
 
-  return { messages, reply: '這個請求需要的步驟太多，已停止。請把需求拆小一點再試一次。', events, stopReason: 'max_iterations' };
+  return { messages, reply: '這個請求需要的步驟太多，已停止。請把需求拆小一點再試一次。', events, stopReason: 'max_iterations', usage };
 }

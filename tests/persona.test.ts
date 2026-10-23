@@ -42,3 +42,11 @@ describe('SASUKE persona: system prompt', () => {
     expect(prompt).toContain('絕不可說「已記帳」「已新增」「已寄出」');
   });
 });
+
+describe('cost estimate', () => {
+  it('prices a turn from token usage (Opus 5.5: $4 in / $20 out per million)', async () => {
+    const { estimateCostUsd } = await import('@/server/agent');
+    expect(estimateCostUsd('claude-opus-5-5', { calls: 2, input_tokens: 1_000_000, output_tokens: 100_000, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 })).toBeCloseTo(6);
+    expect(estimateCostUsd('unknown-model', { calls: 1, input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 })).toBeNull();
+  });
+});
