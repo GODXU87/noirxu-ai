@@ -13,29 +13,29 @@ run with the provider's prices** (not run: needs approval).
 
 | | Model calls | Input tokens (est.) | Output tokens (fixed) | Tasks succeeded |
 |---|---|---|---|---|
-| Baseline | 12 | 66,644 | 1,440 | 12 / 12 |
-| Optimized | 5 | 19,266 | 600 | 12 / 12 |
+| Baseline | 12 | 67,930 | 1,440 | 12 / 12 |
+| Optimized | 4 | 16,273 | 480 | 12 / 12 |
 
-Local answers (7 tasks): 7 / 7 correct against the source data, 0 model calls.
-Model tasks (5): every one still reached the model with the tool it needs.
+Local answers (8 tasks): 8 / 8 correct against the source data, 0 model calls.
+Model tasks (4): every one still reached the model with the tool it needs.
 
 ## Per task
 
 | Task | Baseline calls / input | Optimized calls / input | Optimized result | Local latency |
 |---|---|---|---|---|
-| 目前喝了多少水？ | 1 / 5,548 | 0 / 0 | 正確 | 18.6 ms |
-| 今天有哪些待辦 | 1 / 5,547 | 0 / 0 | 正確 | 5.0 ms |
-| 這個月花了多少？ | 1 / 5,548 | 0 / 0 | 正確 | 1.6 ms |
-| 你記得我的體重嗎 | 1 / 5,601 | 0 / 0 | 正確 | 1.1 ms |
-| 今天幾號 | 1 / 5,544 | 0 / 0 | 正確 | 1.4 ms |
-| 125*8+30 | 1 / 5,542 | 0 / 0 | 正確 | 1.7 ms |
-| 謝謝 | 1 / 5,542 | 0 / 0 | 正確 | 0.7 ms |
-| 幫我看最近一筆餐飲花費正不正常 | 1 / 5,555 | 1 / 3,541 | 交給模型（工具正確） | — |
-| 比較這個月和上個月的支出差異 | 1 / 5,554 | 1 / 4,436 | 交給模型（工具正確） | — |
-| 幫我深入研究 2330 的風險與失效條件 | 1 / 5,555 | 1 / 4,437 | 交給模型（工具正確） | — |
-| 明天下午三點提醒我開會 | 1 / 5,551 | 1 / 3,423 | 交給模型（工具正確） | — |
-| 整理一下我這週的行程，指出時間衝突 | 1 / 5,557 | 1 / 3,429 | 交給模型（工具正確） | — |
+| 目前喝了多少水？ | 1 / 5,655 | 0 / 0 | 正確 | 9.7 ms |
+| 今天有哪些待辦 | 1 / 5,654 | 0 / 0 | 正確 | 3.2 ms |
+| 這個月花了多少？ | 1 / 5,655 | 0 / 0 | 正確 | 1.2 ms |
+| 你記得我的體重嗎 | 1 / 5,709 | 0 / 0 | 正確 | 0.7 ms |
+| 今天幾號 | 1 / 5,651 | 0 / 0 | 正確 | 1.0 ms |
+| 125*8+30 | 1 / 5,649 | 0 / 0 | 正確 | 1.0 ms |
+| 謝謝 | 1 / 5,649 | 0 / 0 | 正確 | 0.5 ms |
+| 幫我看最近一筆餐飲花費正不正常 | 1 / 5,662 | 1 / 3,648 | 交給模型（工具正確） | — |
+| 比較這個月和上個月的支出差異 | 1 / 5,661 | 1 / 4,543 | 交給模型（工具正確） | — |
+| 幫我深入研究 2330 的風險與失效條件 | 1 / 5,663 | 1 / 4,545 | 交給模型（工具正確） | — |
+| 明天下午三點提醒我開會 | 1 / 5,658 | 0 / 0 | 正確 | 6.2 ms |
+| 整理一下我這週的行程，指出時間衝突 | 1 / 5,664 | 1 / 3,537 | 交給模型（工具正確） | — |
 
 Model-path savings come from: recent turns only (6 for light, 12 for full), tools limited to the
 task's domain for light tasks, and lower output caps. Deep research (2330) keeps every tool.
-Baseline correctness of the 7 local tasks depends on the model and is not measurable offline.
+Baseline correctness of the 8 local tasks depends on the model and is not measurable offline.

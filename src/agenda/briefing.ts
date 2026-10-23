@@ -34,11 +34,33 @@ export function buildBriefing(input: BriefingInput): { title: string; body: stri
   return { title, body: lines.length ? lines.join('\n') : '近三天沒有待辦事項。', lines };
 }
 
+/**
+ * Lock-screen text: SASUKE, the title, when it is, and "重要" if it is. No notes, no raw
+ * message and no schedule details — those stay in the app.
+ */
 export function reminderMessage(item: AgendaItem, label: string, today: string) {
+  const title = item.title.length > 40 ? `${item.title.slice(0, 39)}…` : item.title;
+  const when = item.source === 'reminder' ? `提醒時間 ${item.due_time ?? ''}`.trim() : dueLabel(item, today);
   return {
-    title: `${label}：${item.title}`,
-    body: `${dueLabel(item, today)} · 重要程度 ${IMPORTANCE_LABEL[item.importance]}${item.notes ? `\n${item.notes}` : ''}`,
-    url: '/overview',
-    tag: `agenda-${item.id}`
+    title: `SASUKE · ${title}`,
+    body: `${when}${item.importance === 3 ? ' · 重要' : ''}`,
+    url: '/tasks',
+    tag: `agenda-${item.id}-${label}`
+  };
+}
+
+/** One notification for several reminders that are due together. */
+export function digestMessage(items: Array<{ title: string; due_date: string | null; due_time: string | null }>, today: string, options: { missed?: boolean } = {}) {
+  const titles = [...new Set(items.map(i => i.title))];
+  const times = items.map(i => i.due_time).filter(Boolean).sort();
+  const subject = titles.length === 1 ? titles[0] : `${items.length} 則提醒`;
+  const detail = titles.length === 1
+    ? `${items.length} 個時段${times.length ? `：${times.slice(0, 3).join('、')}${times.length > 3 ? ' 等' : ''}` : ''}`
+    : titles.slice(0, 3).join('、') + (titles.length > 3 ? ' 等' : '');
+  return {
+    title: `SASUKE · ${options.missed ? '錯過的提醒：' : ''}${subject.length > 36 ? `${subject.slice(0, 35)}…` : subject}`,
+    body: `${detail}。點開查看全部。`,
+    url: '/life',
+    tag: `digest-${today}`
   };
 }

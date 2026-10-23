@@ -31,8 +31,8 @@ describe('agenda tools', () => {
     expect(result.status).toBe('ok');
     const data = (result as any).data;
     expect(data.item).toMatchObject({ title: '教學演示', due_date: '2026-11-11', importance: 3 });
-    expect(data.reminders.map((r: any) => r.label)).toEqual(['3 天後', '明天', '今天']);
-    expect(agenda.reminders.size).toBe(3);
+    expect(data.reminders.map((r: any) => r.label)).toEqual(['明天', '今天']);
+    expect(agenda.reminders.size).toBe(2);
   });
 
   it('lists open items ranked by importance and nearness', async () => {
@@ -88,8 +88,8 @@ describe('runTick', () => {
     const evening = new Date('2026-10-21T12:05:00Z'); // 20:05 Taipei
     await runTick(hub, evening);
     await runTick(hub, evening);
-    expect(sent.filter(m => m.title.startsWith('明天'))).toHaveLength(1);
-    expect(sent[0].title).toBe('明天：繳電話費');
+    expect(sent.filter(m => m.title.includes('繳電話費'))).toHaveLength(1);
+    expect(sent[0].title).toBe('SASUKE · 繳電話費');
   });
 
   it('sends the morning summary once per day between 08:00 and 11:00 Taipei', async () => {

@@ -36,7 +36,7 @@ interface ServerStatus {
 }
 
 const STATUS_LABEL: Record<string, string> = {
-  pending: '等待發送', claimed: '處理中', sending: '發送中', provider_accepted: '推播服務已接受', retry_pending: '等待重試', failed: '發送失敗', expired: '已過期未送出'
+  pending: '等待發送', claimed: '處理中', sending: '發送中', provider_accepted: '推播服務已接受', grouped: '已合併通知', retry_pending: '等待重試', failed: '發送失敗', expired: '已過期未送出'
 };
 const OUTCOME_LABEL: Record<string, string> = {
   accepted: '推播服務已接受', gone: '訂閱已失效', vapid_mismatch: '金鑰不一致', rate_limited: '被限流', provider_error: '推播服務錯誤', network_error: '網路錯誤', rejected: '推播服務拒絕', invalid_endpoint: '端點無效'

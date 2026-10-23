@@ -14,6 +14,8 @@ export interface AgendaStore {
   /** Unsent reminders due by `now` for open items. */
   dueReminders(now: Date): Promise<DueReminder[]>;
   markReminderSent(id: string, at: Date): Promise<void>;
+  /** Unsent reminders of open items due between now and `until`, soonest first. */
+  upcomingReminders(userId: string, now: Date, until: Date): Promise<Array<{ id: string; remind_at: string }>>;
   /** Returns false if this key was already used (each notification goes out once). */
   claimNotification(key: string, userId: string, kind: string): Promise<boolean>;
   savePushSubscription(row: PushSubscriptionRow & { user_agent: string }): Promise<void>;
@@ -68,6 +70,11 @@ export class MemoryAgendaStore implements AgendaStore {
     return [...this.reminders.values()]
       .filter(r => !r.sent_at && Date.parse(r.remind_at) <= now.getTime() && this.items.get(r.item_id)?.status === 'open')
       .map(r => ({ ...r, item: { ...this.items.get(r.item_id)! } }));
+  }
+  async upcomingReminders(userId: string, now: Date, until: Date) {
+    return [...this.reminders.values()]
+      .filter(r => r.user_id === userId && !r.sent_at && Date.parse(r.remind_at) > now.getTime() && Date.parse(r.remind_at) <= until.getTime() && this.items.get(r.item_id)?.status === 'open')
+      .sort((a, b) => a.remind_at.localeCompare(b.remind_at)).map(r => ({ id: r.id, remind_at: r.remind_at }));
   }
   async markReminderSent(id: string, at: Date) {
     const r = this.reminders.get(id);
@@ -176,6 +183,14 @@ export class PgAgendaStore implements AgendaStore {
     return rows.map(row => ({
       id: row.r_id, item_id: row.item_id, user_id: row.r_user_id, remind_at: new Date(row.remind_at).toISOString(), label: row.label, sent_at: null, item: toItem(row)
     }));
+  }
+
+  async upcomingReminders(userId: string, now: Date, until: Date) {
+    const { rows } = await this.pool.query(
+      `select r.id, r.remind_at from noirxu_ai.reminders r join noirxu_ai.agenda_items i on i.id = r.item_id
+        where r.user_id = $1 and r.sent_at is null and r.remind_at > $2 and r.remind_at <= $3 and i.status = 'open'
+        order by r.remind_at limit 20`, [userId, now.toISOString(), until.toISOString()]);
+    return rows.map(row => ({ id: String(row.id), remind_at: new Date(row.remind_at).toISOString() }));
   }
 
   async markReminderSent(id: string, at: Date) {

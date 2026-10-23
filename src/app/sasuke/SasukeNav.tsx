@@ -184,7 +184,7 @@ export function SasukeNav({ current }: { current: Page; water?: boolean }) {
       <div className="sk-bottom">
         <Link href="/connections" aria-current={current === 'connections' ? 'page' : undefined} onClick={close} title="設定與連線"><Icon name="settings" size={18} /><span>設定與連線</span></Link>
         <div className="sk-foot">
-          <a href="/api/ui?mode=classic" className="sk-foot-note" title="切換回原版介面">切換原版介面</a>
+          <span className="sk-foot-note">NOIRXU AI</span>
           <form method="post" action="/api/logout"><button type="submit" className="sk-icon" aria-label="登出" title="登出"><Icon name="logout" size={17} /></button></form>
         </div>
       </div>

@@ -32,7 +32,7 @@ function weekday(date: string): number {
   return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
 }
 
-function cnNumber(text: string): number {
+export function cnNumber(text: string): number {
   if (/^\d+$/.test(text)) return Number(text);
   if (text === '十') return 10;
   if (text.startsWith('十')) return 10 + (CN_NUM[text[1]] ?? 0);

@@ -146,6 +146,9 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   const [busy, setBusy] = useState<string | null>(null);
   const [style, setStyle] = useState<ReplyStyle>('professional');
   const [paletteIndex, setPaletteIndex] = useState(0);
+  const armed = useRef(0);
+  const composedAt = useRef(0);
+  const [enterHint, setEnterHint] = useState(false);
   const feedEnd = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const empty = items.length === 0;
@@ -292,7 +295,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
             if (!line) continue;
             const event = JSON.parse(line);
             if (event.type === 'tool_start') setBusy(`正在使用 ${toolLabel(event.tool)}`);
-            else if (event.type === 'tool_done') { shown.add(index++); setItems(prev => [...prev, { kind: 'tool', result: event.result }]); scroll(); setBusy('整理結果'); }
+            else if (event.type === 'tool_done') { shown.add(index++); setItems(prev => [...prev, { kind: 'tool', result: event.result }]); scroll(); setBusy('整理結果'); if (String(event.tool).startsWith('agenda.')) window.dispatchEvent(new Event('noirxu-reminders-changed')); }
             else if (event.type === 'done') body = event;
           }
         }
@@ -303,6 +306,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
       if (!body.ok) { setItems(prev => [...prev, { kind: 'error', text: body.error?.message ?? '發生錯誤', retry: body.error?.code === 'MODEL_UNAVAILABLE' ? message : undefined }]); return; }
       setNotes([]);
       setHistory(body.messages);
+      if (body.events?.some((e: { tool: string }) => e.tool.startsWith('agenda.'))) window.dispatchEvent(new Event('noirxu-reminders-changed'));
       if (body.contextReset) setItems(prev => [...prev, { kind: 'notice', text: `AI 已改用 ${body.provider === 'openai' ? 'OpenAI' : 'Claude'}，之前的對話脈絡沒有帶過去；畫面上的紀錄都還在。` }]);
       setItems(prev => [
         ...prev,
@@ -364,7 +368,18 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
       }
       if (e.key === 'Escape') { setText(''); return; }
     }
-    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(text); }
+    if (e.key !== 'Enter' || e.shiftKey) { armed.current = 0; return; }
+    // Enter while an input method is composing (also Safari's keyCode 229 case) only confirms the text.
+    if (e.nativeEvent.isComposing || e.keyCode === 229 || Date.now() - composedAt.current < 80) return;
+    e.preventDefault();
+    // Phones send with one Enter. On a computer the first Enter can be the end of switching
+    // input or typing numbers, so it takes a second Enter (or Cmd/Ctrl+Enter) to send.
+    const coarse = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
+    if (coarse || e.metaKey || e.ctrlKey || Date.now() - armed.current < 1500) { armed.current = 0; setEnterHint(false); void send(text); return; }
+    if (!text.trim()) return;
+    armed.current = Date.now();
+    setEnterHint(true);
+    window.setTimeout(() => { if (Date.now() - armed.current >= 1500) setEnterHint(false); }, 1600);
   }
 
   function renderReply({ item, index }: { item: Item; index: number }) {
@@ -414,7 +429,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
         )}
         {sasuke ? (
           <form className="sk-composer" onSubmit={event => { event.preventDefault(); void send(text); }}>
-            <textarea ref={input} value={text} onChange={e => setText(e.target.value)} rows={1} aria-label="訊息" onKeyDown={onKeyDown} placeholder={placeholder} />
+            <textarea ref={input} value={text} onChange={e => setText(e.target.value)} rows={1} aria-label="訊息" onKeyDown={onKeyDown} onCompositionEnd={() => { composedAt.current = Date.now(); }} onInput={() => { armed.current = 0; setEnterHint(false); }} placeholder={placeholder} />
             <div className="sk-tools">
               <span className={ai ? 'sk-model' : 'sk-model off'} title={ai ? '目前回覆你的 AI 模型' : '尚未設定 AI 金鑰，只能使用快捷指令'}><span className="sk-pulse" />{ai ?? 'AI 未設定'}</span>
               <label className="sk-style" title="回覆風格">
@@ -424,13 +439,14 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
               </label>
               {features.commands && <button type="button" className="sk-tool" onClick={() => { setText('/'); input.current?.focus(); }} aria-label="快捷指令" title="快捷指令"><Icon name="slash" size={15} /></button>}
               {!empty && <button type="button" className="sk-tool" onClick={newConversation} aria-label="開新對話" title="開新對話"><Icon name="plus" size={16} /></button>}
+              {enterHint && <span className="sk-enter-hint" role="status">再按一次 Enter 送出</span>}
               <button className="sk-send" type="submit" disabled={Boolean(busy) || !text.trim()} aria-label="送出"><Icon name="up" size={18} /></button>
             </div>
           </form>
         ) : (
           <form onSubmit={event => { event.preventDefault(); void send(text); }}>
             {!empty && <button type="button" className="icon-button" onClick={newConversation} aria-label="開新對話" title="開新對話"><Icon name="plus" size={18} /></button>}
-            <textarea ref={input} value={text} onChange={e => setText(e.target.value)} rows={1} aria-label="訊息" onKeyDown={onKeyDown} placeholder={placeholder} />
+            <textarea ref={input} value={text} onChange={e => setText(e.target.value)} rows={1} aria-label="訊息" onKeyDown={onKeyDown} onCompositionEnd={() => { composedAt.current = Date.now(); }} onInput={() => { armed.current = 0; setEnterHint(false); }} placeholder={placeholder} />
             <button className="primary" type="submit" disabled={Boolean(busy) || !text.trim()} aria-label="送出"><Icon name="send" size={18} /></button>
           </form>
         )}

@@ -1,3 +1,5 @@
+import { isReminderRequest } from '@/agenda/when';
+
 // Deterministic intent recognition for the local router. Pure functions, no model calls:
 // a message is handled locally only when one rule matches clearly. Anything with an action
 // verb, several requests, or no clear match goes to the model (or the existing slash
@@ -11,7 +13,8 @@ export type LocalIntent =
   | { kind: 'water_status' }
   | { kind: 'agenda'; range: 'today' | 'tomorrow' | 'week' | 'overdue' | 'upcoming' }
   | { kind: 'ledger_month'; which: 'this' | 'last' }
-  | { kind: 'memory_recall'; subject: string };
+  | { kind: 'memory_recall'; subject: string }
+  | { kind: 'reminder_create'; text: string };
 
 /** Words that ask for a change, a judgement or a longer piece of work: never answered locally. */
 const ACTION = /(記下|記一|幫我記|新增|加入|刪除|刪掉|取消|修改|改成|改到|設定|寄|回覆|回信|擬|寫一|建立|提醒我|分析|比較|研究|為什麼|怎麼辦|建議|規劃|安排一下|排一下|整理|翻譯|總結|摘要|預測|應該)/;
@@ -55,11 +58,16 @@ function normalize(text: string) {
 }
 
 const CALC = /^[\d\s+\-*/×÷x().%]+$/;
+/** A time the reminder parser can work with (relative or clock time). */
+const REMINDER_TIME = /((\d+|[零一二兩三四五六七八九十]+)\s*個?\s*半?\s*(分鐘?|小時|鐘頭|天)\s*(後|之後|以後)|半\s*個?\s*(小時|鐘頭)\s*(後|之後)|一刻鐘|[0-9一二兩三四五六七八九十]{1,3}\s*[點点時]|\d{1,2}[:：]\d{2}|今晚|明早|明晚)/;
 
 /** Returns the local intent, or null when the message should go to the model. */
 export function classify(raw: string): LocalIntent | null {
   const text = normalize(userWords(raw));
   if (!text || text.length > MAX_LOCAL_CHARS || text.startsWith('/') || text.startsWith('／')) return null;
+  // "兩分鐘後提醒我看電腦", "明天9點提醒我開會": created locally from the user's own words.
+  const words = userWords(raw).trim();
+  if (isReminderRequest(words) && REMINDER_TIME.test(words) && !MULTI.test(words) && words.length <= 80) return { kind: 'reminder_create', text: words };
   const calc = text.replace(/(等於多少|等於|是多少|=)$/, '');
   if (CALC.test(calc) && /\d\s*[+\-*/×÷x%]\s*[\d(]/.test(calc)) return { kind: 'calc', expression: calc };
   if (ACTION.test(text) || MULTI.test(text)) return null;
