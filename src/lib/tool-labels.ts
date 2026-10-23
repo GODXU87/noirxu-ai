@@ -33,6 +33,8 @@ export const TOOL_LABELS: Record<string, string> = {
   'health.water.log': '記錄喝水',
   'health.water.undo': '刪除喝水紀錄',
   'health.water.settings': '喝水設定',
+  'health.water.exercise': '今天的運動',
+  'health.water.profile': '喝水個人資料',
   'memory.list': '長期記憶',
   'memory.create': '新增記憶',
   'memory.update': '更新記憶',

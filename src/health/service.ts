@@ -1,7 +1,7 @@
 import type { AgendaStore } from '@/agenda/store';
 import type { TokenVault } from '@/connections/vault';
 import { ToolError } from '@/hub/errors';
-import { DEFAULT_WATER_PREFS, type WaterDay, type WaterPrefs } from './water';
+import { DEFAULT_WATER_PREFS, type DayExercise, type WaterDay, type WaterPrefs } from './water';
 
 const MAX_ATTEMPTS = 10;
 const backoff = (attempt: number) => new Promise(resolve => setTimeout(resolve, Math.random() * Math.min(200, 10 * 2 ** attempt)));
@@ -54,7 +54,16 @@ export class WaterService {
   async log(userId: string, date: string, ml: number, at: Date): Promise<WaterDay> {
     const next = await this.mutate<WaterDay, WaterDay>(`water_day:${userId}:${date}`, current => {
       const day = current ?? { date, total_ml: 0, entries: [] };
-      const updated = { date, entries: [...day.entries, { at: at.toISOString(), ml }], total_ml: day.total_ml + ml };
+      const updated = { ...day, date, entries: [...day.entries, { at: at.toISOString(), ml }], total_ml: day.total_ml + ml };
+      return { next: updated, result: updated };
+    });
+    return next!;
+  }
+
+  /** Records today's exercise (minutes 0 = no exercise today). */
+  async setExercise(userId: string, date: string, exercise: DayExercise): Promise<WaterDay> {
+    const next = await this.mutate<WaterDay, WaterDay>(`water_day:${userId}:${date}`, current => {
+      const updated = { ...(current ?? { date, total_ml: 0, entries: [] }), exercise };
       return { next: updated, result: updated };
     });
     return next!;
@@ -64,7 +73,7 @@ export class WaterService {
     const result = await this.mutate<WaterDay, { day: WaterDay; removed: number }>(`water_day:${userId}:${date}`, current => {
       const last = current?.entries.at(-1);
       if (!current || !last) return null;
-      const updated = { date, entries: current.entries.slice(0, -1), total_ml: current.total_ml - last.ml };
+      const updated = { ...current, date, entries: current.entries.slice(0, -1), total_ml: current.total_ml - last.ml };
       return { next: updated, result: { day: updated, removed: last.ml } };
     });
     return result ?? { day: await this.day(userId, date), removed: null };

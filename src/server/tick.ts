@@ -1,7 +1,7 @@
 import 'server-only';
 import { buildBriefing, reminderMessage } from '@/agenda/briefing';
 import { taipeiDate } from '@/lib/dates';
-import { dueWaterSlot, waterReminder } from '@/health/water';
+import { dueWaterSlot, postExerciseReminder, waterReminder } from '@/health/water';
 import type { Hub } from './hub';
 import { OWNER_ID } from './session';
 
@@ -66,6 +66,12 @@ export async function runTick(hub: Hub, now = new Date()): Promise<TickResult> {
   let water = false;
   if (hub.features?.water && hub.water) {
     const prefs = await hub.water.prefs(OWNER_ID);
+    const post = postExerciseReminder(prefs, await hub.water.day(OWNER_ID, today), now);
+    if (post && await hub.agenda.claimNotification(post.key, OWNER_ID, 'water')) {
+      const result = await hub.push.send(OWNER_ID, { title: post.title, body: post.body, url: '/', tag: `water-${today}` });
+      pushed += result.sent;
+      water = true;
+    }
     const slot = dueWaterSlot(prefs, now);
     if (slot && await hub.agenda.claimNotification(`water:${OWNER_ID}:${today}:${slot}`, OWNER_ID, 'water')) {
       const message = waterReminder(prefs, await hub.water.day(OWNER_ID, today), now);

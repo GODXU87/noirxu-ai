@@ -34,7 +34,7 @@ export const COMMAND_HELP: Array<{ command: string; description: string }> = [
   { command: '/記帳 午餐 150 元 刷卡', description: '整理成記帳草稿，你確認後才寫入 Ledger' },
   { command: '/分診 [貼上文字]', description: '從訊息、通知或信件中找出行程、待辦、金額與需要回覆的內容' },
   { command: '/回覆 [貼上信件]', description: '擬回覆草稿（需要 AI）；寄出前一樣要確認' },
-  { command: '/喝水 300', description: '記錄喝水，看今天的進度；「/喝水 目標 2500」改目標、「/喝水 關閉」停止提醒' },
+  { command: '/喝水 300', description: '記錄喝水與進度；「/喝水 運動 90 大汗」「/喝水 今天沒運動」「/喝水 暫停 2 小時」「/喝水 免打擾 22:30-08:00」「/喝水 目標 2500」' },
   { command: '/記憶 [內容]', description: '保存長期偏好或規則；只打「/記憶」列出已記住的內容' }
 ];
 

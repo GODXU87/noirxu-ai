@@ -9,6 +9,19 @@ export const runtime = 'nodejs';
 
 const body = z.object({ text: z.string().trim().min(1).max(8000) });
 
+/** Taipei wall-clock time now, HH:MM (for "I just finished exercising"). */
+function taipeiNow() {
+  return new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Taipei', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date());
+}
+
+/** 08:00 Taipei tomorrow, as an instant. */
+function tomorrowMorning() {
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(new Date());
+  const next = new Date(`${today}T08:00:00+08:00`);
+  next.setUTCDate(next.getUTCDate() + 1);
+  return next.toISOString();
+}
+
 /**
  * Shortcut commands (/早報, /晚報, /記帳, /分診 …). Parsed by fixed rules and run through
  * the same executor as everything else; none of them needs the AI model except /回覆,
@@ -60,6 +73,12 @@ export async function POST(request: Request) {
           case 'enable': return reply('health.water.settings', { enabled: true });
           case 'disable': return reply('health.water.settings', { enabled: false });
           case 'undo': return reply('health.water.undo', {});
+          case 'resume': return reply('health.water.settings', { paused_until: null });
+          case 'no_exercise': return reply('health.water.exercise', { minutes: 0 });
+          case 'exercise': return reply('health.water.exercise', { minutes: water.minutes, sweat: water.sweat, end: taipeiNow() }, water.sweat === 'unknown' ? { notice: '出汗程度沒說，先給範圍估計；可以補一句「/喝水 運動 90 大汗」讓目標更準。' } : {});
+          case 'pause': return reply('health.water.settings', { paused_until: water.minutes < 0 ? tomorrowMorning() : new Date(Date.now() + water.minutes * 60_000).toISOString() });
+          case 'quiet': return reply('health.water.settings', { quiet_start: water.start, quiet_end: water.end });
+          case 'profile': return reply('health.water.profile', { age: water.age, weight_kg: water.weight_kg });
           case 'invalid': return notice(water.message);
         }
         break;

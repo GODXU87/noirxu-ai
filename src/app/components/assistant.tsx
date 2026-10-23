@@ -292,8 +292,17 @@ export function WaterMeter({ data, onChange, compact }: { data: any; onChange?: 
             {data.remaining_ml === 0 ? '今天的目標已達成。' : data.behind_ml > 0 ? `照進度現在應到 ${fmt(data.expected_ml)} ml，落後 ${fmt(data.behind_ml)} ml。` : `進度正常，還差 ${fmt(data.remaining_ml)} ml。`}
             {data.logged_ml ? ` 已記錄 ${data.logged_ml} ml。` : ''}{data.removed_ml ? ` 已刪除 ${data.removed_ml} ml。` : ''}{data.removed_ml === null ? ' 今天沒有可以刪除的紀錄。' : ''}
           </p>
+          {data.basis?.length > 0 && <ul className="warn-list" style={{ color: 'var(--text-soft)' }}>{data.basis.map((b: string) => <li key={b}>{b}</li>)}</ul>}
+          {!data.prefs.medical_restriction && (
+            <div className="row" style={{ alignItems: 'center' }}>
+              <span className="hint">今天運動：{data.exercise?.status === 'confirmed' ? `${data.exercise.minutes} 分鐘` : data.exercise?.status === 'none' ? '沒有' : data.exercise?.status === 'planned' ? `排程 ${data.exercise.minutes} 分鐘（未確認）` : '未記錄'}</span>
+              <button type="button" className="link" disabled={busy} onClick={() => void act('health.water.exercise', { minutes: 0 })}>沒運動</button>
+              {[60, 90].map(m => <button key={m} type="button" className="link" disabled={busy} onClick={() => void act('health.water.exercise', { minutes: m, sweat: 'unknown' })}>運動 {m} 分</button>)}
+            </div>
+          )}
           <div className="row">
-            <span className="hint">提醒：{data.prefs.enabled ? `${data.prefs.start}–${data.prefs.end} 每 ${data.prefs.interval_hours} 小時（進度落後時才推播）` : '已關閉'}</span>
+            <span className="hint">提醒：{!data.prefs.enabled ? '已關閉' : data.paused ? `暫停到 ${new Date(data.prefs.paused_until).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` : `${data.prefs.start}–${data.prefs.end} 每 ${data.prefs.interval_hours} 小時，落後時才推播${data.prefs.quiet_start ? `；${data.prefs.quiet_start}–${data.prefs.quiet_end} 免打擾` : ''}`}</span>
+            {data.paused && <button type="button" className="link" disabled={busy} onClick={() => void act('health.water.settings', { paused_until: null })}>恢復提醒</button>}
             <button type="button" className="link" disabled={busy} onClick={() => void act('health.water.settings', { enabled: !data.prefs.enabled })}>{data.prefs.enabled ? '關閉提醒' : '開啟提醒'}</button>
             {data.entries.length > 0 && <button type="button" className="link" disabled={busy} onClick={() => void act('health.water.undo', {})}>刪除上一筆</button>}
           </div>

@@ -42,8 +42,8 @@ describe('water pace and reminders', () => {
 
   it('spreads the goal across the reminder window (Asia/Taipei)', () => {
     expect(expectedByNow(prefs, at('2026-10-22T08:00:00'))).toBe(0);
-    expect(expectedByNow(prefs, at('2026-10-22T15:00:00'))).toBe(1000);
-    expect(expectedByNow(prefs, at('2026-10-22T22:00:00'))).toBe(2000);
+    expect(expectedByNow(prefs, at('2026-10-22T15:00:00'))).toBe(1250);
+    expect(expectedByNow(prefs, at('2026-10-22T22:00:00'))).toBe(2500);
   });
 
   it('has reminder slots every 2 hours from 09:00 to 21:00', () => {
@@ -55,10 +55,10 @@ describe('water pace and reminders', () => {
 
   it('only reminds when behind pace', () => {
     const now = at('2026-10-22T15:00:00');
-    expect(waterReminder(prefs, { date: '2026-10-22', total_ml: 1000, entries: [] }, now)).toBeNull();
+    expect(waterReminder(prefs, { date: '2026-10-22', total_ml: 1250, entries: [] }, now)).toBeNull();
     const behind = waterReminder(prefs, { date: '2026-10-22', total_ml: 300, entries: [] }, now);
-    expect(behind?.body).toContain('300 / 2,000 ml');
-    expect(behind?.body).toContain('1,000 ml');
+    expect(behind?.body).toContain('300 / 2,500 ml');
+    expect(behind?.body).toContain('1,250 ml');
   });
 });
 
@@ -76,7 +76,7 @@ describe('water tools', () => {
     const { executor, ctx, agenda } = setup(at('2026-10-22T15:00:00'));
     expect((await executor.invoke('health.water.log', { ml: 300 }, ctx)).status).toBe('ok');
     const second = await executor.invoke('health.water.log', { ml: 500 }, ctx) as any;
-    expect(second.data).toMatchObject({ total_ml: 800, goal_ml: 2000, percent: 40, expected_ml: 1000, behind_ml: 200 });
+    expect(second.data).toMatchObject({ total_ml: 800, goal_ml: 2500, percent: 32, expected_ml: 1250, behind_ml: 450 });
     const undone = await executor.invoke('health.water.undo', {}, ctx) as any;
     expect(undone.data).toMatchObject({ total_ml: 300, removed_ml: 500 });
     // Stored encrypted, not as plain JSON.
