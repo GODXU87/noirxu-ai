@@ -139,7 +139,8 @@ export async function runLocal(intent: LocalIntent, deps: Deps): Promise<LocalTu
       let reply = `${sirFor(seed) ? 'Sir，' : ''}已設定 ${when}提醒你${data.item.title === '提醒' ? '' : data.item.title}。`;
       if (minutesAway <= 60) {
         const age = await deps.schedulerAgeMinutes?.().catch(() => null);
-        reply += `App 開著時會準時提醒；App 關閉時要靠背景排程${age === null || age === undefined ? '' : `（最近一次執行在 ${age} 分鐘前）`}，可能會晚到。`;
+        // The scheduler runs every minute when the external cron is set up; say so only when it really is.
+        reply += age !== null && age !== undefined && age <= 3 ? 'App 關閉也會送出，最多晚約 1 分鐘。' : `App 開著時會準時提醒；App 關閉時要靠背景排程${age === null || age === undefined ? '' : `（最近一次執行在 ${age} 分鐘前）`}，可能會晚到。`;
       }
       return { level: 'L1', source: 'tool', intent: intent.kind, reply, events: [event] };
     }

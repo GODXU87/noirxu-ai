@@ -12,8 +12,15 @@ self.addEventListener('push', event => {
     icon: '/apple-icon.png',
     badge: '/apple-icon.png',
     data: { url: data.url || '/', key: data.key }
-  }).then(() => receipt(data.key, 'displayed')));
+  }).then(() => Promise.all([receipt(data.key, 'displayed'), tellOpenWindows(data)])));
 });
+
+// If SASUKE is open on screen, also show the notification inside the app (iPhone may not
+// show a banner for the web app that is in front).
+async function tellOpenWindows(data) {
+  const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  for (const client of windows) client.postMessage({ type: 'noirxu-push', title: data.title || 'NOIRXU AI', body: data.body || '', url: data.url || '/' });
+}
 
 // Tells the server the notification was really shown / tapped. Best effort: a failed
 // receipt only means the app keeps saying "push service accepted" instead of "displayed".

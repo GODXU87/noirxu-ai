@@ -214,17 +214,6 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
     if (last?.kind === 'tool' && last.result.status === 'ok') window.dispatchEvent(new CustomEvent('noirxu-water', { detail: last.result.data }));
   }, [items]);
 
-  // iPhone Safari: keep the input above the on-screen keyboard.
-  useEffect(() => {
-    const vv = window.visualViewport;
-    if (!sasuke || !vv) return;
-    const update = () => document.documentElement.style.setProperty('--kb', `${Math.max(0, window.innerHeight - vv.height - vv.offsetTop)}px`);
-    update();
-    vv.addEventListener('resize', update);
-    vv.addEventListener('scroll', update);
-    return () => { vv.removeEventListener('resize', update); vv.removeEventListener('scroll', update); };
-  }, [sasuke]);
-
   useEffect(() => {
     const el = input.current;
     if (!el) return;

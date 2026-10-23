@@ -12,6 +12,8 @@ export async function POST(request: Request) {
     const parsed = z.object({ key: z.string().min(1).max(200), event: z.enum(['displayed', 'opened']) }).safeParse(await request.json().catch(() => null));
     if (!parsed.success) throw new ToolError('INVALID_INPUT', '回報格式不正確。');
     const ok = await getHub().delivery.markReceipt(ctx.userId, parsed.data.key, parsed.data.event, ctx.now());
+    // Kind only (e.g. "reminder"), never the title: lets the owner check receipts in the Vercel logs.
+    console.info('[noirxu-ai:receipt]', parsed.data.event, parsed.data.key.split(':')[0], ok ? 'recorded' : 'unknown');
     return json({ ok });
   } catch (error) {
     return errorResponse(error);

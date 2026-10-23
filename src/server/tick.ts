@@ -114,6 +114,7 @@ async function deliverReminders(hub: Hub, due: Awaited<ReturnType<Hub['agenda'][
       const before = (await hub.delivery.get(key))?.status;
       const record = await hub.delivery.deliver({ key, kind: 'reminder', userId, message: reminderMessage(d.item, d.label, today), expiresAt: expiry(d), now });
       accepted(record, before);
+      if (record.status !== before) console.info('[noirxu-ai:deliver]', 'reminder', record.status, `late ${Math.round(lateness(d) / 1000)}s`, record.last_error ?? '');
       if (record.status === 'provider_accepted') delivered += 1;
       if (record.status === 'provider_accepted') await hub.agenda.claimNotification(key, userId, 'reminder').catch(() => false);
       if (finished(record.status)) await hub.agenda.markReminderSent(d.id, now);
