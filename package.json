@@ -16,6 +16,7 @@
     "@supabase/supabase-js": "2.112.2",
     "jose": "6.2.12",
     "next": "15.5.24",
+    "openai": "7.43.0",
     "pg": "8.23.1",
     "react": "19.1.9",
     "react-dom": "19.1.9",

@@ -39,9 +39,13 @@ const PRICES: Record<string, { input: number; output: number; cacheRead: number 
 
 /** Estimated cost of a turn; null for a model without a known price. Cache writes are priced at 1.25x input. */
 export function estimateCostUsd(model: string, usage: TurnUsage): number | null {
-  const p = PRICES[model];
+  // Other providers' prices are not built in; set them per million tokens (e.g. OpenAI) to enable estimates.
+  const input = Number(process.env.OPENAI_PRICE_INPUT_PER_M);
+  const output = Number(process.env.OPENAI_PRICE_OUTPUT_PER_M);
+  const custom = !model.startsWith('claude-') && input > 0 && output > 0 ? { input, output, cacheRead: Number(process.env.OPENAI_PRICE_CACHED_PER_M) || input } : null;
+  const p = PRICES[model] ?? custom;
   if (!p) return null;
-  return (usage.input_tokens * p.input + usage.cache_creation_input_tokens * p.input * 1.25 + usage.cache_read_input_tokens * p.cacheRead + usage.output_tokens * p.output) / 1_000_000;
+  return ((usage.input_tokens - (custom ? usage.cache_read_input_tokens : 0)) * p.input + usage.cache_creation_input_tokens * p.input * 1.25 + usage.cache_read_input_tokens * p.cacheRead + usage.output_tokens * p.output) / 1_000_000;
 }
 
 const SYSTEM_PROMPT = `你是 SASUKE，NOIRXU AI 平台上的私人智慧管家，協助使用者在同一個對話中查詢與操作三個既有系統（NOIRXU Ledger 記帳、NOIRXU Trading Journal 交易紀錄、NOIRXU RADAR 台股研究）以及 Gmail。請以繁體中文回覆。
