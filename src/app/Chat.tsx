@@ -6,8 +6,8 @@ import type { FeatureFlags } from '@/lib/features';
 import { money } from '@/lib/tool-labels';
 import { BrandMark, Icon, type IconName } from './components/Icon';
 import { AssistantCard, WaterMeter } from './components/assistant';
-import { importLegacySession, loadConversation, newConversationId, saveConversation } from './sasuke/conversations';
-import { SasukeMark } from './sasuke/SasukeNav';
+import { importLegacySession, loadConversation, newConversationId, resumeActive, saveConversation, touchActive } from './sasuke/conversations';
+import { SasukeMark, SasukeSeal } from './sasuke/SasukeNav';
 import { callTool, ProposalCard, RichText, ToolCard, type InvokeResult } from './components/shared';
 
 type Item =
@@ -71,7 +71,7 @@ function greeting() {
   return hour < 5 ? '夜深了' : hour < 11 ? '早安' : hour < 14 ? '午安' : hour < 18 ? '下午好' : '晚上好';
 }
 
-interface Brief { lines: string[]; top: Array<{ id: string; title: string; due_label: string; priority: string }> }
+interface Brief { lines: string[]; today: number; overdue: number; expense: string | null; top: Array<{ id: string; title: string; due_label: string; priority: string }> }
 
 /** One-line status for the home screen, from the same morning report as /早報. */
 function useBrief(enabled: boolean) {
@@ -87,7 +87,7 @@ function useBrief(enabled: boolean) {
       if (d.ledger) lines.push(`本月支出 ${d.ledger.currency} ${money(d.ledger.expense)}`);
       if (d.ledger?.budget_warnings?.length) lines.push(`${d.ledger.budget_warnings.length} 項預算接近上限`);
       if (d.gmail?.status === 'ok' && d.gmail.unread.length) lines.push(`${d.gmail.unread.length} 封未讀信`);
-      setBrief({ lines, top: d.top3 });
+      setBrief({ lines, today: d.today_items.length, overdue: d.overdue.length, expense: d.ledger ? `${d.ledger.currency} ${money(d.ledger.expense)}` : null, top: d.top3 });
     });
   }, [enabled]);
   return brief;
@@ -123,19 +123,20 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   const brief = useBrief(empty && features.briefings);
   const [water, setWater] = useState<any>(null);
   useEffect(() => {
-    // SASUKE keeps water in the header chip instead of the home screen.
-    if (!empty || !features.water || sasuke) return;
+    if (!empty || !features.water) return;
     void callTool('health.water.status', {}).then(result => { if (result.status === 'ok') setWater(result.data); });
   }, [empty, features.water, sasuke]);
 
   useEffect(() => {
     let saved: Saved | null;
     if (sasuke) {
-      // ?c=<id> opens a saved conversation; anything else starts a new one.
+      // ?c=<id> opens a saved conversation (from the sidebar). Otherwise continue this tab's
+      // conversation if it is recent, else start a new one; older ones stay in the sidebar.
       const outcome = importLegacySession();
       if (outcome.status === 'failed') setStorageError(`原版對話匯入失敗（${outcome.reason}），下次開啟會自動再試。原版資料沒有被刪除。`);
       const requested = new URLSearchParams(window.location.search).get('c');
-      const id = requested && requested !== 'new' ? requested : outcome.status === 'imported' && !requested ? outcome.conversationId : newConversationId();
+      const id = requested && requested !== 'new' ? requested : (requested !== 'new' && resumeActive()) || newConversationId();
+      if (requested === 'new') window.history.replaceState(null, '', '/');
       setConversationId(id);
       saved = loadConversation(id) as Saved | null;
     } else {
@@ -154,9 +155,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
         ? '這台裝置的儲存空間已滿，這段對話的新訊息沒有存下來。請在側邊欄刪除不需要的對話後再試。'
         : '瀏覽器目前不允許儲存（可能是私密瀏覽），這段對話關閉後不會保留。');
       else setStorageError(prev => (prev?.startsWith('原版對話') ? prev : null));
-      if (items.length && new URLSearchParams(window.location.search).get('c') !== conversationId) {
-        window.history.replaceState(null, '', `/?c=${conversationId}`);
-      }
+      if (items.length) touchActive(conversationId);
       return;
     }
     try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ items, history, notes })); } catch { /* storage unavailable */ }
@@ -349,24 +348,33 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
         {storageError && <p className="banner storage-warning" role="alert">{storageError}</p>}
         {empty && sasuke && (
           <section className="sk-home">
-            <div className="sk-orb" aria-hidden="true"><span className="sk-orb-glow" /><SasukeMark size={36} /></div>
-            <h1 className="sk-title">{greeting()}，先生。<span>今天要我處理什麼？</span></h1>
-            {composer}
-            <div className="sk-chips">
-              {CHIPS.filter(c => !c.feature || features[c.feature]).slice(0, 4).map(c => <button key={c.label} type="button" onClick={() => pick(c.text, c.run)}><Icon name={c.icon} size={15} />{c.label}</button>)}
+            <header className="sk-mast">
+              <span>NOIRXU</span>
+              <span>{new Intl.DateTimeFormat('zh-TW', { timeZone: 'Asia/Taipei', month: 'long', day: 'numeric', weekday: 'long' }).format(new Date())}</span>
+            </header>
+            <div className="sk-hello">
+              <h1>{greeting()}，先生。</h1>
+              <SasukeSeal size={44} />
             </div>
-            {brief && (
-              <div className="sk-brief">
-                <header>
-                  <span>{new Intl.DateTimeFormat('zh-TW', { timeZone: 'Asia/Taipei', month: 'long', day: 'numeric', weekday: 'long' }).format(new Date())}</span>
-                  <p>{brief.lines.map((line, i) => <span key={i}>{line}</span>)}</p>
-                </header>
-                {brief.top.length > 0 && (
-                  <ol className="sk-focus">
-                    {brief.top.map(t => <li key={t.id}><span className={`sk-dot prio-${t.priority}`} /><b>{t.title}</b><small>{t.due_label}</small></li>)}
-                  </ol>
-                )}
-              </div>
+            <p className="sk-lead">今天要我處理什麼？</p>
+            {(brief || water) && (
+              <dl className="sk-stats">
+                {brief && <div><dt>今日要務</dt><dd>{brief.today}<small>件</small>{brief.overdue > 0 && <em>{brief.overdue} 件過期</em>}</dd></div>}
+                {brief?.expense && <div><dt>本月支出</dt><dd className="num">{brief.expense}</dd></div>}
+                {water && <div><dt>今日飲水</dt><dd>{Number(water.total_ml).toLocaleString('en-US')}<small>/ {Number(water.goal_ml).toLocaleString('en-US')} ml</small></dd></div>}
+              </dl>
+            )}
+            {composer}
+            <nav className="sk-chips" aria-label="常用">
+              {CHIPS.filter(c => !c.feature || features[c.feature]).slice(0, 4).map(c => <button key={c.label} type="button" onClick={() => pick(c.text, c.run)}>{c.label}</button>)}
+            </nav>
+            {brief && brief.top.length > 0 && (
+              <section className="sk-agenda">
+                <h2>本日要務</h2>
+                <ol>
+                  {brief.top.map((t, i) => <li key={t.id} className={`prio-${t.priority}`}><span className="sk-no">{String(i + 1).padStart(2, '0')}</span><b>{t.title}</b><small>{t.due_label}</small></li>)}
+                </ol>
+              </section>
             )}
             {SYSTEMS.some(([id]) => !connected[id]) && (
               <a className="sk-missing" href="/connections">{SYSTEMS.filter(([id]) => !connected[id]).map(([, label]) => label).join('、')} 尚未連接 →</a>
@@ -420,7 +428,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
           <div className="agent-turn">
             <span className="agent-avatar thinking" aria-hidden="true">{sasuke ? <SasukeMark size={24} /> : <BrandMark size={26} />}</span>
             <div className="agent-body">{sasuke
-              ? <p className="sk-working" aria-live="polite">{busy === '思考中' ? 'SASUKE 正在思考' : busy}…</p>
+              ? <p className="sk-working" aria-live="polite"><i aria-hidden="true" />{busy === '思考中' ? '正在思考' : busy}</p>
               : <p className="working" aria-live="polite">{busy}<span className="typing"><span /><span /><span /></span></p>}</div>
           </div>
         )}

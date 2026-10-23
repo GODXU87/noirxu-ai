@@ -138,3 +138,24 @@ export function importLegacySession(): ImportOutcome {
   write(LEGACY_LOG_KEY, [...log.filter(e => e.identity !== identity), entry]);
   return { status: previous ? 'updated' : 'imported', conversationId, items: legacy.items.length };
 }
+
+/**
+ * Which conversation this browser tab is in. Opening the app again (a new tab, a relaunched
+ * home-screen app) or coming back after IDLE_MS starts a fresh conversation; earlier ones stay
+ * in the list. sessionStorage is per tab, so a reload of the same tab keeps going.
+ */
+const ACTIVE_KEY = 'noirxu-ai-active-v1';
+export const IDLE_MS = 30 * 60 * 1000;
+
+export function resumeActive(now = Date.now()): string | null {
+  const active = read<{ id: string; at: number } | null>(sessionStorage, ACTIVE_KEY, null);
+  return active && now - active.at < IDLE_MS && loadConversation(active.id) ? active.id : null;
+}
+
+export function touchActive(id: string, now = Date.now()) {
+  try { sessionStorage.setItem(ACTIVE_KEY, JSON.stringify({ id, at: now })); } catch { /* storage unavailable */ }
+}
+
+export function activeId(): string | null {
+  return read<{ id: string } | null>(sessionStorage, ACTIVE_KEY, null)?.id ?? null;
+}

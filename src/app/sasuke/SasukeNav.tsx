@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Page } from '../TopBar';
 import { Icon, type IconName } from '../components/Icon';
 import { callTool } from '../components/shared';
-import { deleteConversation, legacyImports, listConversations, onConversationsChanged, renameConversation, SOFT_LIMIT, type ConversationMeta, type SaveResult } from './conversations';
+import { activeId, deleteConversation, legacyImports, listConversations, onConversationsChanged, renameConversation, SOFT_LIMIT, type ConversationMeta, type SaveResult } from './conversations';
 
 function warnIfFailed(result: SaveResult) {
   if (!result.ok) alert(result.reason === 'quota' ? '這台裝置的儲存空間已滿，變更沒有存下來。' : '瀏覽器不允許儲存，變更沒有存下來。');
@@ -22,16 +22,27 @@ const COLLAPSE_KEY = 'noirxu-ui-sidebar-collapsed';
 export function SasukeMark({ size = 28 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" className="sasuke-mark">
-      <circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" strokeWidth="1.4" opacity=".55" />
-      <circle cx="16" cy="16" r="7.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
-      <circle cx="19" cy="13" r="2.2" fill="var(--accent)" />
+      <circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" strokeWidth="1.2" opacity=".55" />
+      <circle cx="16" cy="16" r="7.5" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      <rect x="17.4" y="11.4" width="3.6" height="3.6" fill="var(--seal, var(--accent))" />
+    </svg>
+  );
+}
+
+/** Vermilion seal 「執」 — the butler's mark. One per screen at most. */
+export function SasukeSeal({ size = 40 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 40 40" aria-hidden="true" className="sasuke-seal">
+      <rect x="1" y="1" width="38" height="38" rx="4" fill="var(--seal)" transform="rotate(-3 20 20)" />
+      <rect x="5" y="5" width="30" height="30" rx="2.5" fill="none" stroke="#f3e4e0" strokeWidth="1.2" transform="rotate(-3 20 20)" />
+      <text x="20" y="27.5" textAnchor="middle" fontSize="21" fill="#f8edea" fontFamily="var(--serif)" fontWeight="500" transform="rotate(-3 20 20)">執</text>
     </svg>
   );
 }
 
 function currentConversation(): string | null {
   if (typeof window === 'undefined') return null;
-  return new URLSearchParams(window.location.search).get('c');
+  return new URLSearchParams(window.location.search).get('c') ?? activeId();
 }
 
 /** Sidebar sections by last activity, Taipei calendar days. */
@@ -164,7 +175,7 @@ export function SasukeNav({ current, water }: { current: Page; water: boolean })
   const panel = (
     <>
       <div className="sk-brand">
-        <a href="/" aria-label="SASUKE 首頁"><SasukeMark size={26} /><span className="sk-word"><b>SASUKE</b><small>NOIRXU AI</small></span></a>
+        <a href="/" aria-label="SASUKE 首頁"><SasukeMark size={26} /><span className="sk-word"><b>SASUKE</b><small>NOIRXU 私人執事</small></span></a>
         <button type="button" className="sk-icon sk-collapse" onClick={toggle} aria-label={collapsed ? '展開側邊欄' : '收合側邊欄'}><Icon name="arrow" size={16} /></button>
       </div>
       <a href="/?c=new" className="sk-new" onClick={() => setDrawer(false)}><Icon name="plus" size={16} /><span>新對話</span></a>
