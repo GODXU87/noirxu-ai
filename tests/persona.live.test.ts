@@ -4,7 +4,8 @@ import { ToolError } from '@/hub/errors';
 import { Executor } from '@/hub/executor';
 import { defineTool, ToolRegistry } from '@/hub/registry';
 import { MemoryHubStore } from '@/hub/store';
-import { evaluateReply } from '@/persona/evaluate';
+import { writeFileSync } from 'node:fs';
+import { evaluateReply, evaluateSet } from '@/persona/evaluate';
 import { PERSONA_CASES } from './persona/cases';
 
 vi.mock('server-only', () => ({}));
@@ -15,6 +16,8 @@ const OPENAI = process.env.NOIRXU_PERSONA_PROVIDER === 'openai';
 const live = Boolean((OPENAI ? process.env.OPENAI_API_KEY : process.env.ANTHROPIC_API_KEY) && process.env.NOIRXU_PERSONA_LIVE === '1');
 const MAX_USD = Number(process.env.NOIRXU_PERSONA_MAX_USD ?? 5);
 let spent = 0;
+// Every reply is kept for the human review (docs/persona-v2-review.md); rules alone cannot judge tone or humor.
+const transcript: Array<{ id: string; user: string; reply: string; findings: unknown[] }> = [];
 
 describe.skipIf(!live)('SASUKE persona evaluation: live model', () => {
   for (const c of PERSONA_CASES.filter(c => !c.events.some(e => e.status === 'succeeded'))) {
@@ -43,8 +46,15 @@ describe.skipIf(!live)('SASUKE persona evaluation: live model', () => {
       if (cost === null) throw new Error('沒有這個模型的單價，無法控制費用上限：請設定 OPENAI_PRICE_INPUT_PER_M 與 OPENAI_PRICE_OUTPUT_PER_M');
       spent += cost;
       const findings = evaluateReply(c, turn.reply);
+      transcript.push({ id: c.id, user: c.user, reply: turn.reply, findings });
       console.log(`[${c.id}] ${turn.reply}\n  findings: ${JSON.stringify(findings)}\n  usage: ${JSON.stringify(turn.usage)} ≈ US$${cost.toFixed(4)} (累計 US$${spent.toFixed(2)})`);
       expect(findings).toEqual([]);
     }, 120_000);
   }
+
+  it('across replies: no Sir opener habit, no recycled phrasing', () => {
+    const findings = evaluateSet(transcript.map(t => t.reply));
+    writeFileSync(process.env.NOIRXU_PERSONA_OUT ?? 'persona-live-transcript.json', JSON.stringify({ spent_usd: spent, transcript, set_findings: findings }, null, 2));
+    expect(findings).toEqual([]);
+  });
 });

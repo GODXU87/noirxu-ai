@@ -1,7 +1,10 @@
 // Rule-based checks for SASUKE replies. They catch the failures that matter most and
 // can be checked mechanically: false "done" claims, invented numbers, missing data
 // dates, mechanical openers, echoing the user, over-long answers to simple questions,
-// honorific overuse, and errors reported as success. Tone beyond that needs a human read.
+// honorific misuse, jokes in serious situations, and errors reported as success.
+// evaluateSet adds checks across many replies (a "Sir," opener every time, recycled
+// phrasing). Passing these rules does NOT show the persona is natural or funny; that
+// needs the human review in docs/persona-v2-review.md.
 
 export interface EvalEvent {
   tool: string;
@@ -13,21 +16,25 @@ export interface EvalEvent {
 
 export interface EvalCase {
   id: string;
-  domain: 'daily' | 'finance' | 'stock' | 'gmail' | 'health' | 'schedule' | 'error';
+  domain: 'daily' | 'finance' | 'stock' | 'gmail' | 'health' | 'schedule' | 'error' | 'task';
   user: string;
   events: EvalEvent[];
   /** Simple questions should get short answers. */
   maxChars?: number;
   /** Reply must mention the data date (market data). */
   needsDataDate?: string;
+  /** Errors, money loss, health or a distressed user: no jokes. */
+  serious?: boolean;
 }
 
 export interface EvalFinding { rule: string; detail: string }
 
 const OPENERS = /^(好的|好喔|沒問題|當然|當然可以|收到|了解|明白|很高興|非常樂意|OK|Okay)[，,。!！\s]/i;
 const DONE_WORDS = /(已記帳|已經記帳|已新增|已經新增|已寄出|已經寄出|已寄送|已寫入|已建立|已完成記帳|已經幫你記|已幫您記|已幫你記)/;
-const FAIL_WORDS = /(失敗|無法|沒有成功|未成功|沒辦法|未連接|尚未連接|還沒連接|錯誤|讀不到|取不到)/;
+const FAIL_WORDS = /(失敗|無法|給不出|做不到|還沒更新|沒有送到|沒有成功|未成功|沒辦法|未連接|尚未連接|還沒連接|錯誤|讀不到|取不到)/;
 const SUCCESS_SPIN = /(成功|已完成|搞定|處理好了)/;
+// Only obvious markers; subtle misplaced humor needs the human review.
+const JOKE_MARKERS = /(哈哈|呵呵|XD|lol|（笑）|\(笑\)|😂|🤣|😆|😜|～～)/i;
 
 function numbersIn(value: unknown): Set<string> {
   const out = new Set<string>();
@@ -102,10 +109,41 @@ export function evaluateReply(c: EvalCase, reply: string): EvalFinding[] {
 
   if (c.maxChars && text.length > c.maxChars) findings.push({ rule: 'length', detail: `簡單問題回覆 ${text.length} 字，超過 ${c.maxChars}` });
 
-  const honorifics = (text.match(/先生|老闆/g) ?? []).length;
-  if (honorifics > 1) findings.push({ rule: 'honorific-once', detail: `稱呼出現 ${honorifics} 次` });
+  const sirs = (text.match(/\bSir\b/g) ?? []).length;
+  if (sirs > 1) findings.push({ rule: 'honorific-once', detail: `Sir 出現 ${sirs} 次` });
+  if (/\b(sir|SIR)\b/.test(text)) findings.push({ rule: 'honorific-case', detail: 'Sir 的 S 必須大寫' });
+  if (/(^|[，。！？、\s]|早安|午安|晚安|晚上好|下午好|你好|您好)(先生|老闆)/.test(text) || /\bBoss\b/i.test(text)) {
+    findings.push({ rule: 'honorific-legacy', detail: '用了已取消的稱呼（先生／老闆／Boss）' });
+  }
 
-  if (/\b(Sir|Boss)\b/i.test(text)) findings.push({ rule: 'honorific-language', detail: '用了英文稱呼' });
+  if (c.serious && JOKE_MARKERS.test(text)) findings.push({ rule: 'no-jokes-when-serious', detail: '嚴肅情境裡出現玩笑語氣' });
 
+  return findings;
+}
+
+export interface SetFinding { rule: string; detail: string }
+
+/**
+ * Checks across many replies that a single reply cannot show: opening with "Sir" again and
+ * again, and the same phrase recycled across unrelated replies (a catchphrase).
+ */
+export function evaluateSet(replies: string[]): SetFinding[] {
+  const findings: SetFinding[] = [];
+  const texts = replies.map(r => r.trim()).filter(Boolean);
+  if (texts.length >= 4) {
+    const sirOpeners = texts.filter(t => /^Sir[，,、\s]/.test(t)).length;
+    if (sirOpeners / texts.length > 0.3) findings.push({ rule: 'sir-opener-repetition', detail: `${sirOpeners} / ${texts.length} 則以「Sir」開頭` });
+  }
+  const seen = new Map<string, Set<number>>();
+  texts.forEach((t, i) => {
+    const clean = t.replace(/[\d,.:：/\s]+/g, '');
+    for (let k = 0; k + 7 <= clean.length; k += 1) {
+      const gram = clean.slice(k, k + 7);
+      if (!seen.has(gram)) seen.set(gram, new Set());
+      seen.get(gram)!.add(i);
+    }
+  });
+  const repeated = [...seen.entries()].filter(([gram, idx]) => idx.size >= 3 && !/^(待確認|確認執行|資料日期)/.test(gram)).map(([gram]) => gram);
+  if (repeated.length) findings.push({ rule: 'repeated-phrasing', detail: `同一句話出現在 3 則以上不同回覆：${repeated.slice(0, 3).join('、')}` });
   return findings;
 }
