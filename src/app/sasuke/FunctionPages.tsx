@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { AgendaCard, Panel, type Loaded } from '../overview/Overview';
 import { Icon, type IconName } from '../components/Icon';
 import { WaterMeter } from '../components/assistant';
-import { callTool } from '../components/shared';
+import { callTool, TaskCard } from '../components/shared';
 import { monthBounds } from '@/lib/tool-labels';
 import { listConversations } from './conversations';
 import { HistoryDialog } from './SasukeNav';
@@ -43,8 +43,31 @@ export function TasksView() {
         <Ask question="依重要程度幫我排今天和這週的事，指出時間衝突。" label="請 SASUKE 排優先順序" icon="check" />
         <Ask question="有哪些事已經過期了？" label="檢查過期事項" icon="bell" />
       </div>
+      <AutoTasks />
       <AgendaCard />
     </main>
+  );
+}
+
+/** Background tasks (recurring reminders, scheduled briefings, spending watches). */
+function AutoTasks() {
+  const [state, setState] = useState<{ tasks: any[] } | { error: string } | undefined>();
+  const [all, setAll] = useState(false);
+  useEffect(() => {
+    void callTool('tasks.list', { include_finished: all }).then(r => setState(r.status === 'ok' ? r.data as { tasks: any[] } : { error: r.status === 'error' && r.code === 'UNKNOWN_TOOL' ? '自動任務功能目前沒有開啟。' : '任務清單目前讀不到。' }));
+  }, [all]);
+  return (
+    <section className="card">
+      <div className="row" style={{ justifyContent: 'space-between' }}>
+        <h2>自動任務</h2>
+        <button type="button" className="ghost" onClick={() => setAll(a => !a)}>{all ? '只看進行中' : '含已結束'}</button>
+      </div>
+      {!state ? <p className="hint">讀取中…</p>
+        : 'error' in state ? <p className="hint">{state.error}</p>
+        : state.tasks.length ? <div className="task-list">{state.tasks.map(t => <TaskCard key={t.id} task={t} />)}</div>
+        : <p className="hint">還沒有自動任務。在對話裡說「每天早上 8 點提醒我喝水」或「每週一早上 9 點給我早報」就會建立。</p>}
+      <div className="fp-asks"><Ask question="如果這個月餐飲支出超過 5000 元就提醒我" label="建立支出監看" icon="chart" /></div>
+    </section>
   );
 }
 

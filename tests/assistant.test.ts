@@ -51,8 +51,8 @@ describe('shortcut commands', () => {
 
 describe('feature flags', () => {
   it('turns everything on by default and lets single features be switched off', () => {
-    expect(loadFeatureFlags('')).toEqual({ triage: true, commands: true, briefings: true, reply_drafts: true, water: true });
-    expect(loadFeatureFlags('triage, REPLY_DRAFTS')).toEqual({ triage: false, commands: true, briefings: true, reply_drafts: false, water: true });
+    expect(loadFeatureFlags('', '')).toEqual({ triage: true, commands: true, briefings: true, reply_drafts: true, water: true, tasks: true, voice: true, finance_alerts: false, garmin: false });
+    expect(loadFeatureFlags('triage, REPLY_DRAFTS', 'garmin')).toEqual({ triage: false, commands: true, briefings: true, reply_drafts: false, water: true, tasks: true, voice: true, finance_alerts: false, garmin: true });
   });
 });
 

@@ -62,7 +62,7 @@ export function agendaTools(store: AgendaStore): ToolDefinition[] {
   return [
     defineTool({
       name: 'agenda.items.create',
-      description: '把使用者說的事情記進 NOIRXU AI 的行程/記事，或建立提醒。使用者要求「提醒我」（例如「兩分鐘後提醒我看電腦」「明天9點提醒我開會」）時，直接把原句傳 text：系統會用伺服器時間精確算出提醒時間並只在那個時間提醒一次；算不出時間會回傳錯誤，這時請問使用者時間，不可改建無日期記事。一般記事（例如「11/11 要教學演示」）會依使用者設定加上提前通知。同一件事有多個時段時，建立一筆並在 notes 註明時段，不要拆成很多筆。不支援重複提醒（每天、每週）。這是 NOIRXU AI 自己的記事，不需確認。',
+      description: '把使用者說的事情記進 NOIRXU AI 的行程/記事，或建立提醒。使用者要求「提醒我」（例如「兩分鐘後提醒我看電腦」「明天9點提醒我開會」）時，直接把原句傳 text：系統會用伺服器時間精確算出提醒時間並只在那個時間提醒一次；算不出時間會回傳錯誤，這時請問使用者時間，不可改建無日期記事。一般記事（例如「11/11 要教學演示」）會依使用者設定加上提前通知。同一件事有多個時段時，建立一筆並在 notes 註明時段，不要拆成很多筆。重複提醒（每天、每週）與條件監看請改用 tasks.create。這是 NOIRXU AI 自己的記事，不需確認。',
       connection: 'internal',
       kind: 'write',
       requiresConfirmation: false,
@@ -85,7 +85,7 @@ export function agendaTools(store: AgendaStore): ToolDefinition[] {
         const today = taipeiDate(now);
         let explicit: { at: Date; title: string } | null = null;
         if (value.text && isReminderRequest(value.text)) {
-          if (isRecurring(value.text)) throw new ToolError('INVALID_INPUT', '重複提醒（每天、每週）目前還不支援，這次沒有建立任何提醒。可以先設定下一次的時間，例如「明天 9 點提醒我…」。');
+          if (isRecurring(value.text)) throw new ToolError('INVALID_INPUT', '這是重複提醒，要用自動任務（tasks.create）建立，例如「每天早上 8 點提醒我喝水」。這次沒有建立單次提醒。');
           const when = parseReminderTime(value.text, now);
           // An explicit "remind me" without a time is never stored as an undated note.
           if (!when) throw new ToolError('INVALID_INPUT', '要提醒你，但這句話裡沒有我能確定的時間。請告訴我幾點或多久之後，例如「兩分鐘後」「明天 9 點」。這次沒有建立任何提醒。');
