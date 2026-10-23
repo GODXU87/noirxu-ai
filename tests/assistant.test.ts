@@ -226,6 +226,8 @@ describe('assistant tools', () => {
   });
 
   it('evening report separates done, still open and tomorrow, and suggests what to do first', async () => {
+    // The memory store stamps updated_at with the system clock; keep it on the test's day.
+    vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
     const { executor, ctx } = setup();
     const done = await executor.invoke('agenda.items.create', { text: '今天 寄合約' }, ctx);
     await executor.invoke('agenda.items.create', { text: '今天 回覆客戶' }, ctx);
@@ -236,6 +238,7 @@ describe('assistant tools', () => {
     expect(data.still_open_today.map((i: any) => i.title)).toEqual(['回覆客戶']);
     expect(data.tomorrow.map((i: any) => i.title)).toEqual(['牙醫']);
     expect(data.suggestions[0]).toMatchObject({ title: '回覆客戶', reason: '今天到期、尚未完成' });
+    vi.useRealTimers();
   });
 
   it('reply drafts only display; nothing is sent and recipients must be real addresses', async () => {
