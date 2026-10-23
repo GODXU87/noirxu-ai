@@ -166,7 +166,7 @@ describe('task scheduler', () => {
     await tasks.runDue(T('2026-10-23T11:00:00Z'));
     await tasks.runDue(T('2026-10-23T17:00:00Z'));
     expect(send).toHaveBeenCalledTimes(1);
-    expect(send.mock.calls[0][1]).toMatchObject({ title: 'SASUKE · 本月支出已超過 3,000' });
+    expect(send.mock.calls[0][1]).toMatchObject({ title: 'Sir，本月支出已超過 3,000' });
     expect(analytics).toHaveBeenCalled();
     const list = await tasks.list('owner');
     expect(list.find(t => t.condition?.category === '餐飲')!.runs[0].status).toBe('not_met');

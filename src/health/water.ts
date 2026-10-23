@@ -116,7 +116,7 @@ export function waterReminder(prefs: WaterPrefs, day: WaterDay, now: Date): { ti
   if (p.behind_ml < 150 || p.remaining_ml === 0) return null;
   const suggest = Math.min(500, Math.max(200, Math.round(p.behind_ml / 50) * 50));
   return {
-    title: '該喝水了',
-    body: `今天 ${p.total_ml.toLocaleString('en-US')} / ${p.goal_ml.toLocaleString('en-US')} ml，照進度現在應到 ${p.expected_ml.toLocaleString('en-US')} ml。建議先喝 ${suggest} ml。`
+    title: 'Sir，該喝水了',
+    body: `已喝 ${p.total_ml.toLocaleString('en-US')} / ${p.goal_ml.toLocaleString('en-US')} ml，先喝 ${suggest} ml`
   };
 }
