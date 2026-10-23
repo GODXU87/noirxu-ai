@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import { z } from 'zod';
 import { ToolError } from '@/hub/errors';
-import { REPLY_STYLES, runAgentTurn } from '@/server/agent';
+import { REPLY_STYLES, runAgentTurn, type ProgressEvent } from '@/server/agent';
 import { pickProvider } from '@/server/config';
 import { getHub } from '@/server/hub';
 import { errorResponse, json, requireContext } from '@/server/http';
@@ -37,14 +37,40 @@ export async function POST(request: Request) {
     const contextReset = historyProvider !== null && historyProvider !== provider;
     const history = contextReset ? [] : parsed.data.history;
     const common = { registry: hub.registry, executor: hub.executor, ctx, userText: parsed.data.text, style: parsed.data.style };
-    const turn = provider === 'openai'
-      ? await runOpenAITurn({ ...common, client: new OpenAI(), model: hub.config.openai.model, reasoningEffort: hub.config.openai.reasoningEffort, history })
-      : { provider: 'anthropic' as const, ...(await runAgentTurn({ ...common, client: new Anthropic(), model: hub.config.anthropicModel, history: history as Anthropic.Beta.Messages.BetaMessageParam[] })) };
-    return json({ ok: true, ...turn, contextReset });
-  } catch (error) {
-    if (error instanceof Anthropic.APIError || error instanceof OpenAI.APIError) {
-      return json({ ok: false, error: { code: 'MODEL_UNAVAILABLE', message: `AI 服務暫時無法回應（${error.status ?? '連線錯誤'}），沒有執行任何操作。` } }, 502);
+    const run = (onProgress?: (event: ProgressEvent) => void) => provider === 'openai'
+      ? runOpenAITurn({ ...common, onProgress, client: new OpenAI(), model: hub.config.openai.model, reasoningEffort: hub.config.openai.reasoningEffort, history })
+      : runAgentTurn({ ...common, onProgress, client: new Anthropic(), model: hub.config.anthropicModel, history: history as Anthropic.Beta.Messages.BetaMessageParam[] }).then(turn => ({ provider: 'anthropic' as const, ...turn }));
+
+    // NDJSON stream: tool progress as it happens, then the finished turn. Clients that do
+    // not ask for it get the single JSON response as before.
+    if ((request.headers.get('accept') ?? '').includes('application/x-ndjson')) {
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        async start(controller) {
+          const write = (line: unknown) => controller.enqueue(encoder.encode(`${JSON.stringify(line)}\n`));
+          try {
+            const turn = await run(event => write(event));
+            write({ type: 'done', ok: true, ...turn, contextReset });
+          } catch (error) {
+            write({ type: 'done', ...(await errorBody(error)) });
+          } finally {
+            controller.close();
+          }
+        }
+      });
+      return new Response(stream, { headers: { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' } });
     }
+    return json({ ok: true, ...(await run()), contextReset });
+  } catch (error) {
+    if (error instanceof Anthropic.APIError || error instanceof OpenAI.APIError) return json(await errorBody(error), 502);
     return errorResponse(error);
   }
+}
+
+/** The same error body the JSON response uses, for the end of a stream. */
+async function errorBody(error: unknown) {
+  if (error instanceof Anthropic.APIError || error instanceof OpenAI.APIError) {
+    return { ok: false, error: { code: 'MODEL_UNAVAILABLE', message: `AI 服務暫時無法回應（${error.status ?? '連線錯誤'}）。帳本、交易與寄信都需要你確認才會寫入；這次若已建立提醒或喝水紀錄，請到對應頁面確認。` } };
+  }
+  return (await errorResponse(error).json()) as { ok: false; error: { code: string; message: string } };
 }

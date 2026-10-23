@@ -150,6 +150,10 @@ export function toolResultText(result: InvokeResult): { content: string; isError
   }
 }
 
+export type ProgressEvent =
+  | { type: 'tool_start'; tool: string }
+  | { type: 'tool_done'; tool: string; result: ToolEvent['result'] };
+
 export async function runAgentTurn(options: {
   client: Anthropic;
   model: string;
@@ -159,6 +163,8 @@ export async function runAgentTurn(options: {
   history: MessageParam[];
   userText: string;
   style?: ReplyStyle;
+  /** Called as each tool starts and finishes, so the client can show real progress. */
+  onProgress?: (event: ProgressEvent) => void;
 }): Promise<AgentTurn> {
   const { client, model, registry, executor, ctx } = options;
   const tools = claudeTools(registry);
@@ -200,8 +206,10 @@ export async function runAgentTurn(options: {
 
     const results: ToolResult[] = await Promise.all(toolUses.map(async block => {
       const name = byClaudeName.get(block.name) ?? block.name;
+      options.onProgress?.({ type: 'tool_start', tool: name });
       const result = await executor.invoke(name, block.input, ctx);
       events.push({ tool: name, input: block.input, result });
+      options.onProgress?.({ type: 'tool_done', tool: name, result });
       const { content, isError } = toolResultText(result);
       return { type: 'tool_result' as const, tool_use_id: block.id, content, is_error: isError };
     }));

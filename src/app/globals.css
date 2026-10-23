@@ -483,17 +483,20 @@ button[data-state="error"] { border-color: var(--danger) !important; animation: 
 .history li input { padding: 6px 8px; font-size: 13px; }
 .history-empty, .history-note { color: var(--muted); font-size: 12px; padding: 4px 8px; }
 .history-note.warn { color: var(--warn); }
-.sk-secondary { display: grid; gap: 2px; padding-top: 8px; border-top: 1px solid var(--line); }
-.sk-secondary a { display: flex; align-items: center; gap: 11px; padding: 9px 10px; border-radius: 12px; color: var(--text-soft); font-size: 13.5px; transition: background-color .16s ease, color .16s ease; }
-.sk-secondary a:hover { background: var(--surface); color: var(--text); }
-.sk-secondary a[aria-current="page"] { background: var(--surface-2); color: var(--text); }
-.sk-secondary a[aria-current="page"] svg { color: var(--accent); }
+.sk-nav { display: grid; gap: 2px; align-content: start; flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; }
+.sk-nav a, .sk-bottom > a { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px; color: var(--text-soft); font-size: 14px; transition: background-color .16s ease, color .16s ease; }
+.sk-nav a:hover, .sk-bottom > a:hover { background: var(--surface); color: var(--text); }
+.sk-nav a[aria-current="page"], .sk-bottom > a[aria-current="page"] { background: var(--surface-2); color: var(--text); }
+.sk-nav a[aria-current="page"] svg, .sk-bottom > a[aria-current="page"] svg { color: var(--accent); }
+.sk-nav a:active, .sk-bottom > a:active { transform: scale(.98); }
+.sk-bottom { display: grid; gap: 6px; padding-top: 10px; border-top: 1px solid var(--line); }
 .sk-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 2px; }
-.sk-foot-note { font-size: 11px; color: var(--muted); padding-left: 8px; }
+.ui-sasuke .sk-foot-note { font-size: 11.5px; color: var(--muted); padding-left: 12px; }
+.ui-sasuke .sk-foot-note:hover { color: var(--text-soft); }
 @media (min-width: 900px) {
-  .sidebar-collapsed .sk-word, .sidebar-collapsed .sk-new span, .sidebar-collapsed .history, .sidebar-collapsed .sk-secondary span, .sidebar-collapsed .sk-foot-note { display: none; }
+  .sidebar-collapsed .sk-word, .sidebar-collapsed .sk-nav span, .sidebar-collapsed .sk-bottom > a span, .sidebar-collapsed .sk-foot-note { display: none; }
   .sidebar-collapsed .sk-brand { flex-direction: column; }
-  .sidebar-collapsed .sk-new, .sidebar-collapsed .sk-secondary a { justify-content: center; padding: 11px 0; }
+  .sidebar-collapsed .sk-nav a, .sidebar-collapsed .sk-bottom > a { justify-content: center; padding: 11px 0; }
   .sidebar-collapsed .sk-foot { justify-content: center; }
 }
 
@@ -538,66 +541,16 @@ button[data-state="error"] { border-color: var(--danger) !important; animation: 
 @media (min-width: 900px) { .ui-sasuke .feed { padding-top: 36px; } }
 .ui-sasuke .feed.home { justify-content: flex-start; min-height: 0; padding-bottom: 32px; }
 .sk-home { display: grid; gap: 16px; }
-.mc-head { display: flex; align-items: center; gap: 12px; padding-right: 150px; }
-@media (min-width: 900px) { .mc-head { padding-right: 0; } }
-.mc-avatar { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--surface); flex: none; }
-.mc-head div { display: grid; line-height: 1.25; }
-.mc-head small { font-size: 13px; color: var(--muted); }
-.mc-head b { font-size: 20px; font-weight: 700; }
-.mc-online { display: none; align-items: center; gap: 7px; margin-left: auto; font-size: 12.5px; color: var(--text-soft); }
-@media (min-width: 900px) { .mc-online { display: inline-flex; margin-right: 170px; } }
-.mc-online i { width: 7px; height: 7px; border-radius: 50%; background: var(--up); }
-.mc-online.off i { background: var(--muted); }
-.mc-hero { display: grid; gap: 6px; padding: 22px; border-radius: 26px; background: var(--surface); }
-.mc-hero small { font-size: 13px; color: var(--muted); text-align: right; }
-.mc-hero strong { font-size: 40px; font-weight: 700; letter-spacing: -.02em; line-height: 1.1; text-align: right; font-variant-numeric: tabular-nums; }
-@media (min-width: 900px) { .mc-hero strong { font-size: 48px; } }
-.mc-hero p { margin: 0; text-align: right; font-size: 13px; color: var(--text-soft); }
-.mc-hero-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
-.ui-sasuke .mc-hero-actions button { gap: 8px; padding: 14px 0; border-radius: 18px; font-size: 14.5px; font-weight: 600; background: var(--surface-3); }
-.ui-sasuke .mc-hero-actions button.accent { background: var(--accent); }
-.mc-pills { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: -2px -16px 0; padding: 0 16px; }
-.mc-pills::-webkit-scrollbar { display: none; }
-@media (min-width: 900px) { .mc-pills { margin: -2px 0 0; padding: 0; flex-wrap: wrap; } }
-.ui-sasuke .mc-pills button { gap: 7px; padding: 9px 15px; font-size: 13px; background: var(--surface); color: var(--text-soft); flex: none; }
-.ui-sasuke .mc-pills button svg { color: var(--accent); }
-.ui-sasuke .mc-pills button:hover:not(:disabled) { color: var(--text); background: var(--surface-2); }
-.mc-section { display: flex; justify-content: space-between; align-items: baseline; margin-top: 8px; }
-.mc-section h2 { font-size: 16px; font-weight: 650; }
-.mc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
-.ui-sasuke .mc-card { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 10px; min-height: 150px; padding: 18px; border-radius: 24px; background: var(--surface); color: var(--text); text-align: left; white-space: normal; font-weight: 400; }
 .ui-sasuke button.mc-card:hover:not(:disabled), .ui-sasuke a.mc-card:hover { background: var(--surface-2); }
 .ui-sasuke button.mc-card:disabled { opacity: 1; cursor: default; }
-.mc-label { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); }
-.mc-label svg { color: var(--accent); }
-.mc-card strong { font-size: 28px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
-.mc-card strong small { font-size: 12.5px; font-weight: 500; color: var(--muted); }
-.mc-note { margin-top: auto; font-size: 12.5px; color: var(--muted); }
-.mc-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-.mc-list li { display: flex; justify-content: space-between; gap: 8px; padding-left: 10px; font-size: 13px; position: relative; }
-.mc-list li::before { content: ""; position: absolute; left: 0; top: .5em; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
-.mc-list li.prio-urgent::before { background: var(--danger); }
-.mc-list li.prio-high::before { background: var(--warn); }
-.mc-list b { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mc-list small { flex: none; color: var(--muted); font-size: 12px; }
-.mc-water { display: flex; align-items: center; gap: 12px; }
-.mc-water svg { transform: rotate(-90deg); flex: none; }
 .ring-bg { fill: none; stroke: var(--surface-3); stroke-width: 4; }
 .ring-fg { fill: none; stroke: var(--accent); stroke-width: 4; stroke-linecap: round; transition: stroke-dasharray .4s ease; }
-.mc-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: auto; }
-.ui-sasuke .mc-actions button { padding: 9px 0; font-size: 13px; font-weight: 600; background: var(--surface-3); }
-.mc-links { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.mc-links li { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--muted); }
-.mc-links i { width: 6px; height: 6px; border-radius: 50%; background: var(--surface-3); }
-.mc-links li.on { color: var(--text-soft); }
-.mc-links li.on i { background: var(--up); }
 .mc-skeleton { display: grid; gap: 8px; }
 .mc-skeleton i { display: block; height: 12px; border-radius: 6px; background: linear-gradient(90deg, var(--surface-2), var(--surface-3), var(--surface-2)); background-size: 200% 100%; animation: shimmer 1.2s ease-in-out infinite; }
 .mc-skeleton i:first-child { width: 40%; height: 26px; }
 .mc-skeleton i:nth-child(2) { width: 70%; }
 .mc-skeleton i:nth-child(3) { width: 55%; }
 @keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
-@media (max-width: 520px) { .mc-water { gap: 8px; } .mc-water svg { width: 36px; height: 36px; } .mc-water strong small { display: block; margin-top: 2px; } .mc-grid { grid-template-columns: 1fr 1fr; } .ui-sasuke .mc-card:last-child:nth-child(odd) { grid-column: 1 / -1; } .mc-card strong { font-size: 24px; } }
 
 /* Composer */
 .ui-sasuke .composer { left: 0; bottom: var(--kb, 0px); padding: 14px 12px calc(12px + env(safe-area-inset-bottom)); background: linear-gradient(rgba(20, 21, 23, 0), var(--bg) 40%); z-index: 5; }
@@ -659,6 +612,52 @@ button[data-state="error"] { border-color: var(--danger) !important; animation: 
   .ui-sasuke .shell > *, .sk-scrim, .water-pop, .inbox-pop, .ui-sasuke .palette, .mc-skeleton i, .sk-working i, .ui-sasuke .feed > .msg, .ui-sasuke .feed > .agent-turn { animation: none !important; }
   .sk-drawer, .sk-sidebar { transition: none; }
 }
+
+/* SASUKE V3: chat-first home, header actions, history dialog, function pages */
+.ui-sasuke .sk-head-btn { width: 38px; height: 38px; padding: 0; background: var(--surface); color: var(--text-soft); min-height: 0; }
+.ui-sasuke .sk-head-btn:hover:not(:disabled) { color: var(--text); background: var(--surface-2); }
+.ui-sasuke .feed.home { justify-content: center; min-height: calc(100dvh - 120px); padding-bottom: 8vh; }
+.sk-home { display: grid; justify-items: center; gap: 0; text-align: center; animation: sk-in .3s ease both; }
+.sk-home-mark { display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%; background: var(--surface); margin-bottom: 18px; }
+.sk-hello { font-size: 28px; font-weight: 650; letter-spacing: -.01em; margin-bottom: 22px; }
+@media (min-width: 900px) { .sk-hello { font-size: 34px; } }
+.ui-sasuke .sk-home .composer { width: 100%; text-align: left; }
+.sk-notices { list-style: none; margin: 0 0 14px; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.sk-notices li { display: flex; align-items: center; gap: 8px; padding: 0 4px 0 12px; border-radius: 999px; background: var(--surface); }
+.sk-notices .sk-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.sk-notices .sk-dot.prio-urgent { background: var(--danger); }
+.sk-notices .sk-dot.prio-high { background: var(--warn); }
+.ui-sasuke .sk-notice { padding: 7px 10px 7px 0; background: none; font-size: 13px; color: var(--text-soft); min-height: 0; }
+.ui-sasuke .sk-notice:hover:not(:disabled) { background: none; color: var(--text); }
+.sk-quick { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 14px; }
+.ui-sasuke .sk-quick button { gap: 7px; padding: 8px 14px; font-size: 13px; background: transparent; box-shadow: inset 0 0 0 1px var(--line-strong); color: var(--text-soft); }
+.ui-sasuke .sk-quick button svg { color: var(--accent); }
+.ui-sasuke .sk-quick button:hover:not(:disabled) { background: var(--surface); color: var(--text); }
+.ui-sasuke .msg.error { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.ui-sasuke .msg.error .retry { padding: 6px 14px; font-size: 13px; background: var(--surface-2); color: var(--text); min-height: 0; }
+.sk-modal { position: fixed; inset: 0; z-index: 20; display: grid; place-items: start center; padding: 10vh 16px 16px; background: rgba(0, 0, 0, .55); animation: fade-in .18s ease both; }
+.sk-modal-panel { width: min(520px, 100%); max-height: 75vh; display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 24px; background: var(--surface); box-shadow: 0 30px 80px -20px rgba(0, 0, 0, .8); animation: pop-in .2s cubic-bezier(.2, .8, .2, 1) both; }
+.sk-modal-panel header { display: flex; justify-content: space-between; align-items: center; padding-left: 4px; }
+.sk-modal-panel .history { min-height: 200px; }
+.sk-modal-panel .history-list { max-height: 50vh; }
+@media (max-width: 600px) { .sk-modal { place-items: end stretch; padding: 0; } .sk-modal-panel { width: 100%; max-height: 85vh; border-radius: 24px 24px 0 0; padding-bottom: calc(16px + env(safe-area-inset-bottom)); } }
+.fp { max-width: 820px; margin: 0 auto; }
+.fp .page-head .hint { margin-top: 6px; max-width: 60ch; }
+.fp-asks { display: flex; flex-wrap: wrap; gap: 8px; }
+.ui-sasuke .fp-asks { margin-top: 2px; }
+.fp-ask { display: inline-flex; align-items: center; gap: 7px; padding: 9px 14px; border-radius: 999px; background: var(--surface-2); color: var(--text-soft); font-size: 13.5px; transition: background-color .16s ease, color .16s ease, transform .12s ease; }
+.fp-ask:hover { background: var(--surface-3); color: var(--text); }
+.fp-ask:active { transform: scale(.97); }
+.fp-ask svg { color: var(--accent); }
+.fp-symbol { display: flex; gap: 8px; }
+.fp-symbol input { flex: 1; }
+.fp-empty { display: grid; gap: 12px; justify-items: start; }
+.fp-inbox { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.fp-inbox li { display: grid; gap: 2px; padding: 10px 12px; border-radius: 14px; background: var(--surface-2); }
+.fp-inbox li.unread { box-shadow: inset 3px 0 0 var(--accent); }
+.fp-inbox span { font-size: 13px; color: var(--text-soft); }
+.fp-inbox small { font-size: 11.5px; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .sk-home, .sk-modal, .sk-modal-panel { animation: none; } }
 
 /* Notification diagnostics (both interfaces) */
 .notify-diag { display: grid; gap: 16px; }

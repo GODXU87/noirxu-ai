@@ -1,9 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Page } from '../TopBar';
 import { Icon, type IconName } from '../components/Icon';
-import { callTool } from '../components/shared';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Inbox } from './Inbox';
@@ -13,10 +12,15 @@ function warnIfFailed(result: SaveResult) {
   if (!result.ok) alert(result.reason === 'quota' ? '這台裝置的儲存空間已滿，變更沒有存下來。' : '瀏覽器不允許儲存，變更沒有存下來。');
 }
 
-const SECONDARY: Array<{ id: Page; href: string; label: string; icon: IconName }> = [
-  { id: 'overview', href: '/overview', label: '總覽', icon: 'overview' },
-  { id: 'report', href: '/report', label: '報告', icon: 'report' },
-  { id: 'connections', href: '/connections', label: '連線與通知', icon: 'link' }
+/** Functions, not conversations: chat history lives in its own dialog on the chat page. */
+const NAV: Array<{ id: Page; href: string; label: string; icon: IconName; also?: Page[] }> = [
+  { id: 'chat', href: '/', label: 'SASUKE 對話', icon: 'chat' },
+  { id: 'tasks', href: '/tasks', label: '任務中心', icon: 'check' },
+  { id: 'research', href: '/research', label: '投資研究', icon: 'chart' },
+  { id: 'overview', href: '/overview', label: '財務', icon: 'wallet', also: ['report'] },
+  { id: 'mail', href: '/mail', label: '郵件', icon: 'mail' },
+  { id: 'life', href: '/life', label: '提醒與生活', icon: 'bell' },
+  { id: 'memory', href: '/memory', label: '個人記憶', icon: 'memory' }
 ];
 
 const COLLAPSE_KEY = 'noirxu-ui-sidebar-collapsed';
@@ -108,55 +112,35 @@ function History({ onNavigate }: { onNavigate: () => void }) {
   );
 }
 
-/** Small water status in the header; tap for +250 / +500 / undo. Keeps the chat clear. */
-export function WaterChip() {
-  const [data, setData] = useState<any>(null);
-  const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const box = useRef<HTMLDivElement>(null);
-
+/** Conversation history in a dialog: search, open, rename, delete. Hidden until asked for. */
+export function HistoryDialog({ onClose }: { onClose: () => void }) {
+  const panel = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    void callTool('health.water.status', {}).then(r => { if (r.status === 'ok') setData(r.data); });
-    const close = (e: MouseEvent) => { if (box.current && !box.current.contains(e.target as Node)) setOpen(false); };
-    const update = (e: Event) => { const d = (e as CustomEvent).detail; if (d && typeof d.total_ml === 'number') setData(d); };
-    document.addEventListener('click', close);
-    window.addEventListener('noirxu-water', update);
-    return () => { document.removeEventListener('click', close); window.removeEventListener('noirxu-water', update); };
-  }, []);
-
-  if (!data) return null;
-  async function act(tool: string, input: unknown) {
-    setBusy(true);
-    const r = await callTool(tool, input);
-    setBusy(false);
-    if (r.status === 'ok') setData(r.data);
-  }
-  const fmt = (n: number) => Number(n).toLocaleString('en-US');
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    // Focus search on desktop only; on phones it would open the keyboard over the list.
+    if (window.matchMedia('(pointer: fine)').matches) panel.current?.querySelector('input')?.focus();
+    else panel.current?.querySelector<HTMLElement>('button')?.focus();
+    document.body.classList.add('drawer-open');
+    return () => { window.removeEventListener('keydown', onKey); document.body.classList.remove('drawer-open'); };
+  }, [onClose]);
   return (
-    <div className="water-chip" ref={box}>
-      <button type="button" className={data.behind_ml > 0 ? 'behind' : ''} onClick={() => setOpen(o => !o)} aria-expanded={open} aria-label="喝水進度">
-        <Icon name="drop" size={14} /><span>{fmt(data.total_ml)}<small> / {fmt(data.goal_ml)}</small></span>
-      </button>
-      {open && (
-        <div className="water-pop" role="dialog" aria-label="喝水">
-          <div className="bar"><span className="bar-accent" style={{ width: `${data.percent}%` }} /></div>
-          <p className="hint">{data.remaining_ml === 0 ? '今天的目標已達成。' : data.behind_ml > 0 ? `照進度應到 ${fmt(data.expected_ml)} ml` : `進度正常，還差 ${fmt(data.remaining_ml)} ml`}</p>
-          <div className="row">
-            <button type="button" disabled={busy} onClick={() => void act('health.water.log', { ml: 250 })}>+250</button>
-            <button type="button" disabled={busy} onClick={() => void act('health.water.log', { ml: 500 })}>+500</button>
-            {data.entries.length > 0 && <button type="button" className="ghost" disabled={busy} onClick={() => void act('health.water.undo', {})}>復原</button>}
-          </div>
-          <p className="hint">提醒 {data.prefs.enabled ? `${data.prefs.start}–${data.prefs.end}` : '已關閉'} · 輸入「/喝水」調整</p>
-        </div>
-      )}
+    <div className="sk-modal" role="presentation" onClick={onClose}>
+      <div className="sk-modal-panel" role="dialog" aria-modal="true" aria-label="對話紀錄" ref={panel} onClick={e => e.stopPropagation()}>
+        <header><b>對話紀錄</b><button type="button" className="sk-icon" onClick={onClose} aria-label="關閉"><Icon name="close" size={18} /></button></header>
+        <History onNavigate={onClose} />
+        <p className="history-note">對話存在這台裝置，不會自動刪除。</p>
+      </div>
     </div>
   );
 }
 
-export function SasukeNav({ current, water }: { current: Page; water: boolean }) {
+export function SasukeNav({ current }: { current: Page; water?: boolean }) {
   const [collapsed, setCollapsed] = useState(false);
   const [drawer, setDrawer] = useState(false);
+  const [history, setHistory] = useState(false);
   const router = useRouter();
+  const closeHistory = useCallback(() => setHistory(false), []);
 
   useEffect(() => { try { setCollapsed(localStorage.getItem(COLLAPSE_KEY) === '1'); } catch { /* storage unavailable */ } }, []);
   useEffect(() => { document.documentElement.classList.toggle('sidebar-collapsed', collapsed); }, [collapsed]);
@@ -165,24 +149,28 @@ export function SasukeNav({ current, water }: { current: Page; water: boolean })
   function toggle() {
     setCollapsed(c => { try { localStorage.setItem(COLLAPSE_KEY, c ? '0' : '1'); } catch { /* storage unavailable */ } return !c; });
   }
+  const close = () => setDrawer(false);
+  const isCurrent = (item: (typeof NAV)[number]) => current === item.id || Boolean(item.also?.includes(current));
 
   const panel = (
     <>
       <div className="sk-brand">
-        <Link href="/" aria-label="SASUKE 首頁"><SasukeMark size={26} /><span className="sk-word"><b>SASUKE</b><small>NOIRXU · PERSONAL AI</small></span></Link>
+        <Link href="/" aria-label="SASUKE 首頁" onClick={close}><SasukeMark size={26} /><span className="sk-word"><b>SASUKE</b><small>NOIRXU · PERSONAL AI</small></span></Link>
         <button type="button" className="sk-icon sk-collapse" onClick={toggle} aria-label={collapsed ? '展開側邊欄' : '收合側邊欄'}><Icon name="arrow" size={16} /></button>
       </div>
-      <button type="button" className="sk-new" onClick={() => { setDrawer(false); router.push(newConversationHref()); }}><Icon name="plus" size={16} /><span>新對話</span></button>
-      <History onNavigate={() => setDrawer(false)} />
-      <nav className="sk-secondary" aria-label="其他頁面">
-        {current !== 'chat' && <Link href="/"><Icon name="chat" size={17} /><span>SASUKE</span></Link>}
-        {SECONDARY.map(item => (
-          <Link key={item.id} href={item.href} aria-current={current === item.id ? 'page' : undefined} onClick={() => setDrawer(false)}><Icon name={item.icon} size={17} /><span>{item.label}</span></Link>
+      <nav className="sk-nav" aria-label="功能">
+        {NAV.map(item => (
+          <Link key={item.id} href={item.href} aria-current={isCurrent(item) ? 'page' : undefined} onClick={close} title={item.label}>
+            <Icon name={item.icon} size={18} /><span>{item.label}</span>
+          </Link>
         ))}
       </nav>
-      <div className="sk-foot">
-        <span className="sk-foot-note" title="伺服器同步會在下一階段開放">對話存在這台裝置</span>
-        <form method="post" action="/api/logout"><button type="submit" className="sk-icon" aria-label="登出" title="登出"><Icon name="logout" size={17} /></button></form>
+      <div className="sk-bottom">
+        <Link href="/connections" aria-current={current === 'connections' ? 'page' : undefined} onClick={close} title="設定與連線"><Icon name="settings" size={18} /><span>設定與連線</span></Link>
+        <div className="sk-foot">
+          <a href="/api/ui?mode=classic" className="sk-foot-note" title="切換回原版介面">切換原版介面</a>
+          <form method="post" action="/api/logout"><button type="submit" className="sk-icon" aria-label="登出" title="登出"><Icon name="logout" size={17} /></button></form>
+        </div>
       </div>
     </>
   );
@@ -194,10 +182,19 @@ export function SasukeNav({ current, water }: { current: Page; water: boolean })
         <button type="button" className="sk-icon" onClick={() => setDrawer(true)} aria-label="開啟選單"><Icon name="menu" size={20} /></button>
         <Link href="/" className="sk-top-title"><SasukeMark size={22} /><b>SASUKE</b></Link>
       </header>
-      <div className="sk-water-slot"><Inbox />{water && <WaterChip />}</div>
-      {drawer && <div className="sk-scrim" onClick={() => setDrawer(false)} />}
+      <div className="sk-water-slot">
+        {current === 'chat' && (
+          <>
+            <button type="button" className="sk-head-btn" onClick={() => setHistory(true)} aria-label="對話紀錄" title="對話紀錄"><Icon name="history" size={17} /></button>
+            <button type="button" className="sk-head-btn" onClick={() => router.push(newConversationHref())} aria-label="新對話" title="新對話"><Icon name="plus" size={17} /></button>
+          </>
+        )}
+        <Inbox />
+      </div>
+      {history && <HistoryDialog onClose={closeHistory} />}
+      {drawer && <div className="sk-scrim" onClick={close} />}
       <aside className={`sk-drawer ${drawer ? 'open' : ''}`} aria-hidden={!drawer} aria-label="SASUKE 選單">
-        <button type="button" className="sk-icon sk-drawer-close" onClick={() => setDrawer(false)} aria-label="關閉選單"><Icon name="close" size={18} /></button>
+        <button type="button" className="sk-icon sk-drawer-close" onClick={close} aria-label="關閉選單"><Icon name="close" size={18} /></button>
         {drawer && panel}
       </aside>
     </>

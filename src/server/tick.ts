@@ -103,8 +103,8 @@ export async function runTick(hub: Hub, now = new Date()): Promise<TickResult> {
     const slot = dueWaterSlot(prefs, now);
     if (slot) {
       const key = `water:${OWNER_ID}:${today}:${slot}`;
-      const existing = await hub.delivery.get(key);
-      const message = existing ? existing.message : waterReminder(prefs, await hub.water.day(OWNER_ID, today), now);
+      // Always from current totals; once the user is back on pace, nothing more is sent.
+      const message = waterReminder(prefs, await hub.water.day(OWNER_ID, today), now);
       if (message) {
         const record = await count(key, 'water', OWNER_ID, { ...message, url: '/', tag: `water-${today}` }, new Date(taipeiInstant(today, slot).getTime() + 60 * 60_000));
         water = record.status === 'provider_accepted';
