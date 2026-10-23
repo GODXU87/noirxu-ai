@@ -109,6 +109,7 @@ function turns(items: Item[]) {
 export function Chat({ connected, features, variant = 'classic' }: { connected: Record<string, boolean>; features: FeatureFlags; variant?: 'classic' | 'sasuke' }) {
   const sasuke = variant === 'sasuke';
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [storageError, setStorageError] = useState<string | null>(null);
   const [items, setItems] = useState<Item[]>([]);
   const [history, setHistory] = useState<unknown[]>([]);
   const [notes, setNotes] = useState<string[]>([]);
@@ -131,9 +132,10 @@ export function Chat({ connected, features, variant = 'classic' }: { connected: 
     let saved: Saved | null;
     if (sasuke) {
       // ?c=<id> opens a saved conversation; anything else starts a new one.
-      const imported = importLegacySession();
+      const outcome = importLegacySession();
+      if (outcome.status === 'failed') setStorageError(`原版對話匯入失敗（${outcome.reason}），下次開啟會自動再試。原版資料沒有被刪除。`);
       const requested = new URLSearchParams(window.location.search).get('c');
-      const id = requested && requested !== 'new' ? requested : imported && !requested ? imported : newConversationId();
+      const id = requested && requested !== 'new' ? requested : outcome.status === 'imported' && !requested ? outcome.conversationId : newConversationId();
       setConversationId(id);
       saved = loadConversation(id) as Saved | null;
     } else {
@@ -147,7 +149,11 @@ export function Chat({ connected, features, variant = 'classic' }: { connected: 
     if (sasuke) {
       if (!conversationId) return;
       const first = items.find(i => i.kind === 'user');
-      saveConversation(conversationId, { items, history, notes }, first?.kind === 'user' ? first.text : undefined);
+      const saved = saveConversation(conversationId, { items, history, notes }, first?.kind === 'user' ? first.text : undefined);
+      if (!saved.ok) setStorageError(saved.reason === 'quota'
+        ? '這台裝置的儲存空間已滿，這段對話的新訊息沒有存下來。請在側邊欄刪除不需要的對話後再試。'
+        : '瀏覽器目前不允許儲存（可能是私密瀏覽），這段對話關閉後不會保留。');
+      else setStorageError(prev => (prev?.startsWith('原版對話') ? prev : null));
       if (items.length && new URLSearchParams(window.location.search).get('c') !== conversationId) {
         window.history.replaceState(null, '', `/?c=${conversationId}`);
       }
@@ -314,6 +320,7 @@ export function Chat({ connected, features, variant = 'classic' }: { connected: 
   return (
     <>
       <main className={empty ? 'feed home' : 'feed'}>
+        {storageError && <p className="banner storage-warning" role="alert">{storageError}</p>}
         {empty && sasuke && (
           <section className="sk-home">
             <span className="sk-home-mark"><SasukeMark size={40} /></span>
