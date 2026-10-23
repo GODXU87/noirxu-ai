@@ -32,10 +32,14 @@ export const TOOL_LABELS: Record<string, string> = {
   'health.water.status': '喝水進度',
   'health.water.log': '記錄喝水',
   'health.water.undo': '刪除喝水紀錄',
-  'health.water.settings': '喝水設定'
+  'health.water.settings': '喝水設定',
+  'memory.list': '長期記憶',
+  'memory.create': '新增記憶',
+  'memory.update': '更新記憶',
+  'memory.delete': '刪除記憶'
 };
 
-export const SYSTEM_OF: Record<string, string> = { assistant: '助理', health: '健康', agenda: '記事', ledger: 'Ledger', journal: 'Journal', radar: 'RADAR', gmail: 'Gmail' };
+export const SYSTEM_OF: Record<string, string> = { assistant: '助理', health: '健康', memory: '記憶', agenda: '記事', ledger: 'Ledger', journal: 'Journal', radar: 'RADAR', gmail: 'Gmail' };
 
 export function toolLabel(name: string): string {
   return TOOL_LABELS[name] ?? name;

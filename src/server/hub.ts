@@ -19,6 +19,9 @@ import { agendaTools } from '@/tools/agenda/tools';
 import { assistantTools } from '@/tools/assistant/tools';
 import { healthTools } from '@/tools/health/tools';
 import { WaterService } from '@/health/service';
+import { HistoryService } from '@/history/service';
+import { MemoryHistoryStore, PgHistoryStore, type HistoryStore } from '@/history/store';
+import { memoryTools } from '@/tools/memory/tools';
 import { loadFeatureFlags, type FeatureFlags } from '@/lib/features';
 import { ledgerAssetTools } from '@/tools/ledger/assets';
 import { loadConfig, type AppConfig } from './config';
@@ -36,6 +39,8 @@ export interface Hub {
   agenda: AgendaStore;
   push: PushService;
   water: WaterService;
+  /** Server-side conversations and memories (Phase C2; used only when the opt-in flags are on). */
+  history: HistoryService;
   isConnected: (userId: string, connection: ConnectionId) => Promise<boolean>;
 }
 
@@ -68,6 +73,7 @@ function build(): Hub {
   let backend: CredentialBackend;
   let storageMode: Hub['storageMode'];
   let agenda: AgendaStore;
+  let historyStore: HistoryStore;
 
   if (config.hubDatabaseUrl) {
     assertLimitedDatabaseRole(config.hubDatabaseUrl);
@@ -76,6 +82,7 @@ function build(): Hub {
     store = new PgHubStore(pool);
     backend = new PgCredentialBackend(pool);
     agenda = new PgAgendaStore(pool);
+    historyStore = new PgHistoryStore(pool);
     storageMode = 'database';
   } else if (process.env.NODE_ENV === 'production') {
     throw new Error('NOIRXU_AI_DATABASE_URL is required in production');
@@ -83,6 +90,7 @@ function build(): Hub {
     store = new MemoryHubStore();
     backend = new MemoryCredentialBackend();
     agenda = new MemoryAgendaStore();
+    historyStore = new MemoryHistoryStore();
     storageMode = 'memory';
   }
 
@@ -90,6 +98,7 @@ function build(): Hub {
   const credentials = new CredentialStore(backend, vault);
   const push = new PushService(agenda, vault);
   const water = new WaterService(agenda, vault);
+  const history = new HistoryService(historyStore, vault);
   const ledger = new SupabaseUserConnection('ledger', config.ledger.supabase, credentials);
   const journal = new SupabaseUserConnection('journal', config.journal.supabase, credentials);
   const radar = new RadarClient(config.radar);
@@ -107,6 +116,7 @@ function build(): Hub {
     ...radarTools(radar),
     ...gmailTools(gmail),
     ...(features.water ? healthTools(water) : []),
+    ...(features.memory ? memoryTools(history) : []),
     ...assistantTools({ agenda, water: features.water ? water : undefined, features, isConnected: (userId, connection) => isConnected(userId, connection), invoke: (name, input, ctx) => executor!.invoke(name, input, ctx) })
   ]) registry.register(tool);
 
@@ -120,7 +130,7 @@ function build(): Hub {
   };
 
   executor = new Executor({ registry, store, isConnected });
-  return { config, features, storageMode, registry, executor, ledger, journal, radar, gmail, agenda, push, water, isConnected };
+  return { config, features, storageMode, registry, executor, ledger, journal, radar, gmail, agenda, push, water, history, isConnected };
 }
 
 const globalHub = globalThis as unknown as { __noirxuHub?: Hub };

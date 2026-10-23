@@ -503,3 +503,16 @@ button.link { background: none; border: 0; padding: 0; color: var(--accent); fon
 .ui-sasuke .composer.docked-center { position: static; padding: 0; background: none; }
 .history-note.warn { color: var(--warn); }
 .ui-sasuke .storage-warning { margin: 0; }
+
+/* Memories */
+.memory-add { display: flex; flex-wrap: wrap; gap: 8px; }
+.memory-add input { flex: 1 1 220px; }
+.memory-add select { flex: 0 0 auto; width: auto; }
+.memory-list { list-style: none; margin: 0; padding: 0; display: grid; }
+.memory-list li { display: flex; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.memory-list li:last-child { border-bottom: 0; }
+.memory-list li.inactive { opacity: .5; }
+.memory-main { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.memory-main small { color: var(--muted); font-size: 12px; }
+.memory-actions { display: flex; gap: 6px; }
+.memory-actions button { padding: 6px 10px; font-size: 12.5px; }

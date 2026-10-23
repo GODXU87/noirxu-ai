@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { COMMAND_HELP, parseCommand } from '@/assistant/commands';
-import { ToolError } from '@/hub/errors';
+import { isToolError, ToolError } from '@/hub/errors';
 import { parseWaterCommand } from '@/health/water';
 import { getHub } from '@/server/hub';
 import { errorResponse, json, requireContext } from '@/server/http';
@@ -64,8 +64,17 @@ export async function POST(request: Request) {
         }
         break;
       }
-      case 'memory':
-        return notice('長期記憶會在下一階段開放（需要新增資料表，要你另外核准）。這句話沒有被儲存。');
+      case 'memory': {
+        if (!hub.features.memory) return notice('長期記憶還沒啟用（需要你核准資料庫變更後才會開啟）。這句話沒有被儲存。');
+        if (!command.arg) return json({ ok: true, command: command.name, result: await run('memory.list', {}) });
+        try {
+          const row = await hub.history.remember(ctx.userId, { content: command.arg, source: 'user_command' });
+          return json({ ok: true, command: command.name, result: { status: 'ok', tool: 'memory.create', data: row, links: [] } });
+        } catch (error) {
+          if (isToolError(error)) return notice(`沒有存成記憶：${error.message}`);
+          throw error;
+        }
+      }
     }
   } catch (error) {
     return errorResponse(error);

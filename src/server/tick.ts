@@ -76,5 +76,9 @@ export async function runTick(hub: Hub, now = new Date()): Promise<TickResult> {
       }
     }
   }
+  // C2 retention: rows deleted more than 30 days ago are removed once a day.
+  if ((hub.features?.server_history || hub.features?.memory) && hub.history && await hub.agenda.claimNotification(`purge:${today}`, OWNER_ID, 'purge')) {
+    await hub.history.purge(now);
+  }
   return { reminders, briefing, pushed, water };
 }

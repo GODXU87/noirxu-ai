@@ -319,6 +319,23 @@ function WaterLine({ water }: { water: any }) {
   );
 }
 
+/* ---------- 記憶 ---------- */
+
+const MEMORY_LABEL: Record<string, string> = { preference: '個人偏好', sasuke: 'SASUKE 互動設定', brand: 'NOIRXU 品牌規則', project: '專案背景', decision: '重要決策', routine: '日常規則' };
+
+function MemoryView({ tool, data }: { tool: string; data: any }) {
+  const rows: any[] = tool === 'memory.list' ? data.memories : data.id ? [data] : [];
+  return (
+    <div className="view">
+      {tool === 'memory.create' && <p className="headline">已記住，之後的回覆會參考這一條。</p>}
+      {tool === 'memory.delete' && <p className="headline">已刪除（30 天後永久清除）。</p>}
+      {tool === 'memory.list' && rows.length === 0 && <p className="hint">還沒有記憶。輸入「/記憶 內容」新增。</p>}
+      {rows.length > 0 && <ul className="memory-list">{rows.map(m => <li key={m.id} className={m.active ? '' : 'inactive'}><div className="memory-main"><p>{m.content}</p><small>{MEMORY_LABEL[m.category] ?? m.category}{m.active ? '' : ' · 已停用'}</small></div></li>)}</ul>}
+      <a href="/memory" className="hint">管理全部記憶 →</a>
+    </div>
+  );
+}
+
 /* ---------- 入口 ---------- */
 
 export function AssistantCard({ result, onNote, onReply }: { result: Extract<InvokeResult, { status: 'ok' }>; onNote?: Note; onReply?: () => void }) {
@@ -329,11 +346,12 @@ export function AssistantCard({ result, onNote, onReply }: { result: Extract<Inv
     : result.tool === 'assistant.briefing.evening' ? <EveningView data={data} />
     : result.tool === 'assistant.reply.drafts' ? <ReplyDraftsView data={data} onNote={onNote} />
     : result.tool.startsWith('health.water.') ? <WaterCard initial={data} />
+    : result.tool.startsWith('memory.') ? <MemoryView tool={result.tool} data={data} />
     : <pre>{JSON.stringify(data, null, 2)}</pre>;
   const title = result.tool === 'assistant.briefing.morning' ? `早報 · ${data.today}` : result.tool === 'assistant.briefing.evening' ? `晚報 · ${data.today}` : toolLabel(result.tool);
   return (
     <div className="tool">
-      <header><span><span className="sys">{result.tool.startsWith('health.') ? '健康' : '助理'}</span>{title}</span></header>
+      <header><span><span className="sys">{result.tool.startsWith('health.') ? '健康' : result.tool.startsWith('memory.') ? '記憶' : '助理'}</span>{title}</span></header>
       <Collapsible limit={420}>{body}</Collapsible>
       <Links links={result.links} />
     </div>

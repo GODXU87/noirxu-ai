@@ -11,7 +11,10 @@ run "$PG/pg_ctl -D $DIR stop -m fast" >/dev/null 2>&1 || true
 PWFILE=$(mktemp); echo local-admin > "$PWFILE"; chmod 644 "$PWFILE"
 run "rm -rf $DIR && $PG/initdb -D $DIR -A scram-sha-256 --pwfile=$PWFILE -U postgres -E UTF8" >/dev/null
 rm -f "$PWFILE"
-run "$PG/pg_ctl -D $DIR -o '-p 55432 -k /tmp -c listen_addresses=127.0.0.1' -l $DIR.log -w start" >/dev/null
+# Self-signed TLS, because the app always connects with SSL (as it does to Supabase).
+run "openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj /CN=localhost -keyout $DIR/server.key -out $DIR/server.crt" >/dev/null 2>&1
+run "chmod 600 $DIR/server.key"
+run "$PG/pg_ctl -D $DIR -o '-p 55432 -k /tmp -c listen_addresses=127.0.0.1 -c ssl=on' -l $DIR.log -w start" >/dev/null
 export PGPASSWORD=local-admin
 psql -h 127.0.0.1 -p 55432 -U postgres -q -c "create database noirxu_test"
 psql -h 127.0.0.1 -p 55432 -U postgres -d noirxu_test -q -v ON_ERROR_STOP=1 -f "$ROOT/supabase/test/baseline-noirxu-ai.sql"

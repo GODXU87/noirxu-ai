@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Page } from '../TopBar';
 import { Icon, type IconName } from '../components/Icon';
 import { callTool } from '../components/shared';
+import { serverHistory } from './server-history';
 import { deleteConversation, legacyImports, listConversations, onConversationsChanged, renameConversation, SOFT_LIMIT, type ConversationMeta, type SaveResult } from './conversations';
 
 function warnIfFailed(result: SaveResult) {
@@ -36,7 +37,7 @@ function currentConversation(): string | null {
   return new URLSearchParams(window.location.search).get('c');
 }
 
-function History({ onNavigate }: { onNavigate: () => void }) {
+function History({ onNavigate, server }: { onNavigate: () => void; server: boolean }) {
   const [list, setList] = useState<ConversationMeta[]>([]);
   const [query, setQuery] = useState('');
   const [editing, setEditing] = useState<string | null>(null);
@@ -44,13 +45,53 @@ function History({ onNavigate }: { onNavigate: () => void }) {
   const [active, setActive] = useState<string | null>(null);
   const [imports, setImports] = useState(0);
 
+  const [serverError, setServerError] = useState<string | null>(null);
+
+  // Server mode: list and search on the server (titles and masked message text).
+  const loadServer = async (q: string) => {
+    const result = await serverHistory.list(q.trim() || undefined);
+    if (result.ok) { setList(result.data.conversations.map(c => ({ id: c.id, title: c.title, updatedAt: c.updated_at }))); setServerError(null); }
+    else setServerError(result.message);
+  };
+
   useEffect(() => {
-    const refresh = () => { setList(listConversations()); setActive(currentConversation()); setImports(legacyImports().length); };
+    const refresh = () => {
+      setActive(currentConversation());
+      if (server) void loadServer(query);
+      else { setList(listConversations()); setImports(legacyImports().length); }
+    };
     refresh();
     return onConversationsChanged(refresh);
-  }, []);
+  }, [server]);
 
-  const shown = query.trim() ? list.filter(c => c.title.toLowerCase().includes(query.trim().toLowerCase())) : list;
+  useEffect(() => {
+    if (!server) return;
+    const timer = setTimeout(() => void loadServer(query), 250);
+    return () => clearTimeout(timer);
+  }, [query, server]);
+
+  async function rename(id: string, title: string) {
+    if (!server) { warnIfFailed(renameConversation(id, title)); return; }
+    const result = await serverHistory.rename(id, title);
+    if (!result.ok) alert(`重新命名失敗：${result.message}`);
+    void loadServer(query);
+  }
+
+  async function remove(c: ConversationMeta) {
+    if (!confirm(server ? `刪除「${c.title}」？所有裝置都會看不到，30 天後永久清除。` : `刪除「${c.title}」？這只會刪除這台裝置上的紀錄。`)) return;
+    if (server) {
+      const result = await serverHistory.remove(c.id);
+      if (!result.ok) { alert(`刪除失敗：${result.message}`); return; }
+      void loadServer(query);
+    } else {
+      const r = deleteConversation(c.id);
+      warnIfFailed(r);
+      if (!r.ok) return;
+    }
+    if (c.id === active) window.location.href = '/';
+  }
+
+  const shown = server || !query.trim() ? list : list.filter(c => c.title.toLowerCase().includes(query.trim().toLowerCase()));
 
   return (
     <div className="history">
@@ -62,7 +103,7 @@ function History({ onNavigate }: { onNavigate: () => void }) {
         {shown.map(c => (
           <li key={c.id} className={c.id === active ? 'on' : ''}>
             {editing === c.id ? (
-              <form onSubmit={e => { e.preventDefault(); warnIfFailed(renameConversation(c.id, draft)); setEditing(null); }}>
+              <form onSubmit={e => { e.preventDefault(); void rename(c.id, draft); setEditing(null); }}>
                 <input value={draft} onChange={e => setDraft(e.target.value)} autoFocus maxLength={60} aria-label="對話名稱" onBlur={() => setEditing(null)} />
               </form>
             ) : (
@@ -70,16 +111,17 @@ function History({ onNavigate }: { onNavigate: () => void }) {
                 <a href={`/?c=${c.id}`} onClick={onNavigate} title={c.title}>{c.title}</a>
                 <span className="history-actions">
                   <button type="button" aria-label={`重新命名：${c.title}`} onClick={() => { setEditing(c.id); setDraft(c.title); }}><Icon name="edit" size={14} /></button>
-                  <button type="button" aria-label={`刪除：${c.title}`} onClick={() => { if (confirm(`刪除「${c.title}」？這只會刪除這台裝置上的紀錄。`)) { const r = deleteConversation(c.id); warnIfFailed(r); if (r.ok && c.id === active) window.location.href = '/'; } }}><Icon name="close" size={14} /></button>
+                  <button type="button" aria-label={`刪除：${c.title}`} onClick={() => void remove(c)}><Icon name="close" size={14} /></button>
                 </span>
               </>
             )}
           </li>
         ))}
       </ul>
-      {list.length > SOFT_LIMIT && <p className="history-note warn">這台裝置已有 {list.length} 個對話。不會自動刪除；不需要的可以手動刪除，以免儲存空間不足。</p>}
-      {imports > 0 && <p className="history-note">已從原版介面匯入 {imports} 段對話（原版資料仍保留）。</p>}
-      <p className="history-note">目前只存在這台裝置。伺服器同步會在下一階段開放。</p>
+      {serverError && <p className="history-note warn">{serverError}</p>}
+      {!server && list.length > SOFT_LIMIT && <p className="history-note warn">這台裝置已有 {list.length} 個對話。不會自動刪除；不需要的可以手動刪除，以免儲存空間不足。</p>}
+      {!server && imports > 0 && <p className="history-note">已從原版介面匯入 {imports} 段對話（原版資料仍保留）。</p>}
+      <p className="history-note">{server ? '已與伺服器同步，Mac 與手機看到的是同一份。' : '目前只存在這台裝置。伺服器同步會在下一階段開放。'}</p>
     </div>
   );
 }
@@ -140,7 +182,7 @@ export function WaterChip() {
   );
 }
 
-export function SasukeNav({ current, water }: { current: Page; water: boolean }) {
+export function SasukeNav({ current, water, serverHistory: server = false, memory = false }: { current: Page; water: boolean; serverHistory?: boolean; memory?: boolean }) {
   const [collapsed, setCollapsed] = useState(false);
   const [drawer, setDrawer] = useState(false);
 
@@ -159,9 +201,10 @@ export function SasukeNav({ current, water }: { current: Page; water: boolean })
         <button type="button" className="sk-icon sk-collapse" onClick={toggle} aria-label={collapsed ? '展開側邊欄' : '收合側邊欄'}><Icon name="arrow" size={16} /></button>
       </div>
       <a href="/?c=new" className="sk-new" onClick={() => setDrawer(false)}><Icon name="plus" size={16} /><span>新對話</span></a>
-      <History onNavigate={() => setDrawer(false)} />
+      <History onNavigate={() => setDrawer(false)} server={server} />
       <nav className="sk-secondary" aria-label="其他頁面">
         {current !== 'chat' && <a href="/"><Icon name="chat" size={17} /><span>SASUKE</span></a>}
+        {memory && <a href="/memory" aria-current={current === 'memory' ? 'page' : undefined}><Icon name="edit" size={17} /><span>記憶</span></a>}
         {SECONDARY.map(item => (
           <a key={item.id} href={item.href} aria-current={current === item.id ? 'page' : undefined}><Icon name={item.icon} size={17} /><span>{item.label}</span></a>
         ))}

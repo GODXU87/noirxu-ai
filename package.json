@@ -9,7 +9,8 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "eval:persona": "NOIRXU_PERSONA_LIVE=1 vitest run tests/persona.live.test.ts"
+    "eval:persona": "NOIRXU_PERSONA_LIVE=1 vitest run tests/persona.live.test.ts",
+    "test:integration": "sh scripts/test-db.sh supabase/pending/20261023120000_noirxu_ai_history_memory_c2.sql && NOIRXU_TEST_C2=1 NOIRXU_TEST_DATABASE_URL=postgresql://noirxu_ai_app:test-only-password@127.0.0.1:55432/noirxu_test vitest run tests/integration --no-file-parallelism"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.131.0",

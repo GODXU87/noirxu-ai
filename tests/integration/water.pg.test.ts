@@ -12,7 +12,7 @@ const DAY = '2026-10-23';
 
 describe.skipIf(!url)('C0 on real PostgreSQL (noirxu_ai_app)', () => {
   // Three pools = three server instances / devices with their own connections.
-  const pools = url ? [0, 1, 2].map(() => new Pool({ connectionString: url, max: 3 })) : [];
+  const pools = url ? [0, 1, 2].map(() => new Pool({ connectionString: url, max: 1 })) : [];
   const devices = pools.map(pool => new WaterService(new PgAgendaStore(pool), vault));
   afterAll(async () => { await Promise.all(pools.map(p => p.end())); });
   const user = () => `it-${randomUUID()}`;

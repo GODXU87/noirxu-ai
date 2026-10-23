@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { ToolError } from '@/hub/errors';
 import { REPLY_STYLES, runAgentTurn } from '@/server/agent';
+import { MEMORY_CATEGORY_LABEL } from '@/history/privacy';
 import { getHub } from '@/server/hub';
 import { errorResponse, json, requireContext } from '@/server/http';
 
@@ -23,6 +24,9 @@ export async function POST(request: Request) {
     if (!parsed.success) throw new ToolError('INVALID_INPUT', '訊息格式不正確。');
     if (!process.env.ANTHROPIC_API_KEY) throw new ToolError('NOT_CONFIGURED', 'ANTHROPIC_API_KEY 尚未設定。');
     const hub = getHub();
+    const memories = hub.features.memory
+      ? (await hub.history.listMemories(ctx.userId).catch(() => [])).map(m => `[${MEMORY_CATEGORY_LABEL[m.category]}] ${m.content}`)
+      : [];
     const turn = await runAgentTurn({
       client: new Anthropic(),
       model: hub.config.anthropicModel,
@@ -31,7 +35,8 @@ export async function POST(request: Request) {
       ctx,
       history: parsed.data.history as Anthropic.Beta.Messages.BetaMessageParam[],
       userText: parsed.data.text,
-      style: parsed.data.style
+      style: parsed.data.style,
+      memories
     });
     return json({ ok: true, ...turn });
   } catch (error) {

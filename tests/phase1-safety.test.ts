@@ -37,3 +37,14 @@ describe('login throttle', () => {
     vi.useRealTimers();
   });
 });
+
+describe('ToolError across bundles', () => {
+  it('is recognised by brand even when instanceof fails', async () => {
+    const { isToolError, toToolError, ToolError } = await import('@/hub/errors');
+    const foreign = Object.assign(new Error('沒有存成記憶'), { code: 'INVALID_INPUT', name: 'ToolError', [Symbol.for('noirxu-ai.ToolError')]: true });
+    expect(foreign instanceof ToolError).toBe(false);
+    expect(isToolError(foreign)).toBe(true);
+    expect(toToolError(foreign).code).toBe('INVALID_INPUT');
+    expect(toToolError(new Error('x')).code).toBe('INTERNAL');
+  });
+});

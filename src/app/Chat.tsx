@@ -8,6 +8,7 @@ import { BrandMark, Icon } from './components/Icon';
 import { AssistantCard, WaterMeter } from './components/assistant';
 import { importLegacySession, loadConversation, newConversationId, saveConversation } from './sasuke/conversations';
 import { SasukeMark } from './sasuke/SasukeNav';
+import { useServerSync } from './sasuke/useServerSync';
 import { callTool, ProposalCard, RichText, ToolCard, type InvokeResult } from './components/shared';
 
 type Item =
@@ -108,6 +109,8 @@ function turns(items: Item[]) {
 
 export function Chat({ connected, features, variant = 'classic' }: { connected: Record<string, boolean>; features: FeatureFlags; variant?: 'classic' | 'sasuke' }) {
   const sasuke = variant === 'sasuke';
+  // Server-side history (C2) replaces this browser's list when the opt-in flag is on.
+  const server = sasuke && features.server_history;
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [storageError, setStorageError] = useState<string | null>(null);
   const [items, setItems] = useState<Item[]>([]);
@@ -129,8 +132,10 @@ export function Chat({ connected, features, variant = 'classic' }: { connected: 
   }, [empty, features.water, sasuke]);
 
   useEffect(() => {
-    let saved: Saved | null;
-    if (sasuke) {
+    let saved: Saved | null = null;
+    if (server) {
+      // Loaded by useServerSync.
+    } else if (sasuke) {
       // ?c=<id> opens a saved conversation; anything else starts a new one.
       const outcome = importLegacySession();
       if (outcome.status === 'failed') setStorageError(`原版對話匯入失敗（${outcome.reason}），下次開啟會自動再試。原版資料沒有被刪除。`);
@@ -146,6 +151,7 @@ export function Chat({ connected, features, variant = 'classic' }: { connected: 
   }, []);
 
   useEffect(() => {
+    if (server) return;
     if (sasuke) {
       if (!conversationId) return;
       const first = items.find(i => i.kind === 'user');
@@ -160,7 +166,9 @@ export function Chat({ connected, features, variant = 'classic' }: { connected: 
       return;
     }
     try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ items, history, notes })); } catch { /* storage unavailable */ }
-  }, [items, history, notes, sasuke, conversationId]);
+  }, [items, history, notes, sasuke, server, conversationId]);
+
+  const { ready: syncReady } = useServerSync(server, { items: items as Array<{ kind: string; text?: string }>, history, notes, busy: Boolean(busy) }, { setItems, setHistory, setNotes }, setStorageError);
 
   // iPhone Safari: keep the input above the on-screen keyboard.
   useEffect(() => {
@@ -196,7 +204,8 @@ export function Chat({ connected, features, variant = 'classic' }: { connected: 
 
   async function send(message: string) {
     message = message.trim();
-    if (!message || busy) return;
+    // Server mode: wait until the conversation has loaded, so nothing typed is overwritten.
+    if (!message || busy || !syncReady) return;
     setText('');
     setItems(prev => [...prev, { kind: 'user', text: message }]); scroll();
     // Shortcut commands are parsed by fixed rules on the server, not by the AI model.
@@ -273,7 +282,7 @@ export function Chat({ connected, features, variant = 'classic' }: { connected: 
     const addNote = (note: string) => setNotes(prev => [...prev, note]);
     if (item.kind === 'tool') {
       if (item.result.status === 'confirmation_required') return <ProposalCard key={index} result={item.result} onDone={addNote} />;
-      if (item.result.status === 'ok' && (item.result.tool.startsWith('assistant.') || item.result.tool.startsWith('health.'))) {
+      if (item.result.status === 'ok' && (item.result.tool.startsWith('assistant.') || item.result.tool.startsWith('health.') || item.result.tool.startsWith('memory.'))) {
         const source = items.slice(0, index).reverse().find(i => i.kind === 'user');
         const original = source?.kind === 'user' ? source.text.replace(/^[/／]\s*分診\s*/, '') : '';
         return <AssistantCard key={index} result={item.result} onNote={addNote}
@@ -311,7 +320,7 @@ export function Chat({ connected, features, variant = 'classic' }: { connected: 
           {!empty && <button type="button" className="icon-button" onClick={() => { if (sasuke) { window.location.href = '/?c=new'; return; } setItems([]); setHistory([]); setNotes([]); }} aria-label="開新對話" title="開新對話"><Icon name="plus" size={18} /></button>}
           <textarea ref={input} value={text} onChange={e => setText(e.target.value)} rows={1} aria-label="訊息" onKeyDown={onKeyDown}
             placeholder={!features.commands ? '交代我一件事…' : empty ? '交代我一件事，或輸入 / 使用快捷指令' : '繼續交代，或輸入 /'} />
-          <button className="primary" type="submit" disabled={Boolean(busy) || !text.trim()} aria-label="送出"><Icon name="send" size={18} /></button>
+          <button className="primary" type="submit" disabled={Boolean(busy) || !text.trim() || !syncReady} aria-label="送出"><Icon name="send" size={18} /></button>
         </form>
       </div>
     </div>
