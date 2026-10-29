@@ -98,10 +98,23 @@ describe('runTick', () => {
     const { hub, sent } = hubWith(agenda);
     await runTick(hub, new Date('2026-10-22T00:10:00Z')); // 08:10 Taipei
     await runTick(hub, new Date('2026-10-22T00:20:00Z'));
-    const briefings = sent.filter(m => m.title.startsWith('今日摘要'));
+    const briefings = sent.filter(m => m.title === 'Sir，今日早報');
     expect(briefings).toHaveLength(1);
     expect(briefings[0].body).toContain('繳電話費');
     await runTick(hub, new Date('2026-10-22T05:00:00Z')); // 13:00 Taipei: no new briefing
-    expect(sent.filter(m => m.title.startsWith('今日摘要'))).toHaveLength(1);
+    expect(sent.filter(m => m.title === 'Sir，今日早報')).toHaveLength(1);
+  });
+
+  it('sends the evening briefing once per day between 21:00 and 23:00 Taipei', async () => {
+    const { agenda, executor, ctx } = setup();
+    await executor.invoke('agenda.items.create', { text: '明天 繳電話費' }, ctx);
+    const { hub, sent } = hubWith(agenda);
+    await runTick(hub, new Date('2026-10-21T12:30:00Z')); // 20:30 Taipei: not yet
+    expect(sent.filter(m => m.title === 'Sir，今日晚報')).toHaveLength(0);
+    await runTick(hub, new Date('2026-10-21T13:01:00Z')); // 21:01
+    await runTick(hub, new Date('2026-10-21T13:30:00Z'));
+    const evening = sent.filter(m => m.title === 'Sir，今日晚報');
+    expect(evening).toHaveLength(1);
+    expect(evening[0].body).toContain('明天：繳電話費');
   });
 });

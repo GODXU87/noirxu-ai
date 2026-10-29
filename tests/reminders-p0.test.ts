@@ -180,8 +180,9 @@ describe('G–I: concurrency, failures, cancel and late runs', () => {
     await runTick(hub, taipei('2026-10-23T20:10:30'));
     expect(sent).toHaveLength(0);
     await runTick(hub, taipei('2026-10-23T21:00:30'));
-    expect(sent).toHaveLength(1);
-    expect(sent[0].title).toBe('Sir，該乙了');
+    const reminders = sent.filter(m => m.title !== 'Sir，今日晚報');
+    expect(reminders).toHaveLength(1);
+    expect(reminders[0].title).toBe('Sir，該乙了');
   });
 });
 

@@ -53,7 +53,7 @@ export function Inbox() {
       {open && (
         <div className="inbox-pop" role="dialog" aria-label="通知">
           <header><b>通知</b>{unread > 0 && <button type="button" className="link" onClick={() => void markAll()}>全部標為已讀</button>}</header>
-          {items.length === 0 ? <p className="hint">還沒有通知。提醒、今日摘要和喝水提醒都會出現在這裡。</p> : (
+          {items.length === 0 ? <p className="hint">還沒有通知。提醒、早晚報和喝水提醒都會出現在這裡。</p> : (
             <ul>{items.slice(0, 8).map(i => (
               <li key={i.key} className={i.read ? '' : 'unread'}>
                 <b>{i.title}</b>
