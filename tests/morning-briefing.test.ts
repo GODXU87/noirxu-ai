@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { radarSection } from '@/briefing/sections';
-import { quoteFromCsv, usMarketLine } from '@/markets/us';
+import { fetchUsQuotes, quoteFromAlphaVantage, usMarketLine } from '@/markets/us';
 import { classify } from '@/router/intents';
 import { DEFAULT_PLACE, weatherFromResponse, weatherLine } from '@/weather/open-meteo';
 
@@ -12,13 +12,31 @@ describe('weather (Open-Meteo daily format)', () => {
   });
 });
 
-describe('US close (daily CSV)', () => {
-  it('reads the last close and the day change, and labels the data date', () => {
-    const csv = 'Date,Open,High,Low,Close,Volume\n2026-10-27,5800,5850,5790,5820.5,1\n2026-10-28,5825,5880,5810,5870.1,1';
-    const q = quoteFromCsv(csv, '^spx', 'S&P 500');
-    expect(q).toEqual({ symbol: '^spx', label: 'S&P 500', date: '2026-10-28', close: 5870.1, change_pct: 0.85 });
-    expect(usMarketLine([q, { ...q, label: '費半', change_pct: -1.2 }])).toBe('美股（10/28 收盤）：S&P 500 +0.85%、費半 -1.20%');
-    expect(() => quoteFromCsv('<html>blocked</html>', '^spx', 'S&P 500')).toThrow('格式不符');
+describe('US close (Alpha Vantage GLOBAL_QUOTE)', () => {
+  const quote = (symbol: string, price: string, pct: string) => ({ 'Global Quote': { '01. symbol': symbol, '05. price': price, '07. latest trading day': '2026-10-28', '08. previous close': '0', '10. change percent': pct } });
+  it('reads the close and change, labels the data date, and caches a complete day', async () => {
+    const { MemoryAgendaStore } = await import('@/agenda/store');
+    const { vault } = await import('./helpers/chat-hub');
+    const store = new MemoryAgendaStore();
+    const urls: string[] = [];
+    const fetcher = (async (url: string) => { urls.push(url); const s = new URL(url).searchParams.get('symbol')!; return new Response(JSON.stringify(quote(s, '100.5', s === 'SOXX' ? '-1.2034%' : '0.8521%'))); }) as unknown as typeof fetch;
+    const now = new Date('2026-10-29T00:00:00Z');
+    const first = await fetchUsQuotes({ apiKey: 'demo-key', store, vault, now, fetcher });
+    expect(first.errors).toEqual([]);
+    expect(first.quotes[0]).toEqual({ symbol: 'SPY', label: 'S&P 500（SPY）', date: '2026-10-28', close: 100.5, change_pct: 0.85 });
+    expect(usMarketLine(first.quotes)).toBe('美股（10/28 收盤）：S&P 500（SPY） +0.85%、Nasdaq 100（QQQ） +0.85%、半導體（SOXX） -1.20%、台積電 ADR +0.85%、NVIDIA +0.85%');
+    await fetchUsQuotes({ apiKey: 'demo-key', store, vault, now, fetcher });
+    expect(urls).toHaveLength(5); // second call served from the day's cache
+    expect(store.settings.get('markets:us:2026-10-29')).not.toContain('SPY');
+  });
+
+  it('reports rate limits and a missing key plainly, and never caches a partial day', async () => {
+    const limited = (async () => new Response(JSON.stringify({ Information: 'We have detected your API key and our standard API rate limit is 25 requests per day.' }))) as unknown as typeof fetch;
+    const r = await fetchUsQuotes({ apiKey: 'k', fetcher: limited });
+    expect(r.quotes).toEqual([]);
+    expect(r.errors[0]).toContain('查詢額度已滿');
+    expect(await fetchUsQuotes({ apiKey: undefined })).toEqual({ quotes: [], errors: ['ALPHAVANTAGE_API_KEY 尚未設定'] });
+    expect(() => quoteFromAlphaVantage({ 'Global Quote': {} }, 'SPY', 'S&P 500')).toThrow('格式不符');
   });
 });
 
