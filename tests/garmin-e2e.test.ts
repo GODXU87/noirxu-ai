@@ -32,5 +32,10 @@ describe('Garmin body status end to end', () => {
     expect(r.ok && r.reply).toContain('難得狀態這麼好，別浪費了。');
     const brief = await morningBriefing(hub, 'owner', new Date(NOW));
     expect(brief.body.split('\n')[0]).toBe('身體：睡 7h36m · HRV 平衡 · BB 71 → 健身照計畫');
+    // Hydration stays out of the briefing (the water reminders cover it); a direct question keeps it.
+    expect(brief.card.health?.hydration_ml).toBeNull();
+    expect(brief.card.health?.narrative.join()).not.toContain('水今天');
+    expect(brief.card.health?.narrative.at(-1)).toBe('難得狀態這麼好，別浪費了。');
+    expect(r.ok && r.reply).toContain('水今天喝到');
   });
 });
