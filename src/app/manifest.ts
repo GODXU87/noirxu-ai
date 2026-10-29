@@ -2,8 +2,8 @@ import type { MetadataRoute } from 'next';
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'NOIRXU AI',
-    short_name: 'NOIRXU AI',
+    name: 'SASUKE',
+    short_name: 'SASUKE',
     description: '在一個對話中查詢與操作 NOIRXU Ledger、Trading Journal、RADAR 與 Gmail。',
     start_url: '/',
     display: 'standalone',

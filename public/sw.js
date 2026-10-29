@@ -5,8 +5,8 @@ self.addEventListener('activate', event => event.waitUntil(self.clients.claim())
 
 self.addEventListener('push', event => {
   let data = {};
-  try { data = event.data ? event.data.json() : {}; } catch { data = { title: 'NOIRXU AI', body: event.data ? event.data.text() : '' }; }
-  event.waitUntil(self.registration.showNotification(data.title || 'NOIRXU AI', {
+  try { data = event.data ? event.data.json() : {}; } catch { data = { title: 'SASUKE', body: event.data ? event.data.text() : '' }; }
+  event.waitUntil(self.registration.showNotification(data.title || 'SASUKE', {
     body: data.body || '',
     tag: data.tag || undefined,
     icon: '/apple-icon.png',
@@ -19,7 +19,7 @@ self.addEventListener('push', event => {
 // show a banner for the web app that is in front).
 async function tellOpenWindows(data) {
   const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-  for (const client of windows) client.postMessage({ type: 'noirxu-push', title: data.title || 'NOIRXU AI', body: data.body || '', url: data.url || '/' });
+  for (const client of windows) client.postMessage({ type: 'noirxu-push', title: data.title || 'SASUKE', body: data.body || '', url: data.url || '/' });
 }
 
 // Tells the server the notification was really shown / tapped. Best effort: a failed
