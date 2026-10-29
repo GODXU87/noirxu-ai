@@ -145,3 +145,30 @@ describe('Garmin token response forms', () => {
     expect(seen).toEqual(['Bearer plain-access-token-0123456789']);
   });
 });
+
+describe('Garmin HTTP 406 (first live sync, 2026-10-29)', () => {
+  it('asks for the token with only the documented header, and names the failing step', async () => {
+    const store = new MemoryAgendaStore();
+    const conns = new GarminConnectionStore(store, vault);
+    await conns.save('owner', { apiKey: 'gpk-secret-0123456789abcdef', keyExpiresOn: null, now: NOW });
+    const tokenHeaders: Array<Record<string, string>> = [];
+    let dataCalls = 0;
+    const fetcher = (async (input: string | URL, init?: RequestInit) => {
+      const headers = init?.headers as Record<string, string>;
+      if (String(input) === GARMIN_TOKEN_URL) {
+        tokenHeaders.push(headers);
+        return headers.Accept ? new Response('', { status: 406 }) : new Response('plain-access-token-0123456789', { status: 200 });
+      }
+      dataCalls += 1;
+      // A server that refuses the Accept header: the client retries once without it.
+      return headers.Accept ? new Response('', { status: 406 }) : new Response(JSON.stringify({ totalSteps: 4321 }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const client = new GarminClient(conns, store, vault, fetcher, () => NOW);
+    expect((await client.daily('owner', '2026-10-29')).steps).toBe(4321);
+    expect(tokenHeaders).toEqual([{ Authorization: 'ApiKey gpk-secret-0123456789abcdef' }]);
+    expect(dataCalls).toBe(2);
+
+    const failing = new GarminClient(conns, new MemoryAgendaStore(), vault, (async () => new Response('', { status: 500 })) as unknown as typeof fetch, () => NOW);
+    await expect(failing.daily('owner', '2026-10-29')).rejects.toMatchObject({ message: 'Garmin 取得授權時回應 HTTP 500。' });
+  });
+});
