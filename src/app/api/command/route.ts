@@ -4,6 +4,7 @@ import { ToolError } from '@/hub/errors';
 import { parseWaterCommand } from '@/health/water';
 import { pickProvider } from '@/server/config';
 import { getHub } from '@/server/hub';
+import { eveningBriefing, morningBriefing } from '@/server/tick';
 import { errorResponse, json, requireContext } from '@/server/http';
 
 export const runtime = 'nodejs';
@@ -31,9 +32,13 @@ export async function POST(request: Request) {
       case 'help':
         return json({ ok: true, command: command.name, help: COMMAND_HELP });
       case 'morning':
-      case 'evening':
+      case 'evening': {
         if (!hub.features.briefings) return notice('早報與晚報目前已關閉。');
-        return json({ ok: true, command: command.name, result: await run(`assistant.briefing.${command.name}`, {}) });
+        // The same full briefing as the notification (weather, body, US close, RADAR, agenda),
+        // so /早報, 「早報」 and the 08:00 push never disagree.
+        const b = command.name === 'morning' ? await morningBriefing(hub, ctx.userId, ctx.now()) : await eveningBriefing(hub, ctx.userId, ctx.now());
+        return json({ ok: true, command: command.name, reply: `${b.title}\n${b.full.join('\n')}` });
+      }
       case 'ledger':
         if (!command.arg) return notice('請在 /記帳 後面寫內容，例如「/記帳 午餐 150 元 刷卡」。');
         return json({ ok: true, command: command.name, result: await run('assistant.ledger.draft', { text: command.arg.slice(0, 300) }) });

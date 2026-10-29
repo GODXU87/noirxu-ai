@@ -29,8 +29,8 @@ const PHRASES: Array<[RegExp, CommandName]> = [
 ];
 
 export const COMMAND_HELP: Array<{ command: string; description: string }> = [
-  { command: '/早報', description: '今天的行程、最重要的三件事、逾期事項與提醒' },
-  { command: '/晚報', description: '今天完成與未完成的事，以及明天的安排建議' },
+  { command: '/早報', description: '天氣、身體狀況、美股收盤、RADAR、今天的待辦與財務' },
+  { command: '/晚報', description: '今天的身體與訓練、未完成的事、明天的安排與上床時間' },
   { command: '/記帳 午餐 150 元 刷卡', description: '整理成記帳草稿，你確認後才寫入 Ledger' },
   { command: '/分診 [貼上文字]', description: '從訊息、通知或信件中找出行程、待辦、金額與需要回覆的內容' },
   { command: '/回覆 [貼上信件]', description: '擬回覆草稿（需要 AI）；寄出前一樣要確認' },
