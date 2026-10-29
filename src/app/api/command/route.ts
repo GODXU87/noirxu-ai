@@ -4,7 +4,7 @@ import { ToolError } from '@/hub/errors';
 import { parseWaterCommand } from '@/health/water';
 import { pickProvider } from '@/server/config';
 import { getHub } from '@/server/hub';
-import { eveningBriefing, morningBriefing } from '@/server/tick';
+import { eveningBriefing, morningBriefing, weeklyReview } from '@/server/tick';
 import { errorResponse, json, requireContext } from '@/server/http';
 
 export const runtime = 'nodejs';
@@ -41,6 +41,9 @@ export async function POST(request: Request) {
         const b = command.name === 'morning' ? await morningBriefing(hub, ctx.userId, ctx.now()) : await eveningBriefing(hub, ctx.userId, ctx.now());
         return json({ ok: true, command: command.name, result: { status: 'ok', tool: 'assistant.briefing.card', data: b.card, links: [] } });
       }
+      case 'weekly':
+        if (!hub.features.briefings) return notice('回顧目前已關閉。');
+        return json({ ok: true, command: command.name, result: { status: 'ok', tool: 'assistant.weekly.card', data: await weeklyReview(hub, ctx.userId, ctx.now()), links: [] } });
       case 'ledger':
         if (!command.arg) return notice('請在 /記帳 後面寫內容，例如「/記帳 午餐 150 元 刷卡」。');
         return json({ ok: true, command: command.name, result: await run('assistant.ledger.draft', { text: command.arg.slice(0, 300) }) });
