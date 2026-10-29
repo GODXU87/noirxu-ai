@@ -8,6 +8,8 @@ import { eveningBriefing, morningBriefing } from '@/server/tick';
 import { errorResponse, json, requireContext } from '@/server/http';
 
 export const runtime = 'nodejs';
+// The briefing reads several sources; US quotes are paced at ~1 request a second.
+export const maxDuration = 60;
 
 const body = z.object({ text: z.string().trim().min(1).max(8000) });
 
@@ -37,7 +39,7 @@ export async function POST(request: Request) {
         // The same full briefing as the notification (weather, body, US close, RADAR, agenda),
         // so /早報, 「早報」 and the 08:00 push never disagree.
         const b = command.name === 'morning' ? await morningBriefing(hub, ctx.userId, ctx.now()) : await eveningBriefing(hub, ctx.userId, ctx.now());
-        return json({ ok: true, command: command.name, reply: `${b.title}\n${b.full.join('\n')}` });
+        return json({ ok: true, command: command.name, result: { status: 'ok', tool: 'assistant.briefing.card', data: b.card, links: [] } });
       }
       case 'ledger':
         if (!command.arg) return notice('請在 /記帳 後面寫內容，例如「/記帳 午餐 150 元 刷卡」。');

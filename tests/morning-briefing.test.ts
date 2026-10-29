@@ -21,22 +21,40 @@ describe('US close (Alpha Vantage GLOBAL_QUOTE)', () => {
     const urls: string[] = [];
     const fetcher = (async (url: string) => { urls.push(url); const s = new URL(url).searchParams.get('symbol')!; return new Response(JSON.stringify(quote(s, '100.5', s === 'SOXX' ? '-1.2034%' : '0.8521%'))); }) as unknown as typeof fetch;
     const now = new Date('2026-10-29T00:00:00Z');
-    const first = await fetchUsQuotes({ apiKey: 'demo-key', store, vault, now, fetcher });
+    const first = await fetchUsQuotes({ apiKey: 'demo-key', store, vault, now, fetcher, pauseMs: 0 });
     expect(first.errors).toEqual([]);
     expect(first.quotes[0]).toEqual({ symbol: 'SPY', label: 'S&P 500（SPY）', date: '2026-10-28', close: 100.5, change_pct: 0.85 });
     expect(usMarketLine(first.quotes)).toBe('美股（10/28 收盤）：S&P 500（SPY） +0.85%、Nasdaq 100（QQQ） +0.85%、半導體（SOXX） -1.20%、台積電 ADR +0.85%、NVIDIA +0.85%');
-    await fetchUsQuotes({ apiKey: 'demo-key', store, vault, now, fetcher });
+    await fetchUsQuotes({ apiKey: 'demo-key', store, vault, now, fetcher, pauseMs: 0 });
     expect(urls).toHaveLength(5); // second call served from the day's cache
     expect(store.settings.get('markets:us:2026-10-29')).not.toContain('SPY');
   });
 
   it('reports rate limits and a missing key plainly, and never caches a partial day', async () => {
     const limited = (async () => new Response(JSON.stringify({ Information: 'We have detected your API key and our standard API rate limit is 25 requests per day.' }))) as unknown as typeof fetch;
-    const r = await fetchUsQuotes({ apiKey: 'k', fetcher: limited });
+    const r = await fetchUsQuotes({ apiKey: 'k', fetcher: limited, pauseMs: 0 });
     expect(r.quotes).toEqual([]);
-    expect(r.errors[0]).toContain('查詢額度已滿');
+    expect(r.errors[0]).toContain('今日額度已滿');
     expect(await fetchUsQuotes({ apiKey: undefined })).toEqual({ quotes: [], errors: ['ALPHAVANTAGE_API_KEY 尚未設定'] });
     expect(() => quoteFromAlphaVantage({ 'Global Quote': {} }, 'SPY', 'S&P 500')).toThrow('格式不符');
+  });
+
+  it('keeps what succeeded and only asks for the missing symbols on the next try', async () => {
+    const { MemoryAgendaStore } = await import('@/agenda/store');
+    const { vault } = await import('./helpers/chat-hub');
+    const store = new MemoryAgendaStore();
+    const now = new Date('2026-10-29T00:00:00Z');
+    let calls = 0;
+    // First round: only the first request succeeds (burst limit), the rest are refused.
+    const burst = (async (url: string) => { calls += 1; const s = new URL(url).searchParams.get('symbol')!; return new Response(JSON.stringify(calls === 1 ? quote(s, '772.31', '0.34%') : { Information: 'Please consider spreading out your free API requests more sparingly (1 request per second).' })); }) as unknown as typeof fetch;
+    const first = await fetchUsQuotes({ apiKey: 'k', store, vault, now, fetcher: burst, pauseMs: 0 });
+    expect(first.quotes.map(q => q.symbol)).toEqual(['SPY']);
+    expect(first.errors[0]).toContain('查詢太快');
+    const asked: string[] = [];
+    const ok = (async (url: string) => { const s = new URL(url).searchParams.get('symbol')!; asked.push(s); return new Response(JSON.stringify(quote(s, '100', '1%'))); }) as unknown as typeof fetch;
+    const second = await fetchUsQuotes({ apiKey: 'k', store, vault, now, fetcher: ok, pauseMs: 0 });
+    expect(asked).toEqual(['QQQ', 'SOXX', 'TSM', 'NVDA']);
+    expect(second.quotes.map(q => q.symbol)).toEqual(['SPY', 'QQQ', 'SOXX', 'TSM', 'NVDA']);
   });
 });
 
@@ -49,7 +67,10 @@ describe('RADAR section (integration API row fields)', () => {
       return { status: 'ok', tool: name, data: { publication, data: { kind: input.kind, rows } }, links: [] };
     });
     const r = await radarSection(invoke as any, { userId: 'owner', now: () => new Date() });
-    expect(r).toEqual({
+    expect(r).toMatchObject({
+      list: [{ symbol: '2330', name: '台積電', note: '多頭回測' }],
+      strong: [{ symbol: '2454', name: '聯發科', note: null }, { symbol: '3017', name: '奇鋐', note: null }],
+      sectors: ['半導體', '電子零組件', '航運'],
       trade_date: '2026-10-29',
       line: 'RADAR（10/29 資料）：NOIRXU 清單 2330 台積電（多頭回測）',
       detail: ['NOIRXU 清單：2330 台積電（多頭回測）', '強於大盤：2454 聯發科、3017 奇鋐', '資金流前三產業：半導體、電子零組件、航運']
