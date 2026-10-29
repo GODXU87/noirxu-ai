@@ -1,3 +1,4 @@
+import { reminderTitle } from '@/notify/phrasing';
 import { IMPORTANCE_LABEL, PRIORITY_LABEL, daysUntil, priorityOf, rankItems, type AgendaItem } from './rank';
 
 export interface BriefingInput {
@@ -41,11 +42,8 @@ export function buildBriefing(input: BriefingInput): { title: string; body: stri
  * Lock-screen wording: SASUKE speaks to Sir and says the thing, nothing else. iOS adds the
  * app name ("from NOIRXU AI") on its own, so the text never repeats it.
  */
-export function sirSays(thing: string) {
-  const t = thing.trim();
-  if (!t || t === '提醒') return 'Sir，時間到了';
-  const short = t.length > 30 ? `${t.slice(0, 29)}…` : t;
-  return short.length > 12 || /了$/.test(short) || /^(該|要|記得|別忘)/.test(short) ? `Sir，${short}` : `Sir，該${short}了`;
+export function sirSays(thing: string, seed = thing) {
+  return reminderTitle(thing, seed);
 }
 
 export function reminderMessage(item: AgendaItem, label: string, today: string) {
@@ -54,7 +52,7 @@ export function reminderMessage(item: AgendaItem, label: string, today: string) 
   // An explicit reminder fires at the time asked: the title alone says it. An advance notice
   // also needs the when ("明天 09:00").
   return item.source === 'reminder'
-    ? { title: sirSays(title), body: important, url: '/tasks', tag: `agenda-${item.id}-${label}` }
+    ? { title: sirSays(title, `${item.id}:${label}`), body: important, url: '/tasks', tag: `agenda-${item.id}-${label}` }
     : { title: `Sir，${title}`, body: [dueLabel(item, today), important].filter(Boolean).join(' · '), url: '/tasks', tag: `agenda-${item.id}-${label}` };
 }
 

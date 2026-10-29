@@ -119,7 +119,7 @@ describe('E–F: no burst of advance notices; explicit times kept', () => {
     for (const t of slots) await create(`10/26 ${Number(t.slice(0, 2))}點提醒我準備報告`, taipei('2026-10-23T19:43:00'));
     for (const t of slots) await runTick(hub, taipei(`2026-10-26T${t}:30`));
     // The 09:00 run also sends the daily morning summary; count the reminders.
-    const reminders = sent.filter(m => m.title.startsWith('Sir，該準備報告了'));
+    const reminders = sent.filter(m => m.title.startsWith('Sir，') && m.title.includes('準備報告'));
     expect(reminders).toHaveLength(5);
     expect(reminders.every(m => m.body === '')).toBe(true);
   });
@@ -182,7 +182,7 @@ describe('G–I: concurrency, failures, cancel and late runs', () => {
     await runTick(hub, taipei('2026-10-23T21:00:30'));
     const reminders = sent.filter(m => m.title !== 'Sir，今日晚報');
     expect(reminders).toHaveLength(1);
-    expect(reminders[0].title).toBe('Sir，該乙了');
+    expect(reminders[0].title).toMatch(/^Sir，.*乙/);
   });
 });
 
@@ -208,7 +208,7 @@ describe('lock-screen text', () => {
     expect(m.title).toBe('Sir，準備兒童朝會報告');
     expect(m.body).toBe('明天 09:00 · 重要');
     const now = reminderMessage({ ...item, title: '看電腦', source: 'reminder', importance: 2 }, '提醒', '2026-10-23');
-    expect(now).toMatchObject({ title: 'Sir，該看電腦了', body: '' });
+    expect(now.title).toMatch(/^Sir，.*看電腦/); expect(now.body).toBe('');
     expect(reminderMessage({ ...item, title: '提醒', source: 'reminder', importance: 2 }, '提醒', '2026-10-23').title).toBe('Sir，時間到了');
   });
 });
