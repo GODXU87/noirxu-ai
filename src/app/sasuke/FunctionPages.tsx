@@ -160,7 +160,7 @@ export function LifeView({ water: waterEnabled }: { water: boolean }) {
       )}
       <section className="card">
         <p className="section-label">通知紀錄<small><Link href="/connections">通知設定</Link></small></p>
-        {inbox === null ? <div className="mc-skeleton" aria-hidden="true"><i /><i /></div> : inbox.length === 0 ? <p className="hint">還沒有通知。提醒、今日摘要和喝水提醒都會記在這裡。</p> : (
+        {inbox === null ? <div className="mc-skeleton" aria-hidden="true"><i /><i /></div> : inbox.length === 0 ? <p className="hint">還沒有通知。提醒、早晚報和喝水提醒都會記在這裡。</p> : (
           <ul className="fp-inbox">{inbox.map(i => <li key={i.key} className={i.read ? '' : 'unread'}><b>{i.title}</b>{i.body && <span>{i.body}</span>}<small>{when(i.created_at)} · {STATUS[i.status] ?? i.status}</small></li>)}</ul>
         )}
       </section>

@@ -8,7 +8,7 @@ import type { PushMessage } from '@/push/service';
 import type { Hub } from './hub';
 import { OWNER_ID } from './session';
 
-export interface TickResult { reminders: number; briefing: boolean; pushed: number; water?: boolean; tasks?: { ran: number; waiting: number; error?: string } }
+export interface TickResult { reminders: number; briefing: boolean; evening?: boolean; pushed: number; water?: boolean; tasks?: { ran: number; waiting: number; error?: string } }
 
 function taipeiHour(now: Date): number {
   return Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Taipei', hour: '2-digit', hour12: false }).format(now));
@@ -50,7 +50,7 @@ export async function eveningBriefing(hub: Hub, userId: string, now: Date) {
     report.tomorrow.length ? `明天：${report.tomorrow.slice(0, 3).map(i => i.title).join('、')}` : '明天沒有排定的事'
   ].filter(Boolean);
   const urgent = (i: { priority: string }) => i.priority === 'urgent' || i.priority === 'high';
-  return { title: '晚報', body: lines.join('\n'), important: report.overdue.length > 0 || report.tomorrow.some(urgent) || report.still_open_today.some(urgent) };
+  return { title: 'Sir，今日晚報', body: lines.join('\n'), important: report.overdue.length > 0 || report.tomorrow.some(urgent) || report.still_open_today.some(urgent) };
 }
 
 /** Taipei wall-clock HH:MM on `date` as an instant. */
@@ -156,20 +156,20 @@ export async function runTick(hub: Hub, now = new Date()): Promise<TickResult> {
   const result = await deliverReminders(hub, await hub.agenda.dueReminders(now), now, today, (n: number) => { pushed += n; });
   reminders += result;
 
-  let briefing = false;
+  // Daily briefings: morning 08:00–11:00, evening 21:00–23:00 (Taipei). Each is built once per
+  // day and then retried with the same text until a device accepts it or the window closes.
   const hour = taipeiHour(now);
-  const briefingKey = `briefing:${OWNER_ID}:${today}`;
-  const briefingRecord = await hub.delivery.get(briefingKey);
-  if (hour >= 8 && hour < 11 && !(briefingRecord && ['provider_accepted', 'failed', 'expired'].includes(briefingRecord.status))) {
-    let message: PushMessage;
-    if (briefingRecord) message = briefingRecord.message;
-    else {
-      const summary = await morningBriefing(hub, OWNER_ID, now);
-      message = { title: summary.title, body: summary.body, url: '/overview', tag: `briefing-${today}` };
-    }
-    const record = await count(briefingKey, 'briefing', OWNER_ID, message, taipeiInstant(today, '11:00'));
-    briefing = record.status === 'provider_accepted';
-  }
+  const briefingsOn = hub.features?.briefings !== false;
+  const daily = async (key: string, kind: string, from: number, to: number, build: () => Promise<{ title: string; body: string }>) => {
+    if (!briefingsOn || hour < from || hour >= to) return false;
+    const existing = await hub.delivery.get(key);
+    if (existing && ['provider_accepted', 'failed', 'expired'].includes(existing.status)) return false;
+    const message: PushMessage = existing ? existing.message : { ...(await build()), url: '/', tag: `${kind}-${today}` };
+    const record = await count(key, kind, OWNER_ID, message, taipeiInstant(today, `${String(to).padStart(2, '0')}:00`));
+    return record.status === 'provider_accepted';
+  };
+  const briefing = await daily(`briefing:${OWNER_ID}:${today}`, 'briefing', 8, 11, async () => { const b = await morningBriefing(hub, OWNER_ID, now); return { title: b.title, body: b.body }; });
+  const evening = await daily(`evening:${OWNER_ID}:${today}`, 'evening', 21, 23, async () => { const b = await eveningBriefing(hub, OWNER_ID, now); return { title: b.title, body: b.body }; });
 
   // Water: one notification per reminder slot, only when the user is behind pace.
   let water = false;
@@ -192,5 +192,5 @@ export async function runTick(hub: Hub, now = new Date()): Promise<TickResult> {
     try { tasks = await hub.tasks.runDue(now); }
     catch (error) { tasks = { ran: 0, waiting: 0, error: error instanceof Error ? error.message.slice(0, 200) : 'task run failed' }; }
   }
-  return { reminders, briefing, pushed, water, ...(tasks ? { tasks } : {}) };
+  return { reminders, briefing, evening, pushed, water, ...(tasks ? { tasks } : {}) };
 }

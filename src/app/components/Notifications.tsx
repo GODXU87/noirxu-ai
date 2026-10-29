@@ -41,7 +41,7 @@ const STATUS_LABEL: Record<string, string> = {
 const OUTCOME_LABEL: Record<string, string> = {
   accepted: '推播服務已接受', gone: '訂閱已失效', vapid_mismatch: '金鑰不一致', rate_limited: '被限流', provider_error: '推播服務錯誤', network_error: '網路錯誤', rejected: '推播服務拒絕', invalid_endpoint: '端點無效'
 };
-const KIND_LABEL: Record<string, string> = { reminder: '事項提醒', briefing: '今日摘要', water: '喝水提醒' };
+const KIND_LABEL: Record<string, string> = { reminder: '事項提醒', briefing: '早報', evening: '晚報', water: '喝水提醒', task: '自動任務', digest: '合併提醒' };
 
 function fmt(iso: string | null | undefined) {
   if (!iso) return '—';
@@ -177,7 +177,7 @@ export function Notifications() {
       <div className="diag-head">
         <div>
           <b>{needsAction ? '這台裝置需要處理' : '這台裝置可以接收通知'}</b>
-          <p className="hint">提醒會在前一晚與當天早上送出，每天 08:00 送今日摘要。所有通知也會保留在站內紀錄。</p>
+          <p className="hint">提醒會在前一晚與當天早上送出，每天 08:00 送早報、21:00 送晚報。所有通知也會保留在站內紀錄。</p>
         </div>
         <span className={`state-chip ${needsAction ? 'error' : 'ok'}`}>{needsAction ? '需要處理' : '正常'}</span>
       </div>

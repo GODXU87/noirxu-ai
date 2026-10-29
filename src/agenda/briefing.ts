@@ -30,8 +30,7 @@ export function buildBriefing(input: BriefingInput): { title: string; body: stri
     for (const w of input.ledger.budgetWarnings.slice(0, 2)) lines.push(`${w.name} 預算已用 ${w.percentage}%${w.status === 'over' ? '（超支）' : ''}`);
   }
   if (input.openPositions) lines.push(`Journal 未平倉 ${input.openPositions} 筆`);
-  const title = soon.length ? `今日摘要：${soon.length} 件近期事項` : '今日摘要';
-  return { title, body: lines.length ? lines.join('\n') : '近三天沒有待辦事項。', lines };
+  return { title: 'Sir，今日早報', body: lines.length ? lines.join('\n') : '今天和近三天沒有待辦。', lines };
 }
 
 /**
