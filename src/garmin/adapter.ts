@@ -1,6 +1,7 @@
 import type { AgendaStore } from '@/agenda/store';
 import type { TokenVault } from '@/connections/vault';
 import { ToolError } from '@/hub/errors';
+import { parseTokenResponse } from './token';
 
 // Garmin Connect (feature 'garmin', off by default). Read-only, the owner's own data, through
 // Garmin's official Personal API only — no scraping and never the Garmin password. Field names
@@ -128,11 +129,11 @@ export async function verifyGarminKey(conns: GarminConnectionStore, userId: stri
   try {
     const response = await fetcher(GARMIN_TOKEN_URL, { method: 'POST', headers: { Authorization: `ApiKey ${c.api_key}` }, signal: AbortSignal.timeout(15_000) });
     status = response.status;
-    let fields: string[] = [];
-    if (response.ok) { try { fields = Object.keys(JSON.parse(await response.text()) as object); } catch { fields = []; } }
+    let shape: string | null = null;
+    if (response.ok) { const parsed = parseTokenResponse(await response.text(), response.headers.get('content-type'), now.getTime()); shape = parsed.ok ? null : parsed.shape; }
     else await response.body?.cancel().catch(() => undefined);
-    // The token itself is never kept here; only whether the response has the expected field.
-    message = response.ok ? (fields.includes('access_token') ? 'Garmin 已接受這組 API Key。' : `Garmin 接受了金鑰，但授權格式和預期不同（欄位：${fields.join(', ') || '不是 JSON'}）。請把這段訊息告訴 SASUKE 的開發者。`) : status === 401 || status === 403 ? 'Garmin 拒絕這組 API Key（可能已過期或被撤銷），請到 Garmin Connect 重新建立。' : status === 429 ? 'Garmin 暫時限制請求次數，請稍後再試。' : `Garmin 回應 HTTP ${status}。`;
+    // The token itself is never kept here; only whether it is in a form SASUKE can use.
+    message = response.ok ? (shape === null ? 'Garmin 已接受這組 API Key。' : `Garmin 接受了金鑰，但授權格式和預期不同（${shape}）。請把這段訊息告訴 SASUKE 的開發者。`) : status === 401 || status === 403 ? 'Garmin 拒絕這組 API Key（可能已過期或被撤銷），請到 Garmin Connect 重新建立。' : status === 429 ? 'Garmin 暫時限制請求次數，請稍後再試。' : `Garmin 回應 HTTP ${status}。`;
   } catch (error) {
     message = `無法連到 Garmin：${error instanceof Error ? error.message.slice(0, 120) : '網路錯誤'}`;
   }

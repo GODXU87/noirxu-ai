@@ -167,7 +167,7 @@ function GarminCard() {
       {status?.connected ? (
         <>
           <p className="hint">金鑰 {status.key_hint}{status.key_expires_on ? ` · 到期 ${status.key_expires_on}` : ''} · 最後檢查 {status.last_check_at ? new Date(status.last_check_at).toLocaleString('zh-TW') : '—'}{status.last_check_status ? `（HTTP ${status.last_check_status}）` : ''}</p>
-          <p className="hint">最後同步 {status.last_sync_at ? new Date(status.last_sync_at).toLocaleString('zh-TW') : '尚未同步'}{status.last_error ? ` · 最近錯誤：${status.last_error}` : ''}。SASUKE 需要時才讀取，不另外保存你的健康資料。</p>
+          <p className="hint">最後同步 {status.last_sync_at ? new Date(status.last_sync_at).toLocaleString('zh-TW') : '尚未同步'}{status.last_error ? ` · 最近錯誤：${String(status.last_error).replace(/。$/, '')}` : ''}。SASUKE 需要時才讀取，不另外保存你的健康資料。</p>
           <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
             <button type="button" className="primary" disabled={busy} onClick={() => void call('POST', { action: 'sync' })}>立即同步</button>
             <button type="button" disabled={busy} onClick={() => void call('POST', { action: 'verify' })}>重新檢查金鑰</button>
