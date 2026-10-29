@@ -109,3 +109,39 @@ describe('Garmin Personal API client (official paths and fields)', () => {
     expect(classify('昨晚睡得怎樣')).toEqual({ kind: 'garmin', which: 'sleep' });
   });
 });
+
+describe('Garmin token response forms', () => {
+  const now = Date.parse('2026-10-29T01:00:00Z');
+  it('accepts a plain-text token (what Garmin returned live), quoted or not, and reads a JWT exp', async () => {
+    const { parseTokenResponse } = await import('@/garmin/token');
+    const payload = Buffer.from(JSON.stringify({ exp: now / 1000 + 3600 })).toString('base64url');
+    const jwt = `eyJhbGciOiJSUzI1NiJ9.${payload}.c2lnbmF0dXJlLXNpZ25hdHVyZQ`;
+    expect(parseTokenResponse(jwt, 'text/plain', now)).toEqual({ ok: true, token: jwt, expiresInMs: 3600_000 });
+    expect(parseTokenResponse(`"${jwt}"\n`, 'application/json', now)).toMatchObject({ ok: true, token: jwt });
+    expect(parseTokenResponse('opaque-token-0123456789abcdef', null, now)).toEqual({ ok: true, token: 'opaque-token-0123456789abcdef', expiresInMs: null });
+    expect(parseTokenResponse(JSON.stringify({ access_token: 'abc-0123456789abcdefghij', expires_in: 86400 }), 'application/json', now)).toMatchObject({ ok: true, expiresInMs: 86_400_000 });
+  });
+
+  it('describes anything else by shape, never by content', async () => {
+    const { parseTokenResponse } = await import('@/garmin/token');
+    const html = parseTokenResponse('<html>secret-looking page</html>', 'text/html', now);
+    expect(html).toEqual({ ok: false, shape: 'text/html，HTML，長度 32' });
+    expect(JSON.stringify(html)).not.toContain('secret');
+    expect(parseTokenResponse('{"token":"x"}', 'application/json', now)).toEqual({ ok: false, shape: 'JSON 欄位：token' });
+  });
+
+  it('uses a plain-text token end to end for data calls', async () => {
+    const store = new MemoryAgendaStore();
+    const conns = new GarminConnectionStore(store, vault);
+    await conns.save('owner', { apiKey: 'gpk-secret-0123456789abcdef', keyExpiresOn: null, now: NOW });
+    const seen: string[] = [];
+    const fetcher = (async (input: string | URL, init?: RequestInit) => {
+      if (String(input) === GARMIN_TOKEN_URL) return new Response('plain-access-token-0123456789', { status: 200, headers: { 'content-type': 'text/plain' } });
+      seen.push(String((init?.headers as Record<string, string>).Authorization));
+      return new Response(JSON.stringify({ totalSteps: 1234 }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const client = new GarminClient(conns, store, vault, fetcher, () => NOW);
+    expect((await client.daily('owner', '2026-10-29')).steps).toBe(1234);
+    expect(seen).toEqual(['Bearer plain-access-token-0123456789']);
+  });
+});

@@ -1,13 +1,13 @@
 import type { AgendaStore } from '@/agenda/store';
 import type { TokenVault } from '@/connections/vault';
 import { ToolError } from '@/hub/errors';
+import { parseTokenResponse } from './token';
 import { GARMIN_TOKEN_URL, garminTokenKey, type GarminActivity, type GarminAdapter, type GarminConnectionStore, type GarminDaily, type GarminRecovery, type GarminSleep } from './adapter';
 
 // Garmin Connect Personal API client. Per Garmin's FAQ, the personal API key is exchanged for
 // an OAuth2 access token (valid 24 hours, no refresh tokens); data calls carry that token.
 // Paths and field names are from the official OpenAPI document. The token response fields are
-// not in that document, so the OAuth2 standard ones (access_token, expires_in) are used and
-// anything else is reported by field name — never guessed past.
+// not in that document; see token.ts for the accepted forms.
 
 export const GARMIN_API = 'https://personal.connectapi.garmin.com';
 const TOKEN_MAX_MS = 24 * 60 * 60_000;
@@ -56,16 +56,10 @@ export class GarminClient implements GarminAdapter {
       throw new ToolError('UPSTREAM_UNAVAILABLE', `連不到 Garmin：${error instanceof Error ? error.message.slice(0, 120) : '網路錯誤'}`);
     }
     if (!response.ok) throw this.httpError(response.status, '取得授權');
-    const text = await response.text();
-    let body: Json = {};
-    try { body = JSON.parse(text) as Json; } catch { /* not JSON */ }
-    const token = str(body.access_token);
-    if (!token) {
-      // Field names only (never values): enough to adjust the parser without exposing the token.
-      const fields = Object.keys(body).join(', ') || '（不是 JSON）';
-      throw new ToolError('UPSTREAM_REJECTED', `Garmin 回傳的授權格式和預期不同（欄位：${fields}）。資料沒有讀取。`);
-    }
-    const lifetime = Math.min(TOKEN_MAX_MS, (num(body.expires_in) ?? 23 * 3600) * 1000);
+    const parsed = parseTokenResponse(await response.text(), response.headers.get('content-type'), now.getTime());
+    if (!parsed.ok) throw new ToolError('UPSTREAM_REJECTED', `Garmin 回傳的授權格式和預期不同（${parsed.shape}）。資料沒有讀取。`);
+    const token = parsed.token;
+    const lifetime = Math.max(60_000, Math.min(TOKEN_MAX_MS, parsed.expiresInMs ?? 23 * 3600_000));
     const k = garminTokenKey(userId);
     await this.store.putSetting(k, this.vault.seal(JSON.stringify({ token, expires_at: new Date(now.getTime() + lifetime).toISOString() }), k));
     return token;
