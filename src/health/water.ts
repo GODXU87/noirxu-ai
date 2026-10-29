@@ -1,6 +1,7 @@
 // Daily water tracking and reminders. Pure functions here; storage in WaterService.
 // Amounts are what the user reports; the daily goal is the user's own setting
 // (default 2000 ml), a general habit target rather than medical advice.
+import { waterWords } from '@/notify/phrasing';
 
 export interface WaterPrefs {
   enabled: boolean;
@@ -115,8 +116,7 @@ export function waterReminder(prefs: WaterPrefs, day: WaterDay, now: Date): { ti
   const p = waterProgress(prefs, day, now);
   if (p.behind_ml < 150 || p.remaining_ml === 0) return null;
   const suggest = Math.min(500, Math.max(200, Math.round(p.behind_ml / 50) * 50));
-  return {
-    title: 'Sir，該喝水了',
-    body: `已喝 ${p.total_ml.toLocaleString('en-US')} / ${p.goal_ml.toLocaleString('en-US')} ml，先喝 ${suggest} ml`
-  };
+  // Wording varies by day and slot; a retry of the same slot keeps the same words.
+  const slot = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false }).format(now);
+  return waterWords({ total: p.total_ml, goal: p.goal_ml, behind: p.behind_ml, suggest, seed: `water:${slot}` });
 }

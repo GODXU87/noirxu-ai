@@ -150,3 +150,17 @@ describe('push error classification', () => {
     expect(platformOf('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15')).toBe('Mac Safari');
   });
 });
+
+describe('notification wording varies but stays stable per notification', () => {
+  it('speaks to Sir, says the thing, varies between reminders, and repeats the same words on retry', async () => {
+    const { reminderTitle, waterWords } = await import('@/notify/phrasing');
+    const titles = new Set(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map(seed => reminderTitle('看電腦', seed)));
+    expect(titles.size).toBeGreaterThan(2);
+    for (const t of titles) { expect(t.startsWith('Sir，')).toBe(true); expect(t).toContain('看電腦'); }
+    expect(reminderTitle('看電腦', 'r1:提醒')).toBe(reminderTitle('看電腦', 'r1:提醒'));
+    expect(reminderTitle('提醒', 'x')).toMatch(/^Sir，/);
+    const w = waterWords({ total: 0, goal: 2000, behind: 300, suggest: 200, seed: 'water:2026-10-30 10' });
+    expect(w.title.startsWith('Sir，')).toBe(true);
+    expect(w.body).toContain('200 ml');
+  });
+});
