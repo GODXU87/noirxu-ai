@@ -37,10 +37,16 @@ export const TOOL_LABELS: Record<string, string> = {
   'tasks.list': '自動任務',
   'tasks.update': '更新自動任務',
   'tasks.history.get': '任務執行紀錄',
-  'tasks.halt': '緊急停止自動任務'
+  'tasks.halt': '緊急停止自動任務',
+  'garmin.health.daily': 'Garmin 今日健康',
+  'garmin.sleep.summary': 'Garmin 睡眠',
+  'garmin.recovery.overview': 'Garmin 恢復狀況',
+  'garmin.activities.list': 'Garmin 運動紀錄',
+  'garmin.activity.summary': 'Garmin 運動詳情',
+  'garmin.training.compare': 'Garmin 訓練量比較'
 };
 
-export const SYSTEM_OF: Record<string, string> = { assistant: '助理', health: '健康', agenda: '記事', ledger: 'Ledger', journal: 'Journal', radar: 'RADAR', gmail: 'Gmail', tasks: '任務' };
+export const SYSTEM_OF: Record<string, string> = { assistant: '助理', health: '健康', agenda: '記事', ledger: 'Ledger', journal: 'Journal', radar: 'RADAR', gmail: 'Gmail', tasks: '任務', garmin: 'Garmin' };
 
 export function toolLabel(name: string): string {
   return TOOL_LABELS[name] ?? name;

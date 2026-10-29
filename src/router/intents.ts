@@ -18,7 +18,8 @@ export type LocalIntent =
   | { kind: 'reminder_create'; text: string }
   | { kind: 'task_create'; text: string }
   | { kind: 'task_list' }
-  | { kind: 'task_halt'; halted: boolean };
+  | { kind: 'task_halt'; halted: boolean }
+  | { kind: 'garmin'; which: 'steps' | 'sleep' };
 
 /** Words that ask for a change, a judgement or a longer piece of work: never answered locally. */
 const ACTION = /(記下|記一|幫我記|新增|加入|刪除|刪掉|取消|修改|改成|改到|設定|寄|回覆|回信|擬|寫一|建立|提醒我|分析|比較|研究|為什麼|怎麼辦|建議|規劃|安排一下|排一下|整理|翻譯|總結|摘要|預測|應該)/;
@@ -46,6 +47,8 @@ const RULES: Array<[RegExp, (m: RegExpMatchArray) => LocalIntent]> = [
   [/^(我)?(這個月|本月|這月)(總共)?(花了?|支出|開銷|花費|用了)(多少|了多少|多少錢)?(錢)?$/, () => ({ kind: 'ledger_month', which: 'this' })],
   [/^(我)?(上個月|上月)(總共)?(花了?|支出|開銷|花費|用了)(多少|了多少|多少錢)?(錢)?$/, () => ({ kind: 'ledger_month', which: 'last' })],
   [/^(我的|我有|目前|現在)?(有)?(哪些|什麼)?(自動|背景|週期|重複)?(任務|排程|自動化|重複提醒)(有哪些|清單|列表|狀態)?$/, () => ({ kind: 'task_list' })],
+  [/^(我)?(今天|今日)?(走了|走)?(多少|幾)步(了)?$|^(今天|今日)?(的)?步數(多少|是多少)?$/, () => ({ kind: 'garmin', which: 'steps' })],
+  [/^(我)?(昨晚|昨天晚上|昨天)?(睡得?(怎麼樣|怎樣|如何|好嗎|好不好|多久)|睡了多久|睡眠(怎麼樣|怎樣|如何|狀況|品質)?)$/, () => ({ kind: 'garmin', which: 'sleep' })],
   [/^你(還)?記得我的(.{1,12}?)(嗎|是多少|多少)?$/, m => ({ kind: 'memory_recall', subject: m[2] })],
   [/^我的(體重|身高|生日|年齡|血型)(是)?(多少|幾)?$/, m => ({ kind: 'memory_recall', subject: m[1] })]
 ];

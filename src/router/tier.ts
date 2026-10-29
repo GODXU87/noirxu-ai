@@ -28,7 +28,8 @@ const DOMAINS: Array<[RegExp, string[]]> = [
   [/(交易|下單紀錄|績效|勝率|損益|持倉|部位|journal|買進|賣出)/i, ['journal.']],
   [/(股|個股|大盤|產業|族群|訊號|radar|台積|\b\d{4}\b|watchlist|觀察)/i, ['radar.']],
   [/(信|郵件|mail|gmail|寄|收件|回覆|回信|草稿)/i, ['gmail.', 'assistant.reply', 'assistant.text']],
-  [/(喝水|水量|飲水|ml|毫升)/i, ['health.']],
+  [/(喝水|水量|飲水|ml|毫升)/i, ['health.', 'garmin.']],
+  [/(garmin|步數|走了|睡眠|睡得|昨晚|心率|hrv|body ?battery|身體能量|壓力|恢復|運動|訓練|跑步|跑量|羽球|健身|重訓|hyrox|卡路里)/i, ['garmin.']],
   [/(提醒|待辦|行程|安排|會議|約|明天|後天|下週|今天|幾點|日期|記下|過期)/, ['agenda.']],
   [/(每天|每日|每晚|每早|每週|每周|每月|每隔|工作日|週末|自動|排程|任務|定期|如果.*超過)/, ['tasks.']],
   [/(早報|晚報|摘要|整理一段|分診)/, ['assistant.']]
