@@ -169,6 +169,28 @@ export async function runLocal(intent: LocalIntent, deps: Deps): Promise<LocalTu
       if (result.status !== 'ok') return { level: 'L1', source: 'tool', intent: intent.kind, reply: result.status === 'error' && result.code === 'UNKNOWN_TOOL' ? '自動任務功能目前沒有開啟。' : '沒有成功切換，背景任務維持原狀。', events: [] };
       return { level: 'L1', source: 'tool', intent: intent.kind, reply: intent.halted ? '已停止所有背景自動任務。任務與紀錄都還在，說「恢復所有任務」就會從下一個排程繼續。' : '背景自動任務已恢復，會從下一個排程繼續；停止期間錯過太久的週期不會補跑。', events: [{ tool: 'tasks.halt', input, result }] };
     }
+    case 'garmin': {
+      const tool = intent.which === 'steps' ? 'garmin.health.daily' : 'garmin.sleep.summary';
+      const result = await executor.invoke(tool, {}, ctx);
+      const event = { tool, input: {}, result };
+      if (result.status !== 'ok') {
+        const reply = result.status === 'error' && result.code === 'UNKNOWN_TOOL' ? 'Garmin 功能目前沒有開啟。' : result.status === 'error' ? result.message : 'Garmin 資料目前讀不到。';
+        return { level: 'L1', source: 'tool', intent: intent.kind, reply, events: [] };
+      }
+      const hm = (sec: number) => `${Math.floor(sec / 3600)} 小時 ${Math.round((sec % 3600) / 60)} 分`;
+      if (intent.which === 'steps') {
+        const d = result.data as { steps: number | null; step_goal: number | null; distance_m: number | null };
+        if (d.steps === null) return { level: 'L1', source: 'tool', intent: intent.kind, reply: 'Garmin 還沒有今天的步數，手錶可能還沒同步。', events: [event] };
+        const goal = d.step_goal ? `，目標 ${fmt(d.step_goal)}（${Math.round((d.steps / d.step_goal) * 100)}%）` : '';
+        return { level: 'L1', source: 'tool', intent: intent.kind, reply: withSir(`今天走了 ${fmt(d.steps)} 步${goal}${d.distance_m ? `，約 ${(d.distance_m / 1000).toFixed(1)} 公里` : ''}。`, seed), events: [event] };
+      }
+      const d = result.data as { duration_s: number | null; deep_s: number | null; rem_s: number | null; awake_count: number | null; start_local: string | null; end_local: string | null };
+      if (!d.duration_s) return { level: 'L1', source: 'tool', intent: intent.kind, reply: 'Garmin 還沒有昨晚的睡眠資料，手錶可能還沒同步。', events: [event] };
+      const clock = (t: string | null) => (t ? t.slice(11, 16) : null);
+      const window = clock(d.start_local) && clock(d.end_local) ? `（${clock(d.start_local)}–${clock(d.end_local)}）` : '';
+      const parts = [d.deep_s !== null ? `深睡 ${hm(d.deep_s)}` : null, d.rem_s !== null ? `REM ${hm(d.rem_s)}` : null, d.awake_count !== null ? `醒來 ${d.awake_count} 次` : null].filter(Boolean).join('、');
+      return { level: 'L1', source: 'tool', intent: intent.kind, reply: withSir(`昨晚睡了 ${hm(d.duration_s)}${window}${parts ? `，${parts}` : ''}。`, seed), events: [event] };
+    }
     case 'memory_recall': {
       const subject = intent.subject.replace(/^(的)/, '');
       if (!deps.memory) return { level: 'L1', source: 'memory', intent: intent.kind, reply: `長期記憶目前還沒啟用，所以我沒有保存你的${subject}。告訴我的話，這段對話裡我會記得。`, events: [] };

@@ -26,6 +26,9 @@ import { WaterService } from '@/health/service';
 import { loadFeatureFlags, type FeatureFlags } from '@/lib/features';
 import { ledgerAssetTools } from '@/tools/ledger/assets';
 import { taskTools } from '@/tools/tasks/tools';
+import { garminTools } from '@/tools/garmin/tools';
+import { GarminClient } from '@/garmin/client';
+import { GarminConnectionStore, type GarminAdapter } from '@/garmin/adapter';
 import { TaskService } from '@/tasks/service';
 import { eveningBriefing, morningBriefing } from './tick';
 import { loadConfig, type AppConfig } from './config';
@@ -50,6 +53,8 @@ export interface Hub {
   water: WaterService;
   /** Background tasks (feature 'tasks'); null when the feature is off. */
   tasks: TaskService | null;
+  /** Garmin Personal API client (feature 'garmin'); null when the feature is off. */
+  garmin: GarminAdapter | null;
   isConnected: (userId: string, connection: ConnectionId) => Promise<boolean>;
 }
 
@@ -113,6 +118,7 @@ function build(): Hub {
   const gmail = new GmailService(config.google, credentials);
 
   const features = loadFeatureFlags();
+  const garmin = features.garmin ? new GarminClient(new GarminConnectionStore(agenda, vault), agenda, vault) : null;
   const registry = new ToolRegistry();
   // Assistant tools call other tools through the executor, which is created below.
   let executor: Executor | null = null;
@@ -144,7 +150,8 @@ function build(): Hub {
     ...gmailTools(gmail),
     ...(features.water ? healthTools(water) : []),
     ...assistantTools({ agenda, water: features.water ? water : undefined, features, isConnected: (userId, connection) => isConnected(userId, connection), invoke }),
-    ...(tasks ? taskTools({ tasks, hasTool: name => Boolean(registry.get(name)) }) : [])
+    ...(tasks ? taskTools({ tasks, hasTool: name => Boolean(registry.get(name)) }) : []),
+    ...(garmin ? garminTools(garmin) : [])
   ]) registry.register(tool);
 
   const isConnected = async (userId: string, connection: ConnectionId) => {
@@ -157,7 +164,7 @@ function build(): Hub {
   };
 
   executor = new Executor({ registry, store, isConnected });
-  hub = { config, features, storageMode, registry, executor, ledger, journal, radar, gmail, agenda, push, delivery, cost, memory: null, vault, water, tasks, isConnected };
+  hub = { config, features, storageMode, registry, executor, ledger, journal, radar, gmail, agenda, push, delivery, cost, memory: null, vault, water, tasks, garmin, isConnected };
   return hub;
 }
 

@@ -78,7 +78,7 @@ describe('Garmin adapter (interface only until the official API is approved)', (
     expect(calls[0].init).toMatchObject({ method: 'POST', headers: { Authorization: 'ApiKey gpk-secret-key-0123456789abcd' } });
     expect(check).toMatchObject({ ok: false, status: 401 });
     expect(await conns.status('owner', now)).toMatchObject({ last_check_status: 401, last_error: expect.stringContaining('拒絕') });
-    const good = (async () => new Response('{}', { status: 200 })) as unknown as typeof fetch;
+    const good = (async () => new Response(JSON.stringify({ access_token: 'tok', expires_in: 86400 }), { status: 200 })) as unknown as typeof fetch;
     expect(await verifyGarminKey(conns, 'owner', now, good)).toMatchObject({ ok: true });
     expect(await conns.status('owner', now)).toMatchObject({ last_check_status: 200, last_error: null });
 

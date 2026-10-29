@@ -2,37 +2,50 @@ import type { AgendaStore } from '@/agenda/store';
 import type { TokenVault } from '@/connections/vault';
 import { ToolError } from '@/hub/errors';
 
-// Garmin Connect (V0.4 Phase 3, feature 'garmin', off by default). Read-only, the owner's
-// own data, through Garmin's official API only — no scraping and never the Garmin password.
-//
-// This file is the verified interface, not the integration: the HTTP client is written only
-// after the official API documentation (Swagger) and the user's developer credentials are
-// available, so no endpoint or field name here is guessed. Until then every call returns an
-// honest "not configured" error. Summaries keep only the few fields SASUKE needs (minimal
-// retention); nothing here gives medical advice.
+// Garmin Connect (feature 'garmin', off by default). Read-only, the owner's own data, through
+// Garmin's official Personal API only — no scraping and never the Garmin password. Field names
+// follow the official OpenAPI document (docs/garmin/personal-api-openapi.json). Summaries keep
+// only the fields SASUKE needs and nothing is stored except the sealed key/token and the sync
+// status (minimal retention). Device metrics are not a medical diagnosis.
 
-export interface GarminActivity { id: string; type: string; start: string; duration_s: number; distance_m?: number; calories?: number; avg_hr?: number }
-export interface GarminDaily { date: string; steps?: number; resting_hr?: number; stress_avg?: number; body_battery_high?: number; body_battery_low?: number }
-export interface GarminSleep { date: string; duration_s?: number; deep_s?: number; light_s?: number; rem_s?: number; awake_s?: number; score?: number }
-export interface GarminRecovery { date: string; hrv_status?: string; training_readiness?: number; recovery_hours?: number }
+export interface GarminActivity {
+  id: string; name: string; type: string; start_local: string; duration_s: number; distance_m: number | null; calories: number | null;
+  avg_hr: number | null; max_hr: number | null; aerobic_te: number | null; anaerobic_te: number | null; training_load: number | null; elevation_gain_m: number | null;
+}
+export interface GarminDaily {
+  date: string; steps: number | null; step_goal: number | null; distance_m: number | null; active_kcal: number | null; total_kcal: number | null;
+  resting_hr: number | null; resting_hr_7d_avg: number | null; min_hr: number | null; max_hr: number | null;
+  stress_avg: number | null; stress_max: number | null; moderate_minutes: number | null; vigorous_minutes: number | null;
+  body_battery_high: number | null; body_battery_low: number | null; body_battery_latest: number | null; body_battery_at_wake: number | null;
+  hydration_ml: number | null; hydration_goal_ml: number | null; last_device_sync: string | null;
+}
+export interface GarminSleep {
+  date: string; duration_s: number | null; deep_s: number | null; light_s: number | null; rem_s: number | null; awake_s: number | null;
+  awake_count: number | null; quality: string | null; result: string | null; start_local: string | null; end_local: string | null; avg_hr: number | null; avg_sleep_stress: number | null;
+}
+export interface GarminRecovery {
+  date: string; hrv_last_night_avg: number | null; hrv_weekly_avg: number | null; hrv_status: string | null;
+  body_battery_at_wake: number | null; body_battery_latest: number | null; resting_hr: number | null; resting_hr_7d_avg: number | null; sleep_s: number | null;
+  /** The Personal API has no training-readiness endpoint; said plainly instead of estimated. */
+  not_available: string[];
+}
 
-/** Matches the tool names in the V0.4 spec: garmin.activities.list, garmin.activity.summary, garmin.health.daily, garmin.sleep.summary, garmin.recovery.overview. */
 export interface GarminAdapter {
   readonly configured: boolean;
-  activities(userId: string, range: { from: string; to: string }): Promise<GarminActivity[]>;
+  activities(userId: string, range: { from: string; to: string; limit?: number }): Promise<GarminActivity[]>;
   activity(userId: string, id: string): Promise<GarminActivity>;
   daily(userId: string, date: string): Promise<GarminDaily>;
   sleep(userId: string, date: string): Promise<GarminSleep>;
   recovery(userId: string, date: string): Promise<GarminRecovery>;
 }
 
-const NOT_CONFIGURED = 'Garmin 尚未設定：需要 Garmin 官方開發者 API 的授權與文件後才能連接。SASUKE 不會使用帳號密碼或非官方方式讀取。';
+const NOT_CONFIGURED = 'Garmin 尚未設定。請到「設定與連線」貼上 Garmin Personal API Key。SASUKE 不會使用帳號密碼或非官方方式讀取。';
 
-/** The only adapter until the official API is approved: every call says so instead of returning made-up data. */
+/** Used when the feature is on but no client exists (tests, misconfiguration): says so instead of returning made-up data. */
 export class GarminNotConfigured implements GarminAdapter {
   readonly configured = false;
   private fail(): never { throw new ToolError('NOT_CONNECTED', NOT_CONFIGURED); }
-  async activities(_userId: string, _range: { from: string; to: string }): Promise<GarminActivity[]> { this.fail(); }
+  async activities(_userId: string, _range: { from: string; to: string; limit?: number }): Promise<GarminActivity[]> { this.fail(); }
   async activity(_userId: string, _id: string): Promise<GarminActivity> { this.fail(); }
   async daily(_userId: string, _date: string): Promise<GarminDaily> { this.fail(); }
   async sleep(_userId: string, _date: string): Promise<GarminSleep> { this.fail(); }
@@ -47,6 +60,8 @@ export class GarminNotConfigured implements GarminAdapter {
 // they have been read. The key is sealed with the app's TokenVault and never shown again.
 // The app role cannot delete settings rows, so disconnecting overwrites the record with a
 // sealed tombstone that holds no key.
+
+export const garminTokenKey = (userId: string) => `garmin:token:${userId}`;
 
 export const GARMIN_TOKEN_URL = 'https://personal.connectapi.garmin.com/personalapitoken-service/personal-api/personal-api-key/token';
 
@@ -95,6 +110,9 @@ export class GarminConnectionStore {
 
   async disconnect(userId: string, now: Date) {
     await this.store.putSetting(this.key(userId), this.vault.seal(JSON.stringify({ disconnected_at: now.toISOString() }), this.key(userId)));
+    // The cached access token goes too, so nothing usable is left behind.
+    const tokenKey = garminTokenKey(userId);
+    await this.store.putSetting(tokenKey, this.vault.seal(JSON.stringify({ revoked_at: now.toISOString() }), tokenKey));
   }
 }
 
@@ -110,12 +128,15 @@ export async function verifyGarminKey(conns: GarminConnectionStore, userId: stri
   try {
     const response = await fetcher(GARMIN_TOKEN_URL, { method: 'POST', headers: { Authorization: `ApiKey ${c.api_key}` }, signal: AbortSignal.timeout(15_000) });
     status = response.status;
-    await response.body?.cancel().catch(() => undefined);
-    message = response.ok ? 'Garmin 已接受這組 API Key。' : status === 401 || status === 403 ? 'Garmin 拒絕這組 API Key（可能已過期或被撤銷），請到 Garmin Connect 重新建立。' : status === 429 ? 'Garmin 暫時限制請求次數，請稍後再試。' : `Garmin 回應 HTTP ${status}。`;
+    let fields: string[] = [];
+    if (response.ok) { try { fields = Object.keys(JSON.parse(await response.text()) as object); } catch { fields = []; } }
+    else await response.body?.cancel().catch(() => undefined);
+    // The token itself is never kept here; only whether the response has the expected field.
+    message = response.ok ? (fields.includes('access_token') ? 'Garmin 已接受這組 API Key。' : `Garmin 接受了金鑰，但授權格式和預期不同（欄位：${fields.join(', ') || '不是 JSON'}）。請把這段訊息告訴 SASUKE 的開發者。`) : status === 401 || status === 403 ? 'Garmin 拒絕這組 API Key（可能已過期或被撤銷），請到 Garmin Connect 重新建立。' : status === 429 ? 'Garmin 暫時限制請求次數，請稍後再試。' : `Garmin 回應 HTTP ${status}。`;
   } catch (error) {
     message = `無法連到 Garmin：${error instanceof Error ? error.message.slice(0, 120) : '網路錯誤'}`;
   }
-  const ok = status >= 200 && status < 300;
+  const ok = status >= 200 && status < 300 && message.startsWith('Garmin 已接受');
   await conns.update(userId, x => ({ ...x, last_check_at: now.toISOString(), last_check_status: status, last_error: ok ? undefined : message }));
   return { ok, status, message };
 }
