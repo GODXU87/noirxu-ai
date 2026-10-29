@@ -51,7 +51,9 @@ export class GarminClient implements GarminAdapter {
     }
     let response: Response;
     try {
-      response = await this.fetcher(GARMIN_TOKEN_URL, { method: 'POST', headers: { Authorization: `ApiKey ${conn.api_key}`, Accept: 'application/json' }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+      // Exactly the headers of Garmin's documented curl call: the endpoint answers in plain text,
+      // so asking for JSON gets HTTP 406.
+      response = await this.fetcher(GARMIN_TOKEN_URL, { method: 'POST', headers: { Authorization: `ApiKey ${conn.api_key}` }, signal: AbortSignal.timeout(TIMEOUT_MS) });
     } catch (error) {
       throw new ToolError('UPSTREAM_UNAVAILABLE', `連不到 Garmin：${error instanceof Error ? error.message.slice(0, 120) : '網路錯誤'}`);
     }
@@ -69,17 +71,20 @@ export class GarminClient implements GarminAdapter {
     if (status === 401 || status === 403) return new ToolError('NOT_CONNECTED', `Garmin 拒絕${what}（HTTP ${status}）：金鑰可能已過期或被刪除，請到 Garmin Connect 建立新金鑰。`);
     if (status === 429) return new ToolError('UPSTREAM_UNAVAILABLE', 'Garmin 暫時限制請求次數，請稍後再試。');
     if (status === 404) return new ToolError('NOT_FOUND', 'Garmin 沒有這筆資料（可能手錶還沒同步這一天）。');
-    return new ToolError('UPSTREAM_UNAVAILABLE', `Garmin 暫時無法回應（HTTP ${status}）。`);
+    return new ToolError('UPSTREAM_UNAVAILABLE', `Garmin ${what}時回應 HTTP ${status}。`);
   }
 
   /** GET with the access token; one fresh token on 401. Records sync success or the error. */
   private async get<T>(userId: string, path: string, query: Record<string, string | number | undefined> = {}): Promise<T> {
     const url = new URL(path, GARMIN_API);
     for (const [k, v] of Object.entries(query)) if (v !== undefined) url.searchParams.set(k, String(v));
-    const call = async (token: string) => this.fetcher(url, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+    const call = async (token: string, accept = true) => this.fetcher(url, { headers: { Authorization: `Bearer ${token}`, ...(accept ? { Accept: 'application/json' } : {}) }, signal: AbortSignal.timeout(TIMEOUT_MS) });
     try {
-      let response = await call(await this.token(userId));
-      if (response.status === 401) response = await call(await this.token(userId, true));
+      let token = await this.token(userId);
+      let response = await call(token);
+      if (response.status === 401) { token = await this.token(userId, true); response = await call(token); }
+      // The spec declares JSON; if a server still refuses the Accept header, ask once without it.
+      if (response.status === 406) response = await call(token, false);
       if (!response.ok) throw this.httpError(response.status, '讀取資料');
       const data = response.status === 204 ? null : await response.json();
       await this.conns.update(userId, c => ({ ...c, last_sync_at: this.clock().toISOString(), last_error: undefined }));
