@@ -1,3 +1,6 @@
+import type { WeatherToday } from '@/weather/open-meteo';
+import type { UsQuote } from '@/markets/us';
+import { TYPE_LABEL } from '@/briefing/weekly';
 import type { Executor } from '@/hub/executor';
 import type { ToolContext } from '@/hub/types';
 import { taipeiDate } from '@/lib/dates';
@@ -17,20 +20,22 @@ export interface LocalTurn {
   events: ToolEvent[];
 }
 
-interface Deps { executor: Executor; ctx: ToolContext; memory: MemorySource | null; isConnected: (connection: string) => Promise<boolean>; schedulerAgeMinutes?: () => Promise<number | null>; briefing?: (which: 'morning' | 'evening') => Promise<{ title: string; full: string[]; card: unknown }> }
+interface Deps { executor: Executor; ctx: ToolContext; memory: MemorySource | null; isConnected: (connection: string) => Promise<boolean>; schedulerAgeMinutes?: () => Promise<number | null>; briefing?: (which: 'morning' | 'evening') => Promise<{ title: string; full: string[]; card: unknown }>; weather?: (day: 0 | 1) => Promise<WeatherToday | null>; usQuotes?: () => Promise<{ quotes: UsQuote[]; errors: string[] } | null> }
 
 const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
 const WEEKDAY = ['日', '一', '二', '三', '四', '五', '六'];
 
-/** Sir at most once, and only in some replies, so it never becomes a fixed opener. */
+/** Which side "Sir" goes on, varied by the seed so it never reads as a fixed opener. */
 function sirFor(seed: string) {
   let h = 0;
   for (const c of seed) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  return h % 3 === 0;
+  return h % 2 === 0;
 }
 
+/** Every reply addresses Sir once: in front or at the end of the first sentence. */
 function withSir(text: string, seed: string) {
-  return sirFor(seed) ? text.replace(/。$/, '，Sir。') : text;
+  if (/Sir/.test(text)) return text;
+  return sirFor(seed) ? `Sir，${text}` : text.replace(/。/, '，Sir。');
 }
 
 function taipeiParts(now: Date) {
@@ -56,7 +61,7 @@ export async function runLocal(intent: LocalIntent, deps: Deps): Promise<LocalTu
   const { executor, ctx } = deps;
   const now = ctx.now();
   const seed = `${intent.kind}:${now.toISOString().slice(0, 16)}`;
-  const local = (reply: string): LocalTurn => ({ level: 'L0', source: 'local', intent: intent.kind, reply, events: [] });
+  const local = (reply: string): LocalTurn => ({ level: 'L0', source: 'local', intent: intent.kind, reply: withSir(reply, seed), events: [] });
 
   switch (intent.kind) {
     case 'greeting': {
@@ -68,7 +73,7 @@ export async function runLocal(intent: LocalIntent, deps: Deps): Promise<LocalTu
       const rows = result.status === 'ok' ? (result.data as { items: AgendaRow[] }).items.filter(r => r.due_date === target) : [];
       const opener = intent.which === 'morning' ? '早安' : intent.which === 'noon' ? '午安' : '晚安';
       const plan = rows.length ? `${intent.which === 'night' ? '明天' : '今天'}有 ${rows.length} 件事：${listLine(rows, 3)}。` : `${intent.which === 'night' ? '明天' : '今天'}沒有排定的事。`;
-      return { level: 'L1', source: 'tool', intent: intent.kind, reply: `${opener}${sirFor(seed) ? '，Sir' : ''}。${plan}`, events: [] };
+      return { level: 'L1', source: 'tool', intent: intent.kind, reply: `${opener}，Sir。${plan}`, events: [] };
     }
     case 'identity':
       return local('我是 SASUKE（佐助），你的私人數位管家。記帳、交易紀錄、RADAR 研究、Gmail、提醒和喝水都可以交給我；寫入帳本或寄信之前，一定先讓你確認。');
@@ -180,6 +185,33 @@ export async function runLocal(intent: LocalIntent, deps: Deps): Promise<LocalTu
         const left = d.step_goal && d.steps < d.step_goal ? `，離目標還差 ${fmt(d.step_goal - d.steps)} 步` : d.step_goal ? '，今天的目標已經達成' : '';
         return { level: 'L1', source: 'tool', intent: intent.kind, reply: withSir(`今天走了 ${fmt(d.steps)} 步${d.distance_m ? `（約 ${(d.distance_m / 1000).toFixed(1)} 公里）` : ''}${left}。`, seed), events: [event] };
       }
+      if (intent.which === 'compare') {
+        const result = await executor.invoke('garmin.training.compare', {}, ctx);
+        if (result.status !== 'ok') return { level: 'L1', source: 'tool', intent: intent.kind, reply: notOk(result), events: [] };
+        const d = result.data as { by_type: Array<{ type: string; this_week: { count: number; minutes: number; km: number }; last_week: { count: number; minutes: number }; change_pct: { minutes: number | null } }> };
+        const event = { tool: 'garmin.training.compare', input: {}, result };
+        if (!d.by_type.length) return { level: 'L1', source: 'tool', intent: intent.kind, reply: withSir('最近兩週 Garmin 沒有運動紀錄。', seed), events: [event] };
+        const now7 = d.by_type.reduce((a, t) => a + t.this_week.minutes, 0);
+        const last7 = d.by_type.reduce((a, t) => a + t.last_week.minutes, 0);
+        const total = last7 > 0 ? `總量 ${fmt(last7)} → ${fmt(now7)} 分鐘（${now7 >= last7 ? '+' : ''}${Math.round(((now7 - last7) / last7) * 100)}%）` : `這週共 ${fmt(now7)} 分鐘`;
+        const rows = [...d.by_type].sort((a, b) => b.this_week.minutes - a.this_week.minutes).map(t => `${TYPE_LABEL[t.type] ?? t.type}：${t.this_week.count} 次 ${fmt(t.this_week.minutes)} 分${t.this_week.km ? `、${t.this_week.km} km` : ''}（上週 ${fmt(t.last_week.minutes)} 分${t.change_pct.minutes === null ? '' : `，${t.change_pct.minutes >= 0 ? '+' : ''}${t.change_pct.minutes}%`}）`);
+        const hint = last7 > 0 && (now7 - last7) / last7 >= 0.3 ? '\n量一下子加了三成以上，留意恢復，睡眠要跟上。' : '';
+        return { level: 'L1', source: 'tool', intent: intent.kind, reply: `Sir，最近 7 天和前 7 天比較，${total}。\n${rows.join('\n')}${hint}`, events: [event] };
+      }
+      if (intent.which === 'sleep_trend') {
+        const result = await executor.invoke('garmin.sleep.trend', { nights: 7 }, ctx);
+        if (result.status !== 'ok') return { level: 'L1', source: 'tool', intent: intent.kind, reply: notOk(result), events: [] };
+        const d = result.data as { nights: Array<{ date: string; duration_s: number }>; average_s: number | null; previous_average_s: number | null; shortest: { date: string; duration_s: number } | null; longest: { date: string; duration_s: number } | null; short_nights: number };
+        const event = { tool: 'garmin.sleep.trend', input: { nights: 7 }, result };
+        if (!d.average_s) return { level: 'L1', source: 'tool', intent: intent.kind, reply: withSir('最近 7 晚 Garmin 沒有睡眠資料，手錶可能還沒同步。', seed), events: [event] };
+        const hm = (sec: number) => `${Math.floor(sec / 3600)} 小時 ${Math.round((sec % 3600) / 60)} 分`;
+        const md = (day: string) => `${Number(day.slice(5, 7))}/${Number(day.slice(8, 10))}`;
+        const diff = d.previous_average_s ? Math.round((d.average_s - d.previous_average_s) / 60) : null;
+        const vs = diff === null ? '' : Math.abs(diff) < 10 ? '，和前一週差不多' : diff > 0 ? `，比前一週多 ${diff} 分鐘` : `，比前一週少 ${-diff} 分鐘`;
+        const range = d.shortest && d.longest ? `最短 ${md(d.shortest.date)} ${hm(d.shortest.duration_s)}，最長 ${md(d.longest.date)} ${hm(d.longest.duration_s)}。` : '';
+        const advice = d.short_nights >= 3 ? `有 ${d.short_nights} 晚不到 6.5 小時，這幾天早點上床，訓練強度先別往上加。` : d.short_nights ? `有 ${d.short_nights} 晚不到 6.5 小時，其他都還可以。` : '每晚都有 6.5 小時以上，維持就好。';
+        return { level: 'L1', source: 'tool', intent: intent.kind, reply: `Sir，最近 ${d.nights.length} 晚平均睡 ${hm(d.average_s)}${vs}。${range}\n${advice}`, events: [event] };
+      }
       // Sleep and body status: the full analysis (baselines, readiness, today's plan, hydration).
       const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Taipei', hour: '2-digit', hour12: false }).format(now));
       const when = intent.which === 'sleep' || hour < 15 ? 'morning' : 'evening';
@@ -190,6 +222,27 @@ export async function runLocal(intent: LocalIntent, deps: Deps): Promise<LocalTu
       const gaps = d.gaps.length ? `\n（還沒有：${d.gaps.join('、')}）` : '';
       return { level: 'L1', source: 'tool', intent: intent.kind, reply: `${d.narrative.join('\n')}${gaps}`, events: [{ tool: 'garmin.health.insight', input, result }] };
     }
+    case 'weather': {
+      const label = intent.day === 1 ? '明天' : '今天';
+      if (!deps.weather) return local('天氣功能目前沒有開啟。');
+      const w = await deps.weather(intent.day).catch(() => null);
+      if (!w) return { level: 'L1', source: 'tool', intent: intent.kind, reply: withSir('天氣服務暫時連不上，稍後再問我一次。', seed), events: [] };
+      const temp = w.temp_min !== null && w.temp_max !== null ? ` ${Math.round(w.temp_min)}–${Math.round(w.temp_max)}°C` : '';
+      const rain = w.rain_chance !== null ? `，降雨機率 ${Math.round(w.rain_chance)}%` : '';
+      const advice = w.advice.length ? `${w.advice.join('，')}。` : (w.rain_chance ?? 0) < 30 ? '不用帶傘。' : '';
+      return { level: 'L1', source: 'tool', intent: intent.kind, reply: withSir(`${label}${w.place}${w.summary}${temp}${rain}。${advice}`, seed), events: [] };
+    }
+    case 'markets_us': {
+      if (!deps.usQuotes) return local('美股行情目前沒有開啟。');
+      const r = await deps.usQuotes().catch(() => null);
+      if (!r || !r.quotes.length) return { level: 'L1', source: 'tool', intent: intent.kind, reply: withSir(`美股行情暫時讀不到${r?.errors[0] ? `（${r.errors[0]}）` : ''}，稍後再試。`, seed), events: [] };
+      const day = r.quotes.map(q => q.date).sort().at(-1)!;
+      const lines = r.quotes.map(q => `${q.label} ${q.close.toLocaleString('en-US', { maximumFractionDigits: 2 })}${q.change_pct === null ? '' : `（${q.change_pct > 0 ? '+' : ''}${q.change_pct.toFixed(2)}%）`}`);
+      const missing = r.errors.length ? `\n另有 ${r.errors.length} 檔暫時讀不到。` : '';
+      return { level: 'L1', source: 'tool', intent: intent.kind, reply: `Sir，美股 ${Number(day.slice(5, 7))}/${Number(day.slice(8, 10))} 收盤：\n${lines.join('\n')}${missing}\n（僅供參考，不是投資建議。）`, events: [] };
+    }
+    case 'capabilities':
+      return local('我可以直接幫你：記帳（確認後才寫入 Ledger）、查本月支出、記待辦和提醒（例如「明天 9 點提醒我開會」）、建立每天的自動任務、看 Garmin 的睡眠與身體狀況、天氣、美股收盤、RADAR 研究、早報晚報和週報、記住你交代的事。輸入 / 可以看全部快捷指令。');
     case 'briefing': {
       if (!deps.briefing) return local('早晚報目前無法產生，請稍後再試。');
       const b = await deps.briefing(intent.which);

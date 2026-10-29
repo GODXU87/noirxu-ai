@@ -75,6 +75,8 @@ export function parseTaskText(raw: string, today: string): TaskParse {
     defaultTime = briefing === 'morning' ? '08:00' : '21:00';
     schedule = { type: 'daily', time: defaultTime };
   }
+  // "幫我想個週末去哪走走" mentions a recurring word but asks for no reminder: not a task at all.
+  if ('error' in schedule && !briefing && !/(提醒|叫我|通知|記得|告訴我|跟我說)/.test(text)) return null;
   if ('error' in schedule) return { ok: false, error: `${schedule.error}這次沒有建立任何任務。` };
   const describe = text.replace(RECUR, ' ').replace(/^\s*(的)?[一二三四五六日天、和及,，]+(?=[早上午中下晚傍\d一二兩三四五六七八九十])/, ' ');
   const onlyImportant = /重要的?(事|事情)?(再|才)(通知|提醒|告訴)|有重要/.test(text);

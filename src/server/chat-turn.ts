@@ -5,7 +5,10 @@ import type { ToolContext } from '@/hub/types';
 import { classify } from '@/router/intents';
 import { runLocal } from '@/router/local';
 import { memoryContext, searchMemories } from '@/router/memory';
+import { taipeiDate } from '@/lib/dates';
+import { fetchUsQuotes } from '@/markets/us';
 import { turnEvents } from '@/quality/log';
+import { cachedWeather } from '@/weather/open-meteo';
 import { chooseTier, selectTools, TIER_LIMITS, trimHistory, type ModelTier } from '@/router/tier';
 import { runAgentTurn, type ProgressEvent, type ReplyStyle, type ToolEvent, type TurnUsage } from './agent';
 import { pickProvider } from './config';
@@ -81,6 +84,8 @@ async function chatTurn(hub: Hub, ctx: ToolContext, options: ChatOptions): Promi
       executor: hub.executor, ctx, memory: hub.memory,
       isConnected: connection => hub.isConnected(ctx.userId, connection as never),
       briefing: async which => (which === 'morning' ? morningBriefing(hub, ctx.userId, ctx.now()) : eveningBriefing(hub, ctx.userId, ctx.now())),
+      weather: hub.features?.weather ? day => cachedWeather(day, taipeiDate(ctx.now())) : undefined,
+      usQuotes: hub.features?.us_markets ? () => fetchUsQuotes({ apiKey: process.env.ALPHAVANTAGE_API_KEY?.trim() || undefined, store: hub.agenda, vault: hub.vault, now: ctx.now() }) : undefined,
       schedulerAgeMinutes: async () => { const last = await lastTick(hub); return last ? Math.round((ctx.now().getTime() - Date.parse(last.at)) / 60_000) : null; }
     });
     await hub.cost.recordLocal(intent.kind, ctx.now()).catch(() => null);
@@ -115,8 +120,16 @@ async function chatTurn(hub: Hub, ctx: ToolContext, options: ChatOptions): Promi
   const common = { registry, executor: hub.executor, ctx, userText: options.text, style: options.style, onProgress: options.onProgress, limits: turnLimits, extraSystem: memories || undefined };
 
   try {
+    const openaiTurn = (m: string) => runOpenAITurn({ ...common, client: options.clients?.openai?.() ?? new OpenAI(), model: m, reasoningEffort: light ? null : hub.config.openai.reasoningEffort, history });
     const turn = provider === 'openai'
-      ? await runOpenAITurn({ ...common, client: options.clients?.openai?.() ?? new OpenAI(), model, reasoningEffort: light ? null : hub.config.openai.reasoningEffort, history })
+      // A light model this account cannot use falls back to the main model instead of failing.
+      ? await openaiTurn(model).catch(error => {
+        if (light && model !== hub.config.openai.model && error instanceof OpenAI.APIError && (error.status === 404 || error.status === 400) && /model/i.test(error.message)) {
+          console.warn('[noirxu-ai] light model rejected, using the main model', model, error.status);
+          return openaiTurn(hub.config.openai.model);
+        }
+        throw error;
+      })
       : { provider: 'anthropic' as const, ...(await runAgentTurn({ ...common, client: options.clients?.anthropic?.() ?? new Anthropic(), model, history: history as Anthropic.Beta.Messages.BetaMessageParam[] })) };
     await hub.cost.recordTurn({ model, feature: `chat_${tier}`, usage: turn.usage, now: ctx.now() }).catch(() => null);
     await hub.cost.recordCacheHits(hub.executor.cacheHits - hitsBefore, ctx.now()).catch(() => null);

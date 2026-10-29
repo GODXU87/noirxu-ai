@@ -23,7 +23,7 @@ export interface WeeklyCard {
   quality?: QualitySummary | null;
 }
 
-const TYPE_LABEL: Record<string, string> = { running: '跑步', strength_training: '重訓', badminton: '羽球', indoor_cardio: '室內有氧', cycling: '騎車', walking: '走路', hiit: 'HIIT', treadmill_running: '跑步機' };
+export const TYPE_LABEL: Record<string, string> = { running: '跑步', strength_training: '重訓', badminton: '羽球', indoor_cardio: '室內有氧', cycling: '騎車', walking: '走路', hiit: 'HIIT', treadmill_running: '跑步機' };
 
 function addDays(day: string, n: number) {
   const d = new Date(`${day}T12:00:00Z`);

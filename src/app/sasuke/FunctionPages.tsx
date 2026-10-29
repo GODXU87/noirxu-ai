@@ -165,9 +165,9 @@ function BodyCard() {
             {body.signals?.length > 0 && <div className="health-chips">{body.signals.map((sig: { key: string; tone: string; text: string }) => <span key={sig.key} className={`health-chip tone-${sig.tone}`}>{sig.text}</span>)}</div>}
             {body.narrative?.length > 0 && <div className="brief-prose">{body.narrative.map((p: string, i: number) => <p key={i}>{p}</p>)}</div>}
             <div className="fp-asks">
-              <Ask question="依我的身體狀況，今天的訓練要怎麼調整？" label="今天怎麼練" icon="heart" />
-              <Ask question="這週的訓練量和上週比較如何？" label="這週 vs 上週" icon="chart" />
-              <Ask question="最近 7 晚的睡眠趨勢如何？" label="睡眠趨勢" icon="sun" />
+              <Ask question="今天怎麼練" label="今天怎麼練" icon="heart" />
+              <Ask question="這週訓練量和上週比較" label="這週 vs 上週" icon="chart" />
+              <Ask question="最近 7 晚的睡眠趨勢" label="睡眠趨勢" icon="sun" />
             </div>
             <p className="hint">裝置指標僅供參考，不是醫療診斷。</p>
           </>

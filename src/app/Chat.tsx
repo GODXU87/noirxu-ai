@@ -41,10 +41,10 @@ const PALETTE: Array<{ command: string; fill: string; label: string; run: boolea
 
 const CHIPS: Array<{ label: string; text: string; run: boolean; icon: IconName; feature?: keyof FeatureFlags }> = [
   { label: '早報', text: '/早報', run: true, icon: 'calendar', feature: 'briefings' },
-  { label: '最近有什麼事', text: '最近有什麼事？依重要程度排給我。', run: true, icon: 'bell' },
+  { label: '最近有什麼事', text: '最近有什麼事', run: true, icon: 'bell' },
   { label: '記一筆帳', text: '/記帳 ', run: false, icon: 'wallet', feature: 'commands' },
   { label: '整理一段訊息', text: '/分診 ', run: false, icon: 'chat', feature: 'triage' },
-  { label: '這個月花了多少', text: '這個月花了多少錢？哪一類最多？', run: true, icon: 'chart' },
+  { label: '這個月花了多少', text: '這個月花了多少錢', run: true, icon: 'chart' },
   { label: '晚報', text: '/晚報', run: true, icon: 'report', feature: 'briefings' }
 ];
 

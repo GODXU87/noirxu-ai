@@ -19,7 +19,10 @@ export type LocalIntent =
   | { kind: 'task_create'; text: string }
   | { kind: 'task_list' }
   | { kind: 'task_halt'; halted: boolean }
-  | { kind: 'garmin'; which: 'steps' | 'sleep' | 'status' }
+  | { kind: 'garmin'; which: 'steps' | 'sleep' | 'status' | 'compare' | 'sleep_trend' }
+  | { kind: 'weather'; day: 0 | 1 }
+  | { kind: 'markets_us' }
+  | { kind: 'capabilities' }
   | { kind: 'briefing'; which: 'morning' | 'evening' }
   | { kind: 'memory_save'; content: string }
   | { kind: 'memory_forget'; subject: string };
@@ -29,6 +32,8 @@ const ACTION = /(記下|記一|幫我記|新增|加入|刪除|刪掉|取消|修�
 /** Several requests in one message. */
 const MULTI = /(然後|並且|順便|另外|還有|以及|同時|再幫|再來)/;
 const MAX_LOCAL_CHARS = 40;
+/** "這週訓練量和上週比較": a fixed comparison, read before ACTION (which holds 比較) sends it to the model. */
+const TRAINING_COMPARE = /^(這週|本週|這禮拜|這星期|最近)(的)?(訓練|運動|跑步|跑)量?(和|跟|比|對比)?(上週|上禮拜|上星期)?(的)?(比較|相比)?(如何|怎麼樣|怎樣|多少|呢|增加多少|多了多少)?$|^(訓練量|運動量|跑量)(比較|對比|比上週)$/;
 
 const RULES: Array<[RegExp, (m: RegExpMatchArray) => LocalIntent]> = [
   [/^(早安|早上好|早)$/, () => ({ kind: 'greeting', which: 'morning' })],
@@ -53,6 +58,12 @@ const RULES: Array<[RegExp, (m: RegExpMatchArray) => LocalIntent]> = [
   [/^(我)?(今天|今日)?(走了|走)?(多少|幾)步(了)?$|^(今天|今日)?(的)?步數(多少|是多少)?$/, () => ({ kind: 'garmin', which: 'steps' })],
   [/^(我)?(昨晚|昨天晚上|昨天)?(睡得?(怎麼樣|怎樣|如何|好嗎|好不好|多久)|睡了多久|睡眠(怎麼樣|怎樣|如何|狀況|品質)?)$/, () => ({ kind: 'garmin', which: 'sleep' })],
   [/^(我)?(目前|現在|今天|最近)?(的)?(身體|身體狀況|身體狀態|恢復|恢復狀況|體能|狀態)(怎麼樣|怎樣|如何|好嗎|狀況)?(呢)?$|^(根據|看|用|從|查|讀)?(我的)?([Gg]armin|GARMIN|佳明|手錶)(的)?(資料|數據)?(呢|啊.{0,4}|阿.{0,4})?$|^(我)?今天(適合|可以|能不能|要不要)(運動|訓練|練|去練|健身|打球|跑步)(嗎)?$/, () => ({ kind: 'garmin', which: 'status' })],
+  [/^(我)?(今天|今日)?(要)?怎麼(練|訓練|安排訓練)$|^(依|根據)?(我的)?(身體狀況|狀態)[，,]?(今天)?(的)?訓練(要)?怎麼(調整|安排|練)$|^今天(的)?訓練(要)?怎麼(調整|安排)$/, () => ({ kind: 'garmin', which: 'status' })],
+  [/^(最近|這週|本週|近)?(7|七|一週|一周|幾)?(晚|天)?(的)?睡眠(趨勢|平均|紀錄)(如何|怎麼樣|怎樣|呢)?$|^(最近|這週|這禮拜)(的)?睡眠(如何|怎麼樣|怎樣|狀況)$|^(最近|這週)睡得(怎麼樣|怎樣|如何|好嗎)$/, () => ({ kind: 'garmin', which: 'sleep_trend' })],
+  [/^(今天|今日|現在|外面)?(的)?(天氣|氣溫|溫度)(如何|怎麼樣|怎樣|好嗎|呢|預報)?$|^(今天|待會|等一下)?(會|會不會)下雨(嗎)?$|^(今天|出門)?(要|需要|要不要)帶傘(嗎)?$|^(今天)?(幾度|多熱|冷不冷|熱不熱)$/, () => ({ kind: 'weather', day: 0 })],
+  [/^(明天|明日)(的)?(天氣|氣溫|溫度)(如何|怎麼樣|怎樣|好嗎|呢|預報)?$|^明天(會|會不會)下雨(嗎)?$|^明天(要|需要|要不要)帶傘(嗎)?$|^明天(幾度|多熱|冷不冷|熱不熱)$/, () => ({ kind: 'weather', day: 1 })],
+  [/^(昨晚|昨天|今天|最新)?(的)?美股(如何|怎麼樣|怎樣|收盤|行情|表現|漲跌|狀況)?(如何|怎麼樣)?$|^美股(昨晚)?(收盤|行情)(如何|怎麼樣)?$/, () => ({ kind: 'markets_us' })],
+  [/^(你)?(會|能|可以)(做|幫我做|幫我)?(什麼|哪些)(事情?)?$|^(你的)?(功能|使用說明|怎麼用)(有哪些)?$/, () => ({ kind: 'capabilities' })],
   [/^(給我|看|看一下|我要|今天的?|今日)?(早報|今日早報)$/, () => ({ kind: 'briefing', which: 'morning' })],
   [/^(給我|看|看一下|我要|今天的?|今日)?(晚報|今日晚報)$/, () => ({ kind: 'briefing', which: 'evening' })],
   [/^你(還)?記得我的(.{1,12}?)(嗎|是多少|多少)?$/, m => ({ kind: 'memory_recall', subject: m[2] })],
@@ -94,6 +105,7 @@ export function classify(raw: string): LocalIntent | null {
   if (isReminderRequest(words) && REMINDER_TIME.test(words) && !MULTI.test(words) && words.length <= 80) return { kind: 'reminder_create', text: words };
   const calc = text.replace(/(等於多少|等於|是多少|=)$/, '');
   if (CALC.test(calc) && /\d\s*[+\-*/×÷x%]\s*[\d(]/.test(calc)) return { kind: 'calc', expression: calc };
+  if (TRAINING_COMPARE.test(text)) return { kind: 'garmin', which: 'compare' };
   if (ACTION.test(text) || MULTI.test(text)) return null;
   const matches = RULES.map(([re, make]) => { const m = text.match(re); return m ? make(m) : null; }).filter((x): x is LocalIntent => x !== null);
   // More than one different reading is ambiguous: let the model (or the user) decide.
