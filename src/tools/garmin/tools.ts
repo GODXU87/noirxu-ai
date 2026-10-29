@@ -94,6 +94,29 @@ export function garminTools(garmin: GarminAdapter, deps: GarminToolDeps = {}): T
       }
     }),
     defineTool({
+      name: 'garmin.sleep.trend',
+      description: '最近 7 晚（或指定晚數）的睡眠趨勢：每晚睡眠時間、平均、最短與最長、睡不到 6.5 小時的晚數，並和再前一段同長度的平均比較（固定公式）。日期是醒來那天。唯讀。',
+      connection: 'internal', kind: 'read', cacheTtlMs: CACHE_MS,
+      input: z.object({ nights: z.number().int().min(3).max(14).default(7) }).strict(), output: anyRecord,
+      async run(value, ctx) {
+        const today = taipeiDate(ctx.now());
+        const n = value.nights;
+        const all = await garmin.sleepRange(ctx.userId, addDays(today, -(2 * n - 1)), today);
+        const rows = all.filter(s => s.duration_s).map(s => ({ date: s.date, duration_s: s.duration_s as number }));
+        const recent = rows.filter(r => r.date > addDays(today, -n));
+        const before = rows.filter(r => r.date <= addDays(today, -n));
+        const avg = (xs: number[]) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : null);
+        const durations = recent.map(r => r.duration_s);
+        return { data: {
+          from: addDays(today, -(n - 1)), to: today, nights: recent,
+          average_s: avg(durations), previous_average_s: before.length >= 3 ? avg(before.map(r => r.duration_s)) : null,
+          shortest: recent.length ? recent.reduce((a, b) => (b.duration_s < a.duration_s ? b : a)) : null,
+          longest: recent.length ? recent.reduce((a, b) => (b.duration_s > a.duration_s ? b : a)) : null,
+          short_nights: durations.filter(d => d < 6.5 * 3600).length, note: NOTE
+        } };
+      }
+    }),
+    defineTool({
       name: 'garmin.training.compare',
       description: '最近 7 天和前 7 天的訓練量比較，依運動類型分開：次數、分鐘、公里、訓練負荷與增減百分比（固定公式計算，不用推估）。用於「這週跑步量比上週增加多少」。唯讀。',
       connection: 'internal', kind: 'read', cacheTtlMs: CACHE_MS,

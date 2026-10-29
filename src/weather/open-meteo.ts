@@ -78,3 +78,21 @@ export function weatherLine(w: WeatherToday) {
   const rain = w.rain_chance !== null ? `，降雨機率 ${Math.round(w.rain_chance)}%` : '';
   return `${w.place}${w.summary}${temp}${rain}${w.advice.length ? `，${w.advice.join('、')}` : ''}`;
 }
+
+// Weather changes slowly: one forecast per day offset, kept per server instance for 15 minutes.
+const cache = new Map<number, { at: number; data: WeatherToday }>();
+const CACHE_MS = 15 * 60_000;
+
+/** fetchWeather with a short cache; a stale forecast for the same date is used if the service is down. */
+export async function cachedWeather(day: 0 | 1, today: string, place = placeFromEnv(), fetcher: typeof fetch = fetch): Promise<WeatherToday> {
+  const hit = cache.get(day);
+  if (hit && Date.now() - hit.at < CACHE_MS && hit.data.date >= today) return hit.data;
+  try {
+    const data = await fetchWeather(place, fetcher, day);
+    cache.set(day, { at: Date.now(), data });
+    return data;
+  } catch (error) {
+    if (hit && hit.data.date >= today) return hit.data;
+    throw error;
+  }
+}

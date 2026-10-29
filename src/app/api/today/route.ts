@@ -2,7 +2,7 @@ import { rankItems, daysUntil } from '@/agenda/rank';
 import { ToolError } from '@/hub/errors';
 import { taipeiDate } from '@/lib/dates';
 import { agendaView } from '@/tools/agenda/tools';
-import { fetchWeather, placeFromEnv, type WeatherToday } from '@/weather/open-meteo';
+import { cachedWeather } from '@/weather/open-meteo';
 import { getHub } from '@/server/hub';
 import { errorResponse, json, requireContext } from '@/server/http';
 
@@ -15,10 +15,6 @@ export const maxDuration = 30;
 
 const PARTS = ['agenda', 'weather', 'body', 'water'] as const;
 type Part = (typeof PARTS)[number];
-
-// Weather changes slowly; keep it per server instance for 15 minutes.
-let weatherCache: { day: number; at: number; data: WeatherToday } | null = null;
-const WEATHER_TTL = 15 * 60_000;
 
 const hourIn = (now: Date) => Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Taipei', hour: '2-digit', hour12: false }).format(now));
 
@@ -46,15 +42,9 @@ export async function GET(request: Request) {
       if (!hub.features.weather) return json({ ok: true, part, off: true });
       // After 18:00 the useful forecast is tomorrow's.
       const day = hourIn(now) >= 18 ? 1 : 0;
-      if (!weatherCache || weatherCache.day !== day || Date.now() - weatherCache.at > WEATHER_TTL || weatherCache.data.date < today) {
-        try {
-          weatherCache = { day, at: Date.now(), data: await fetchWeather(placeFromEnv(), fetch, day) };
-        } catch (error) {
-          // A stale forecast for the same day beats an empty tile.
-          if (!weatherCache || weatherCache.day !== day || weatherCache.data.date < today) return json({ ok: true, part, error: { message: error instanceof Error ? error.message : '天氣服務暫時連不上。' } });
-        }
-      }
-      return json({ ok: true, part, tomorrow: day === 1, weather: weatherCache.data });
+      let weather;
+      try { weather = await cachedWeather(day, today); } catch (error) { return json({ ok: true, part, error: { message: error instanceof Error ? error.message : '天氣服務暫時連不上。' } }); }
+      return json({ ok: true, part, tomorrow: day === 1, weather });
     }
 
     if (part === 'body') {
