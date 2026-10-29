@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { parseCommand, type CommandName } from '@/assistant/commands';
 import type { FeatureFlags } from '@/lib/features';
+import { MicButton, useSpeech, useVoiceInput } from './components/Voice';
 import { money } from '@/lib/tool-labels';
 import { BrandMark, Icon, type IconName } from './components/Icon';
 import { AssistantCard, WaterMeter } from './components/assistant';
@@ -13,7 +14,7 @@ import { callTool, ProposalCard, RichText, ToolCard, type InvokeResult } from '.
 
 type Item =
   | { kind: 'user'; text: string }
-  | { kind: 'assistant'; text: string; via?: string }
+  | { kind: 'assistant'; text: string; via?: string; route?: string; rated?: 'up' | 'down' }
   | { kind: 'error'; text: string; retry?: string }
   | { kind: 'tool'; result: InvokeResult }
   | { kind: 'notice'; text: string }
@@ -29,6 +30,7 @@ const STYLE_KEY = 'noirxu-ai-style';
 const PALETTE: Array<{ command: string; fill: string; label: string; run: boolean; feature: keyof FeatureFlags }> = [
   { command: '/早報', fill: '/早報', label: '今天的行程、最重要的三件事、逾期與提醒', run: true, feature: 'briefings' },
   { command: '/晚報', fill: '/晚報', label: '今天完成了什麼、明天先做什麼', run: true, feature: 'briefings' },
+  { command: '/品質', fill: '/品質', label: 'SASUKE 自我檢查：失誤、被糾正與評分', run: true, feature: 'quality' },
   { command: '/記帳', fill: '/記帳 ', label: '一句話記帳，確認後才寫入 Ledger', run: false, feature: 'commands' },
   { command: '/分診', fill: '/分診 ', label: '貼上訊息，找出行程、待辦、帳單與要回覆的事', run: false, feature: 'triage' },
   { command: '/回覆', fill: '/回覆 ', label: '貼上信件，擬回覆草稿（需要 AI）', run: false, feature: 'reply_drafts' },
@@ -53,7 +55,7 @@ const QUICK: Array<{ label: string; text: string; run: boolean; icon: IconName; 
 ];
 
 const WORKING: Partial<Record<CommandName, string>> = {
-  morning: '正在整理早報', evening: '正在整理晚報', water: '更新喝水紀錄', ledger: '正在整理記帳草稿', triage: '正在分析文字', help: '讀取指令'
+  morning: '正在整理早報', evening: '正在整理晚報', weekly: '正在整理本週回顧', quality: '正在整理自我檢查', water: '更新喝水紀錄', ledger: '正在整理記帳草稿', triage: '正在分析文字', help: '讀取指令'
 };
 
 const SYSTEMS = [['ledger', 'Ledger'], ['journal', 'Journal'], ['radar', 'RADAR'], ['gmail', 'Gmail']] as const;
@@ -62,6 +64,11 @@ const TOOL_LABELS: Record<string, string> = { ledger: 'Ledger', journal: 'Journa
 function toolLabel(tool: string) { return TOOL_LABELS[tool.split('.')[0]] ?? tool; }
 
 /** How the server handled a reply; details (tokens, cost) live in Settings → AI 成本保護. */
+/** Same tag as the server's quality log ("L1 garmin_sleep", "L2"). */
+function routeTag(route?: { level: string; intent?: string }) {
+  return route ? [route.level, route.intent].filter(Boolean).join(' ').slice(0, 60) : undefined;
+}
+
 function routeLabel(route?: { level: string; source: string }) {
   if (!route) return undefined;
   if (route.source === 'ai') return 'AI 分析';
@@ -140,6 +147,18 @@ function turns(items: Item[]) {
   return out;
 }
 
+function Rating({ rated, onRate }: { rated?: 'up' | 'down'; onRate: (rating: 'up' | 'down') => void }) {
+  return (
+    <span className="msg-rate" role="group" aria-label="評分這則回覆">
+      {(['up', 'down'] as const).map(r => (
+        <button key={r} type="button" className={rated === r ? 'is-on' : undefined} disabled={Boolean(rated)} aria-pressed={rated === r} aria-label={r === 'up' ? '回覆有幫助' : '回覆不好'} onClick={() => onRate(r)}>
+          <Icon name={r === 'up' ? 'thumb-up' : 'thumb-down'} size={14} />
+        </button>
+      ))}
+    </span>
+  );
+}
+
 export function Chat({ connected, features, variant = 'classic', ai = null }: { connected: Record<string, boolean>; features: FeatureFlags; variant?: 'classic' | 'sasuke'; ai?: string | null }) {
   const sasuke = variant === 'sasuke';
   const router = useRouter();
@@ -160,6 +179,22 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   const [pending, setPending] = useState<string[]>([]);
   const feedEnd = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
+  // Voice: one utterance per tap into the composer (editable); a turn started by voice gets its
+  // reply read aloud, which can be stopped at any time.
+  const voice = useVoiceInput(spoken => setText(spoken));
+  const speech = useSpeech();
+  const voiceTurn = useRef(false);
+  /** Route of the last reply, sent with the next message so a 「不對」 is pinned on it. */
+  const lastRoute = useRef<string | undefined>(undefined);
+  const textRef = useRef('');
+  textRef.current = text;
+  const voiceOn = sasuke && features.voice && voice.supported;
+  function toggleMic() {
+    if (voice.listening) { voice.stop(); return; }
+    speech.stop();
+    voiceTurn.current = true;
+    voice.start(textRef.current);
+  }
   const empty = items.length === 0;
   const brief = useBrief(empty && features.briefings);
   const inbox = useInbox(empty && sasuke);
@@ -238,6 +273,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   async function send(message: string) {
     message = message.trim();
     if (!message || busy) return;
+    if (voice.listening) voice.stop();
     setText('');
     setItems(prev => [...prev, { kind: 'user', text: message }]); scroll();
     // Shortcut commands are parsed by fixed rules on the server, not by the AI model.
@@ -272,7 +308,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   async function chat(message: string) {
     setBusy('思考中');
     const payload = notes.length ? `[系統紀錄]\n${notes.join('\n')}\n\n${message}` : message;
-    const request = { method: 'POST', headers: { 'Content-Type': 'application/json', ...(sasuke ? { Accept: 'application/x-ndjson' } : {}) }, body: JSON.stringify({ text: payload, history, style: currentStyle(style) }) };
+    const request = { method: 'POST', headers: { 'Content-Type': 'application/json', ...(sasuke ? { Accept: 'application/x-ndjson' } : {}) }, body: JSON.stringify({ text: payload, history, style: currentStyle(style), previous_route: lastRoute.current }) };
     const shown = new Set<number>();
     try {
       const response = await fetch('/api/chat', request);
@@ -310,15 +346,28 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
       setItems(prev => [
         ...prev,
         ...body.events.filter((_: unknown, i: number) => !shown.has(i)).map((e: { result: InvokeResult }) => { if (e.result.status === 'confirmation_required') setPending(p => [...p, (e.result as { proposalId: string }).proposalId]); return { kind: 'tool' as const, result: e.result }; }),
-        ...(body.reply ? [{ kind: 'assistant' as const, text: body.reply, via: routeLabel(body.route) }] : [])
+        ...(body.reply ? [{ kind: 'assistant' as const, text: body.reply, via: routeLabel(body.route), route: routeTag(body.route) }] : [])
       ]);
+      lastRoute.current = routeTag(body.route);
+      if (voiceTurn.current && body.reply) speech.speak(body.reply);
     } catch {
       setItems(prev => [...prev, shown.size
         ? { kind: 'error', text: '連線中斷：上方已顯示的工具結果是真的已執行的部分，AI 的回覆沒有收到。' }
         : { kind: 'error', text: '網路錯誤，訊息沒有送出。', retry: message }]);
     } finally {
+      voiceTurn.current = false;
       setBusy(null); scroll();
     }
+  }
+
+  /** 👍 / 👎 on a reply, for the quality self-check. One rating per reply. */
+  async function rate(index: number, rating: 'up' | 'down') {
+    const item = items[index];
+    if (item?.kind !== 'assistant' || item.rated) return;
+    setItems(prev => prev.map((it, i) => (i === index && it.kind === 'assistant' ? { ...it, rated: rating } : it)));
+    const response = await fetch('/api/quality', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rating, text: item.text.slice(0, 600), source: item.route }) }).catch(() => null);
+    if (!response?.ok) setItems(prev => prev.map((it, i) => (i === index && it.kind === 'assistant' ? { ...it, rated: undefined } : it)));
+    else if (rating === 'down') setItems(prev => [...prev, { kind: 'notice', text: '收到，Sir。這則已記下，週報的自我檢查會列出來；若方便，直接告訴我哪裡不對，我會修正。' }]);
   }
 
   function retry(index: number, message: string) {
@@ -410,7 +459,19 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
       }
       return <ToolCard key={index} result={item.result} />;
     }
-    if (item.kind === 'assistant') return <div key={index} className="msg assistant"><RichText text={item.text} />{sasuke && item.via && <span className="msg-via">{item.via}</span>}</div>;
+    if (item.kind === 'assistant') {
+      return (
+        <div key={index} className="msg assistant">
+          <RichText text={item.text} />
+          {sasuke && (item.via || features.quality) && (
+            <div className="msg-foot">
+              {item.via && <span className="msg-via">{item.via}</span>}
+              {features.quality && <Rating rated={item.rated} onRate={rating => rate(index, rating)} />}
+            </div>
+          )}
+        </div>
+      );
+    }
     if (item.kind === 'notice') return <div key={index} className="msg assistant"><p>{item.text}</p></div>;
     if (item.kind === 'help') {
       return (
@@ -445,6 +506,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
         )}
         {sasuke ? (
           <form className="sk-composer" onSubmit={event => { event.preventDefault(); void send(text); }}>
+            {voice.error && <p className="sk-voice-error" role="alert">{voice.error}<button type="button" onClick={voice.clearError} aria-label="關閉">×</button></p>}
             <textarea ref={input} value={text} onChange={e => setText(e.target.value)} rows={1} aria-label="訊息" onKeyDown={onKeyDown} onCompositionEnd={() => { composedAt.current = Date.now(); }} onInput={() => { armed.current = 0; setEnterHint(false); }} placeholder={placeholder} />
             <div className="sk-tools">
               <div className="sk-agent-menu" ref={menuBox}>
@@ -465,6 +527,9 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
                 )}
               </div>
               {enterHint && <span className="sk-enter-hint" role="status">再按一次 Enter 送出</span>}
+              {voice.listening && <span className="sk-enter-hint" role="status">聆聽中…說完按一下麥克風</span>}
+              {speech.speaking && <button type="button" className="sk-stop-speak" onClick={speech.stop}>停止朗讀</button>}
+              {voiceOn && <MicButton listening={voice.listening} disabled={Boolean(busy)} onClick={toggleMic} />}
               <button className="sk-send" type="submit" disabled={Boolean(busy) || !text.trim()} aria-label="送出"><Icon name="up" size={18} /></button>
             </div>
           </form>

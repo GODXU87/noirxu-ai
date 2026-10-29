@@ -196,6 +196,21 @@ export async function runLocal(intent: LocalIntent, deps: Deps): Promise<LocalTu
       const result = { status: 'ok' as const, tool: 'assistant.briefing.card', data: b.card, links: [] };
       return { level: 'L1', source: 'tool', intent: intent.kind, reply: intent.which === 'morning' ? '早報整理好了，Sir。' : '晚報整理好了，Sir。', events: [{ tool: 'assistant.briefing.card', input: {}, result }] };
     }
+    case 'memory_save': {
+      const input = { content: intent.content };
+      const result = await executor.invoke('memory.save', input, ctx);
+      if (result.status !== 'ok') return { level: 'L1', source: 'memory', intent: intent.kind, reply: result.status === 'error' ? result.message : '這次沒有記下來。', events: [] };
+      const updated = (result.data as { updated: boolean }).updated;
+      return { level: 'L1', source: 'memory', intent: intent.kind, reply: `${updated ? '這件事我本來就記著，已經更新了' : '記住了'}，Sir：${intent.content.replace(/[。.]+$/, '')}。之後需要時我會用上；想看或修改，在「個人記憶」。`, events: [{ tool: 'memory.save', input, result }] };
+    }
+    case 'memory_forget': {
+      const found = await executor.invoke('memory.search', { query: intent.subject }, ctx);
+      const hits = found.status === 'ok' ? (found.data as { memories: Array<{ id: string; content: string }> }).memories : [];
+      if (!hits.length) return { level: 'L1', source: 'memory', intent: intent.kind, reply: `我沒有記著和「${intent.subject}」有關的事。`, events: [] };
+      const input = { id: hits[0].id };
+      const result = await executor.invoke('memory.forget', input, ctx);
+      return { level: 'L1', source: 'memory', intent: intent.kind, reply: `找到這筆：「${hits[0].content}」。確認後就刪除${hits.length > 1 ? `；另外還有 ${hits.length - 1} 筆相關的，可以到「個人記憶」查看` : ''}。`, events: [{ tool: 'memory.forget', input, result }] };
+    }
     case 'memory_recall': {
       const subject = intent.subject.replace(/^(的)/, '');
       if (!deps.memory) return { level: 'L1', source: 'memory', intent: intent.kind, reply: `長期記憶目前還沒啟用，所以我沒有保存你的${subject}。告訴我的話，這段對話裡我會記得。`, events: [] };

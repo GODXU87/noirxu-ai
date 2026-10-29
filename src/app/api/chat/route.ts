@@ -17,7 +17,9 @@ const body = z.object({
   // Provider-specific model context, sent back unchanged by the client.
   history: z.array(z.unknown()).max(600).default([]),
   /** Which provider produced `history`; context from another provider is not reused. */
-  provider: z.enum(['anthropic', 'openai']).optional()
+  provider: z.enum(['anthropic', 'openai']).optional(),
+  /** Route of the previous reply, for the quality log. */
+  previous_route: z.string().max(60).optional()
 });
 
 export async function POST(request: Request) {
@@ -27,7 +29,7 @@ export async function POST(request: Request) {
     const parsed = body.safeParse(await request.json().catch(() => null));
     if (!parsed.success) throw new ToolError('INVALID_INPUT', '訊息格式不正確。');
     const hub = getHub();
-    const options = { text: parsed.data.text, style: parsed.data.style, history: parsed.data.history, provider: parsed.data.provider };
+    const options = { text: parsed.data.text, style: parsed.data.style, history: parsed.data.history, provider: parsed.data.provider, previousRoute: parsed.data.previous_route };
 
     // NDJSON stream: tool progress as it happens, then the finished turn. Clients that do
     // not ask for it get the single JSON response as before.

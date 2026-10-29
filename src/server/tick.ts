@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { buildBriefing, digestMessage, reminderMessage } from '@/agenda/briefing';
 import { buildEveningReport } from '@/assistant/reports';
 import { radarSection } from '@/briefing/sections';
+import { buildWeekly, weeklyPushBody } from '@/briefing/weekly';
 import { fetchUsQuotes, usMarketLine } from '@/markets/us';
 import { fetchWeather, placeFromEnv, weatherLine } from '@/weather/open-meteo';
 import { taipeiDate } from '@/lib/dates';
@@ -97,6 +98,16 @@ async function healthInsight(hub: Hub, userId: string, now: Date, when: 'morning
   return result.status === 'ok' ? result.data as { push_line?: string; headline: string; lines: string[]; narrative: string[]; signals?: Array<{ key: string; tone: string; text: string }>; hydration_ml?: number | null } : null;
 }
 
+
+/** Weekly review: the last 7 days against the 7 before, across Garmin, Ledger, Journal and the agenda. */
+export async function weeklyReview(hub: Hub, userId: string, now: Date) {
+  const ctx = { userId, now: () => now };
+  return buildWeekly({
+    invoke: (n, i, c) => hub.executor.invoke(n, i, c), ctx, today: taipeiDate(now), garmin: hub.garmin ?? null,
+    items: await hub.agenda.listItems(userId, { status: 'all' }), connected: c => hub.isConnected(userId, c),
+    quality: hub.quality ? await hub.quality.summary(userId, new Date(now.getTime() - 7 * 86_400_000), now).catch(() => null) : null
+  });
+}
 
 /** Evening summary for a scheduled task: what is still open today and what comes tomorrow. */
 export async function eveningBriefing(hub: Hub, userId: string, now: Date) {
@@ -244,6 +255,9 @@ export async function runTick(hub: Hub, now = new Date()): Promise<TickResult> {
   const ask = (q: string) => ({ url: `/?c=new&ask=${encodeURIComponent(q)}` });
   const briefing = await daily(`briefing:${OWNER_ID}:${today}`, 'briefing', 8, 11, async () => { const b = await morningBriefing(hub, OWNER_ID, now); return { title: b.title, body: b.body, ...ask('早報') }; });
   const evening = await daily(`evening:${OWNER_ID}:${today}`, 'evening', 21, 23, async () => { const b = await eveningBriefing(hub, OWNER_ID, now); return { title: b.title, body: b.body, ...ask('晚報') }; });
+  // Sunday 20:00–21:00: the weekly review, ahead of the evening briefing.
+  const sunday = new Date(`${today}T12:00:00+08:00`).getUTCDay() === 0;
+  if (sunday) await daily(`weekly:${OWNER_ID}:${today}`, 'weekly', 20, 21, async () => ({ title: 'Sir，本週回顧', body: weeklyPushBody(await weeklyReview(hub, OWNER_ID, now)) || '這週的資料不多，點開看完整回顧。', ...ask('週報') }));
 
   // Water: one notification per reminder slot, only when the user is behind pace.
   let water = false;

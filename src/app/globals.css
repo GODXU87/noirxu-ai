@@ -664,6 +664,18 @@ button[data-state="error"] { border-color: var(--danger) !important; animation: 
 @media (prefers-reduced-motion: reduce) { .sk-home, .sk-modal, .sk-modal-panel { animation: none; } }
 
 .ui-sasuke .msg-via { display: inline-flex; margin-top: 6px; font-size: 11px; color: var(--muted); letter-spacing: .02em; }
+.ui-sasuke .msg-foot { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+.ui-sasuke .msg-foot .msg-via { margin-top: 0; }
+.ui-sasuke .msg-rate { display: inline-flex; gap: 2px; margin-left: auto; opacity: .55; transition: opacity .15s ease; }
+.ui-sasuke .msg.assistant:hover .msg-rate, .ui-sasuke .msg-rate:focus-within, .ui-sasuke .msg-rate:has(.is-on) { opacity: 1; }
+.ui-sasuke .msg-rate button { min-height: 0; width: 28px; height: 28px; padding: 0; display: grid; place-items: center; border: 0; border-radius: 8px; background: none; color: var(--muted); }
+.ui-sasuke .msg-rate button:hover:not(:disabled) { background: var(--surface-2); color: var(--text); }
+.ui-sasuke .msg-rate button.is-on { color: var(--accent); }
+.ui-sasuke .msg-rate button:disabled:not(.is-on) { opacity: .35; }
+@media (hover: none) { .ui-sasuke .msg-rate { opacity: .8; } }
+.quality-tool { overflow-wrap: anywhere; min-width: 0; }
+.quality-issues { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
+.quality-issues li span { display: block; font-size: 11.5px; }
 .ui-sasuke .msg-via::before { content: ""; width: 5px; height: 5px; margin: auto 6px auto 0; border-radius: 50%; background: var(--accent); opacity: .7; }
 
 /* Notification diagnostics (both interfaces) */
@@ -833,3 +845,28 @@ button[data-state="error"] { border-color: var(--danger) !important; animation: 
 .brief-list { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 14px; }
 .brief-foot { margin: 6px 0 0; font-size: 11.5px; color: var(--muted); }
 @media (max-width: 480px) { .brief { padding: 16px 14px 12px; } .brief-line { grid-template-columns: 1fr; gap: 4px; } }
+
+/* Long-term memory page */
+.memory-card { display: grid; gap: 10px; }
+.memory-add input { flex: 1; min-width: 0; }
+.memory-group { display: grid; gap: 4px; }
+.memory-group-label { margin: 6px 0 0; font-size: 12.5px; color: var(--muted); }
+.memory-group ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.memory-group li { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px solid var(--line); }
+.memory-group li form { flex: 1; }
+.memory-group li form input { flex: 1; min-width: 0; }
+.memory-text { flex: 1; min-width: 0; display: grid; gap: 2px; overflow-wrap: anywhere; }
+.memory-text small { color: var(--muted); font-size: 11.5px; }
+.memory-actions { display: flex; gap: 4px; flex: none; }
+.memory-actions button { min-height: 0; padding: 4px 8px; font-size: 12.5px; }
+
+/* Voice input */
+.ui-sasuke .sk-mic { width: 40px; height: 40px; padding: 0; min-height: 0; border-radius: 50%; background: var(--surface-2); color: var(--text-soft, var(--text)); display: grid; place-items: center; transition: background-color .15s ease, color .15s ease; }
+.ui-sasuke .sk-tools .sk-mic { margin-left: auto; }
+.ui-sasuke .sk-tools .sk-mic + .sk-send { margin-left: 6px; }
+.ui-sasuke .sk-mic.is-listening { background: var(--accent); color: var(--accent-ink); animation: mic-pulse 1.4s ease-in-out infinite; }
+@keyframes mic-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(43, 196, 220, .45); } 50% { box-shadow: 0 0 0 8px rgba(43, 196, 220, 0); } }
+@media (prefers-reduced-motion: reduce) { .ui-sasuke .sk-mic.is-listening { animation: none; } }
+.ui-sasuke .sk-stop-speak { min-height: 0; padding: 6px 12px; border-radius: 999px; font-size: 12.5px; background: var(--surface-2); }
+.sk-voice-error { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; font-size: 13px; color: var(--warn); }
+.sk-voice-error button { min-height: 0; padding: 0 6px; background: none; border: 0; color: var(--muted); }

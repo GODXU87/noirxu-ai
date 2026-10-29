@@ -5,6 +5,8 @@ import { money, toolLabel, toolSystem } from '@/lib/tool-labels';
 import { flash } from './feedback';
 import { Icon } from './Icon';
 import { BriefingCard, type BriefingCardData } from './BriefingCard';
+import { WeeklyCard, type WeeklyCardData } from './WeeklyCard';
+import { QualityCard, type QualitySummaryData } from './QualityCard';
 
 export interface Link { label: string; url: string }
 export interface Preview { title: string; fields: Array<{ label: string; value: string }>; body?: string; warnings?: string[] }
@@ -327,6 +329,10 @@ export function ToolData({ tool, data }: { tool: string; data: any }): ReactNode
           {!data.by_type.length && <li className="muted">最近兩週沒有運動紀錄</li>}
         </ul>
       );
+    case 'memory.save':
+      return <p className="hint">{data.updated ? '已更新' : '已記住'}：{data.memory?.content}（{data.memory?.category_label}）</p>;
+    case 'memory.search':
+      return <ul className="rows">{data.memories.map((m: any) => <li key={m.id}><span className="muted">{String(m.updated_at).slice(0, 10)}</span><span>{m.content}</span>{m.stale ? <b className="muted">可能過期</b> : <b />}</li>)}{!data.memories.length && <li className="muted">沒有相關記憶</li>}</ul>;
     case 'radar.status':
       return <div className="view"><p className="hint">最新資料交易日：<b>{data.publication?.trade_date ?? '—'}</b></p></div>;
     default:
@@ -355,6 +361,8 @@ export function ToolCard({ result }: { result: Extract<InvokeResult, { status: '
   const ok = result.status === 'ok';
   // The briefing is its own card: no tool header, no raw data.
   if (ok && result.tool === 'assistant.briefing.card') return <BriefingCard data={result.data as BriefingCardData} />;
+  if (ok && result.tool === 'assistant.quality.card') return <QualityCard data={result.data as { summary: QualitySummaryData }} />;
+  if (ok && result.tool === 'assistant.weekly.card') return <WeeklyCard data={result.data as WeeklyCardData} />;
   const view = ok ? ToolData({ tool: result.tool, data: result.data }) : null;
   const reminder = ok && result.tool === 'agenda.items.create' && (result.data as { kind?: string })?.kind === 'reminder';
   return (

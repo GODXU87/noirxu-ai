@@ -5,6 +5,7 @@ import type { ToolContext } from '@/hub/types';
 import { classify } from '@/router/intents';
 import { runLocal } from '@/router/local';
 import { memoryContext, searchMemories } from '@/router/memory';
+import { turnEvents } from '@/quality/log';
 import { chooseTier, selectTools, TIER_LIMITS, trimHistory, type ModelTier } from '@/router/tier';
 import { runAgentTurn, type ProgressEvent, type ReplyStyle, type ToolEvent, type TurnUsage } from './agent';
 import { pickProvider } from './config';
@@ -36,6 +37,8 @@ export interface ChatOptions {
   history: unknown[];
   provider?: 'anthropic' | 'openai';
   onProgress?: (event: ProgressEvent) => void;
+  /** Route of the previous reply ("L1 garmin_sleep", "L2"), so a correction is pinned on it. */
+  previousRoute?: string;
   /** For the benchmark: compare with the router and the token limits switched off. */
   router?: boolean;
   optimize?: boolean;
@@ -45,7 +48,30 @@ export interface ChatOptions {
 /** Upper bound on what is kept for later turns (the screen keeps everything). */
 const KEEP_TURNS = 40;
 
+/** Route label used by the quality log ("L1 garmin_sleep", "L2"). */
+export const routeTag = (route: RouteInfo) => [route.level, route.intent].filter(Boolean).join(' ');
+
 export async function handleChat(hub: Hub, ctx: ToolContext, options: ChatOptions): Promise<ChatResult> {
+  let result: ChatResult | null = null;
+  try {
+    result = await chatTurn(hub, ctx, options);
+    return result;
+  } catch (error) {
+    await hub.quality?.record(ctx.userId, [{ kind: 'chat_error', code: 'MODEL_UNAVAILABLE' }], ctx.now()).catch(() => null);
+    throw error;
+  } finally {
+    // Quality self-check: failed tools, and "不對 / 錯了" pinned on the previous reply.
+    if (result && hub.quality) {
+      const text = options.text.replace(/^\[系統紀錄\][\s\S]*?\n\n/, '');
+      const events = result.ok
+        ? turnEvents({ text, previousRoute: options.previousRoute, route: routeTag(result.route), events: result.events })
+        : [{ kind: 'chat_error' as const, code: result.error.code, source: result.route ? routeTag(result.route) : undefined }];
+      await hub.quality.record(ctx.userId, events, ctx.now()).catch(() => null);
+    }
+  }
+}
+
+async function chatTurn(hub: Hub, ctx: ToolContext, options: ChatOptions): Promise<ChatResult> {
   const useRouter = options.router ?? true;
   const optimize = options.optimize ?? true;
 

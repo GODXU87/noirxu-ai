@@ -4,7 +4,7 @@ import { ToolError } from '@/hub/errors';
 import { parseWaterCommand } from '@/health/water';
 import { pickProvider } from '@/server/config';
 import { getHub } from '@/server/hub';
-import { eveningBriefing, morningBriefing } from '@/server/tick';
+import { eveningBriefing, morningBriefing, weeklyReview } from '@/server/tick';
 import { errorResponse, json, requireContext } from '@/server/http';
 
 export const runtime = 'nodejs';
@@ -41,6 +41,14 @@ export async function POST(request: Request) {
         const b = command.name === 'morning' ? await morningBriefing(hub, ctx.userId, ctx.now()) : await eveningBriefing(hub, ctx.userId, ctx.now());
         return json({ ok: true, command: command.name, result: { status: 'ok', tool: 'assistant.briefing.card', data: b.card, links: [] } });
       }
+      case 'weekly':
+        if (!hub.features.briefings) return notice('回顧目前已關閉。');
+        return json({ ok: true, command: command.name, result: { status: 'ok', tool: 'assistant.weekly.card', data: await weeklyReview(hub, ctx.userId, ctx.now()), links: [] } });
+      case 'quality': {
+        if (!hub.quality) return notice('品質自我檢查目前已關閉。');
+        const now = ctx.now();
+        return json({ ok: true, command: command.name, result: { status: 'ok', tool: 'assistant.quality.card', data: { summary: await hub.quality.summary(ctx.userId, new Date(now.getTime() - 7 * 86_400_000), now) }, links: [] } });
+      }
       case 'ledger':
         if (!command.arg) return notice('請在 /記帳 後面寫內容，例如「/記帳 午餐 150 元 刷卡」。');
         return json({ ok: true, command: command.name, result: await run('assistant.ledger.draft', { text: command.arg.slice(0, 300) }) });
@@ -73,7 +81,8 @@ export async function POST(request: Request) {
         break;
       }
       case 'memory':
-        return notice('長期記憶會在下一階段開放（需要新增資料表，要你另外核准）。這句話沒有被儲存。');
+        if (!command.arg) return notice('請在 /記憶 後面寫要記住的事，例如「/記憶 週三羽球改到晚上 8 點」。');
+        return json({ ok: true, command: command.name, result: await run('memory.save', { content: command.arg.slice(0, 300) }) });
     }
   } catch (error) {
     return errorResponse(error);

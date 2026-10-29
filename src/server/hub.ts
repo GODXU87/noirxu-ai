@@ -26,6 +26,9 @@ import { WaterService } from '@/health/service';
 import { loadFeatureFlags, type FeatureFlags } from '@/lib/features';
 import { ledgerAssetTools } from '@/tools/ledger/assets';
 import { taskTools } from '@/tools/tasks/tools';
+import { memoryTools } from '@/tools/memory/tools';
+import { MemoryStore } from '@/memory/store';
+import { QualityLog } from '@/quality/log';
 import { garminTools } from '@/tools/garmin/tools';
 import { GarminClient } from '@/garmin/client';
 import { DEFAULT_PROFILE, HEALTH_PROFILE_KEY } from '@/garmin/insight';
@@ -48,8 +51,11 @@ export interface Hub {
   push: PushService;
   delivery: DeliveryService;
   cost: CostGuard;
-  /** Long-term memory (Phase C2) once approved; null until then. */
+  /** Long-term memory (what the user asked SASUKE to remember). */
   memory: MemorySource | null;
+  memories: MemoryStore;
+  /** Quality self-check log (feature 'quality'); null when the feature is off. */
+  quality: QualityLog | null;
   vault: TokenVault;
   water: WaterService;
   /** Background tasks (feature 'tasks'); null when the feature is off. */
@@ -119,6 +125,7 @@ function build(): Hub {
   const gmail = new GmailService(config.google, credentials);
 
   const features = loadFeatureFlags();
+  const memories = new MemoryStore(agenda, vault);
   const garmin = features.garmin ? new GarminClient(new GarminConnectionStore(agenda, vault), agenda, vault) : null;
   const registry = new ToolRegistry();
   // Assistant tools call other tools through the executor, which is created below.
@@ -152,6 +159,7 @@ function build(): Hub {
     ...(features.water ? healthTools(water) : []),
     ...assistantTools({ agenda, water: features.water ? water : undefined, features, isConnected: (userId, connection) => isConnected(userId, connection), invoke }),
     ...(tasks ? taskTools({ tasks, hasTool: name => Boolean(registry.get(name)) }) : []),
+    ...memoryTools(memories),
     ...(garmin ? garminTools(garmin, {
       profile: async () => { try { return { ...DEFAULT_PROFILE, ...JSON.parse((await agenda.getSetting(HEALTH_PROFILE_KEY)) ?? '{}') }; } catch { return DEFAULT_PROFILE; } },
       water: features.water ? async (userId, date) => ({ goal_ml: (await water.prefs(userId)).goal_ml, total_ml: (await water.day(userId, date)).total_ml }) : undefined
@@ -168,7 +176,7 @@ function build(): Hub {
   };
 
   executor = new Executor({ registry, store, isConnected });
-  hub = { config, features, storageMode, registry, executor, ledger, journal, radar, gmail, agenda, push, delivery, cost, memory: null, vault, water, tasks, garmin, isConnected };
+  hub = { config, features, storageMode, registry, executor, ledger, journal, radar, gmail, agenda, push, delivery, cost, memory: memories, memories, quality: features.quality ? new QualityLog(agenda, vault) : null, vault, water, tasks, garmin, isConnected };
   return hub;
 }
 
