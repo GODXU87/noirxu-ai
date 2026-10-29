@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { AgendaCard, Panel, type Loaded } from '../overview/Overview';
 import { Icon, type IconName } from '../components/Icon';
@@ -19,7 +20,9 @@ export function askHref(question: string) {
 }
 
 function Ask({ question, label, icon }: { question: string; label: string; icon: IconName }) {
-  return <Link className="fp-ask" href={askHref(question)}><Icon name={icon} size={15} />{label}</Link>;
+  // The rendered href is stable (server and browser agree); the unique one is made on tap.
+  const router = useRouter();
+  return <Link className="fp-ask" href={`/?c=new&ask=${encodeURIComponent(question)}`} onClick={e => { e.preventDefault(); router.push(askHref(question)); }}><Icon name={icon} size={15} />{label}</Link>;
 }
 
 function Head({ title, lead }: { title: string; lead: string }) {
@@ -140,6 +143,39 @@ export function MailView({ connected }: { connected: Record<string, boolean> }) 
 interface InboxRow { key: string; title: string; body: string; created_at: string; read: boolean; status: string }
 const STATUS: Record<string, string> = { provider_accepted: '已推播', grouped: '已合併通知', retry_pending: '待重試', failed: '推播失敗', expired: '未推播', pending: '等待中', sending: '發送中' };
 
+/** Today's body status from Garmin (the same rules as the briefings); hidden when Garmin is off. */
+function BodyCard() {
+  const [body, setBody] = useState<any>(undefined);
+  useEffect(() => {
+    void fetch('/api/today?part=body', { cache: 'no-store' }).then(r => r.json()).then(setBody).catch(() => setBody({ error: { message: '連線中斷，請重新整理。' } }));
+  }, []);
+  if (body?.off) return null;
+  return (
+    <section className="card body-card">
+      <p className="section-label">身體狀況<small>Garmin · {body?.when === 'evening' ? '今天' : '昨晚與今天'}</small></p>
+      {body === undefined ? <div className="mc-skeleton" aria-hidden="true"><i /><i /></div>
+        : body.error ? (
+          <>
+            <p className="hint">{body.error.code === 'NOT_CONNECTED' ? 'Garmin 尚未連接。' : body.error.message}</p>
+            {body.error.code === 'NOT_CONNECTED' && <div className="fp-asks"><Link className="fp-ask" href="/connections"><Icon name="link" size={15} />前往連接 Garmin</Link></div>}
+          </>
+        ) : (
+          <>
+            {body.headline && <p className="body-headline">{body.headline}</p>}
+            {body.signals?.length > 0 && <div className="health-chips">{body.signals.map((sig: { key: string; tone: string; text: string }) => <span key={sig.key} className={`health-chip tone-${sig.tone}`}>{sig.text}</span>)}</div>}
+            {body.narrative?.length > 0 && <div className="brief-prose">{body.narrative.map((p: string, i: number) => <p key={i}>{p}</p>)}</div>}
+            <div className="fp-asks">
+              <Ask question="依我的身體狀況，今天的訓練要怎麼調整？" label="今天怎麼練" icon="heart" />
+              <Ask question="這週的訓練量和上週比較如何？" label="這週 vs 上週" icon="chart" />
+              <Ask question="最近 7 晚的睡眠趨勢如何？" label="睡眠趨勢" icon="sun" />
+            </div>
+            <p className="hint">裝置指標僅供參考，不是醫療診斷。</p>
+          </>
+        )}
+    </section>
+  );
+}
+
 export function LifeView({ water: waterEnabled }: { water: boolean }) {
   const [water, setWater] = useState<any>(null);
   const [inbox, setInbox] = useState<InboxRow[] | null>(null);
@@ -150,7 +186,8 @@ export function LifeView({ water: waterEnabled }: { water: boolean }) {
   const when = (iso: string) => new Intl.DateTimeFormat('zh-TW', { timeZone: 'Asia/Taipei', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso));
   return (
     <main className="stack fp">
-      <Head title="提醒與生活" lead="喝水、提醒與通知紀錄。通知的開啟與故障排除在「設定與連線」。" />
+      <Head title="提醒與生活" lead="身體狀況、喝水、提醒與通知紀錄。通知的開啟與故障排除在「設定與連線」。" />
+      <BodyCard />
       {waterEnabled && (
         <section className="card">
           <p className="section-label">今日飲水</p>

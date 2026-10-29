@@ -71,16 +71,28 @@ export async function runOpenAITurn(options: {
   for (let iteration = 0; iteration < (limits.maxIterations ?? MAX_ITERATIONS); iteration += 1) {
     const stop = limits.beforeCall?.(usage);
     if (stop) return { provider: 'openai', messages: input, reply: stop, events, stopReason: 'budget', usage };
-    const response = await client.responses.create({
+    const params = {
       model,
       instructions,
       input: input as InputItem[],
       tools,
       store: false,
-      include: ['reasoning.encrypted_content'],
+      include: ['reasoning.encrypted_content' as const],
       max_output_tokens: limits.maxOutputTokens ?? 16000,
       ...(effort ? { reasoning: { effort } } : {})
-    });
+    };
+    // Stream when someone is watching, so the reply appears as it is written instead of all
+    // at once at the end; the finished response is the same either way.
+    let response: OpenAI.Responses.Response;
+    if (options.onProgress && typeof client.responses.stream === 'function') {
+      const stream = client.responses.stream(params);
+      for await (const event of stream) {
+        if (event.type === 'response.output_text.delta') options.onProgress({ type: 'text', delta: event.delta });
+      }
+      response = await stream.finalResponse();
+    } else {
+      response = await client.responses.create(params);
+    }
     usage.calls += 1;
     usage.input_tokens += response.usage?.input_tokens ?? 0;
     usage.output_tokens += response.usage?.output_tokens ?? 0;

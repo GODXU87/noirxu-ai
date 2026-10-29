@@ -194,7 +194,8 @@ function QuickEntry({ onSaved }: { onSaved: () => void }) {
   );
 }
 
-export function Overview({ connected }: { connected: Record<string, boolean> }) {
+/** `finance`: the SASUKE 財務 page — money only; the agenda lives in 任務中心. */
+export function Overview({ connected, finance = false }: { connected: Record<string, boolean>; finance?: boolean }) {
   const today = taipeiToday();
   const month = today.slice(0, 7);
   const [analytics, setAnalytics] = useState<Loaded>();
@@ -222,14 +223,14 @@ export function Overview({ connected }: { connected: Record<string, boolean> }) 
   return (
     <main className="stack">
       <div className="page-head">
-        <div><p className="eyebrow">{date}</p><h1>總覽</h1></div>
+        <div><p className="eyebrow">{date}</p><h1>{finance ? '財務' : '總覽'}</h1></div>
         <div className="page-actions"><a href="/report"><button className="ghost"><Icon name="report" size={16} />本月報告</button></a></div>
       </div>
 
       {connected.ledger && <Hero analytics={analytics} assets={assets} month={month} />}
 
-      <div className="cards two">
-        <AgendaCard />
+      <div className={finance ? 'cards' : 'cards two'}>
+        {!finance && <AgendaCard />}
         {connected.ledger ? <QuickEntry onSaved={loadLedger} /> : (
           <section className="card">
             <p className="section-label">開始使用</p>

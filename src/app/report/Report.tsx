@@ -59,7 +59,9 @@ export function Report({ connected, requestedMonth }: { connected: Record<string
   const [assets, setAssets] = useState<Loaded>();
   const [performance, setPerformance] = useState<Loaded>();
   const [agenda, setAgenda] = useState<AgendaView[] | null>(null);
-  const [generatedAt] = useState(() => new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' }));
+  // Set in the browser only, so the server render and hydration never disagree on the second.
+  const [generatedAt, setGeneratedAt] = useState('');
+  useEffect(() => setGeneratedAt(new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })), []);
 
   useEffect(() => {
     if (connected.ledger) {
