@@ -47,7 +47,7 @@ export async function morningBriefing(hub: Hub, userId: string, now: Date) {
   const [weather, health, us, radar] = await Promise.all([
     hub.features?.weather ? settle(fetchWeather(placeFromEnv())) : Promise.resolve(null),
     settle(healthInsight(hub, userId, now, 'morning')),
-    hub.features?.us_markets ? settle(fetchUsQuotes()) : Promise.resolve(null),
+    hub.features?.us_markets ? settle(fetchUsQuotes({ apiKey: process.env.ALPHAVANTAGE_API_KEY?.trim() || undefined, store: hub.agenda, vault: hub.vault, now })) : Promise.resolve(null),
     (await hub.isConnected(userId, 'radar')) ? settle(radarSection((n, i, c) => hub.executor.invoke(n, i, c), ctx)) : Promise.resolve(null)
   ]);
   // Source status in the logs (names and counts only), to confirm a newly enabled source works.
