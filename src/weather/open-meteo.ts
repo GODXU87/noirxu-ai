@@ -34,32 +34,33 @@ export function weatherLabel(code: number | null): string {
   return '多雲';
 }
 
-const first = (v: unknown) => (Array.isArray(v) && typeof v[0] === 'number' && Number.isFinite(v[0]) ? v[0] as number : null);
+const at = (v: unknown, i: number) => (Array.isArray(v) && typeof v[i] === 'number' && Number.isFinite(v[i]) ? v[i] as number : null);
 
-export function weatherFromResponse(body: unknown, place: WeatherPlace): WeatherToday {
+/** day 0 = today, 1 = tomorrow (the response must include that many forecast days). */
+export function weatherFromResponse(body: unknown, place: WeatherPlace, day = 0): WeatherToday {
   const daily = (body as { daily?: Record<string, unknown> } | null)?.daily;
-  if (!daily || !Array.isArray(daily.time) || !daily.time.length) throw new ToolError('INVALID_OUTPUT', '天氣服務回傳格式不符，沒有使用。');
-  const code = first(daily.weather_code);
-  const tmax = first(daily.temperature_2m_max);
-  const tmin = first(daily.temperature_2m_min);
-  const pop = first(daily.precipitation_probability_max);
-  const rain = first(daily.precipitation_sum);
-  const uv = first(daily.uv_index_max);
+  if (!daily || !Array.isArray(daily.time) || daily.time.length <= day) throw new ToolError('INVALID_OUTPUT', '天氣服務回傳格式不符，沒有使用。');
+  const code = at(daily.weather_code, day);
+  const tmax = at(daily.temperature_2m_max, day);
+  const tmin = at(daily.temperature_2m_min, day);
+  const pop = at(daily.precipitation_probability_max, day);
+  const rain = at(daily.precipitation_sum, day);
+  const uv = at(daily.uv_index_max, day);
   const advice: string[] = [];
   if ((pop ?? 0) >= 50 || (code !== null && code >= 51)) advice.push('出門帶傘');
   if ((tmax ?? 0) >= 32) advice.push('高溫，運動多補水、避開正午');
   else if ((tmin ?? 99) <= 15) advice.push('早晚偏涼，帶件外套');
   if ((uv ?? 0) >= 8) advice.push('紫外線強，注意防曬');
   return {
-    date: String(daily.time[0]), place: place.name, summary: weatherLabel(code), code,
+    date: String(daily.time[day]), place: place.name, summary: weatherLabel(code), code,
     temp_max: tmax, temp_min: tmin, rain_chance: pop, rain_mm: rain, uv_max: uv, advice, source: 'Open-Meteo'
   };
 }
 
-export async function fetchWeather(place: WeatherPlace, fetcher: typeof fetch = fetch): Promise<WeatherToday> {
+export async function fetchWeather(place: WeatherPlace, fetcher: typeof fetch = fetch, day = 0): Promise<WeatherToday> {
   const url = new URL('https://api.open-meteo.com/v1/forecast');
   url.search = new URLSearchParams({
-    latitude: String(place.lat), longitude: String(place.lon), timezone: 'Asia/Taipei', forecast_days: '1',
+    latitude: String(place.lat), longitude: String(place.lon), timezone: 'Asia/Taipei', forecast_days: String(day + 1),
     daily: 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,uv_index_max'
   }).toString();
   let response: Response;
@@ -69,7 +70,7 @@ export async function fetchWeather(place: WeatherPlace, fetcher: typeof fetch = 
     throw new ToolError('UPSTREAM_UNAVAILABLE', '天氣服務暫時連不上。');
   }
   if (!response.ok) throw new ToolError('UPSTREAM_UNAVAILABLE', `天氣服務回應 HTTP ${response.status}。`);
-  return weatherFromResponse(await response.json().catch(() => null), place);
+  return weatherFromResponse(await response.json().catch(() => null), place, day);
 }
 
 export function weatherLine(w: WeatherToday) {
