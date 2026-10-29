@@ -833,3 +833,14 @@ button[data-state="error"] { border-color: var(--danger) !important; animation: 
 .brief-list { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 14px; }
 .brief-foot { margin: 6px 0 0; font-size: 11.5px; color: var(--muted); }
 @media (max-width: 480px) { .brief { padding: 16px 14px 12px; } .brief-line { grid-template-columns: 1fr; gap: 4px; } }
+
+/* Voice input */
+.ui-sasuke .sk-mic { width: 40px; height: 40px; padding: 0; min-height: 0; border-radius: 50%; background: var(--surface-2); color: var(--text-soft, var(--text)); display: grid; place-items: center; transition: background-color .15s ease, color .15s ease; }
+.ui-sasuke .sk-tools .sk-mic { margin-left: auto; }
+.ui-sasuke .sk-tools .sk-mic + .sk-send { margin-left: 6px; }
+.ui-sasuke .sk-mic.is-listening { background: var(--accent); color: var(--accent-ink); animation: mic-pulse 1.4s ease-in-out infinite; }
+@keyframes mic-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(43, 196, 220, .45); } 50% { box-shadow: 0 0 0 8px rgba(43, 196, 220, 0); } }
+@media (prefers-reduced-motion: reduce) { .ui-sasuke .sk-mic.is-listening { animation: none; } }
+.ui-sasuke .sk-stop-speak { min-height: 0; padding: 6px 12px; border-radius: 999px; font-size: 12.5px; background: var(--surface-2); }
+.sk-voice-error { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; font-size: 13px; color: var(--warn); }
+.sk-voice-error button { min-height: 0; padding: 0 6px; background: none; border: 0; color: var(--muted); }

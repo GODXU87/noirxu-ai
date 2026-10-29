@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { parseCommand, type CommandName } from '@/assistant/commands';
 import type { FeatureFlags } from '@/lib/features';
+import { MicButton, useSpeech, useVoiceInput } from './components/Voice';
 import { money } from '@/lib/tool-labels';
 import { BrandMark, Icon, type IconName } from './components/Icon';
 import { AssistantCard, WaterMeter } from './components/assistant';
@@ -160,6 +161,20 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   const [pending, setPending] = useState<string[]>([]);
   const feedEnd = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
+  // Voice: one utterance per tap into the composer (editable); a turn started by voice gets its
+  // reply read aloud, which can be stopped at any time.
+  const voice = useVoiceInput(spoken => setText(spoken));
+  const speech = useSpeech();
+  const voiceTurn = useRef(false);
+  const textRef = useRef('');
+  textRef.current = text;
+  const voiceOn = sasuke && features.voice && voice.supported;
+  function toggleMic() {
+    if (voice.listening) { voice.stop(); return; }
+    speech.stop();
+    voiceTurn.current = true;
+    voice.start(textRef.current);
+  }
   const empty = items.length === 0;
   const brief = useBrief(empty && features.briefings);
   const inbox = useInbox(empty && sasuke);
@@ -238,6 +253,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   async function send(message: string) {
     message = message.trim();
     if (!message || busy) return;
+    if (voice.listening) voice.stop();
     setText('');
     setItems(prev => [...prev, { kind: 'user', text: message }]); scroll();
     // Shortcut commands are parsed by fixed rules on the server, not by the AI model.
@@ -312,11 +328,13 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
         ...body.events.filter((_: unknown, i: number) => !shown.has(i)).map((e: { result: InvokeResult }) => { if (e.result.status === 'confirmation_required') setPending(p => [...p, (e.result as { proposalId: string }).proposalId]); return { kind: 'tool' as const, result: e.result }; }),
         ...(body.reply ? [{ kind: 'assistant' as const, text: body.reply, via: routeLabel(body.route) }] : [])
       ]);
+      if (voiceTurn.current && body.reply) speech.speak(body.reply);
     } catch {
       setItems(prev => [...prev, shown.size
         ? { kind: 'error', text: '連線中斷：上方已顯示的工具結果是真的已執行的部分，AI 的回覆沒有收到。' }
         : { kind: 'error', text: '網路錯誤，訊息沒有送出。', retry: message }]);
     } finally {
+      voiceTurn.current = false;
       setBusy(null); scroll();
     }
   }
@@ -445,6 +463,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
         )}
         {sasuke ? (
           <form className="sk-composer" onSubmit={event => { event.preventDefault(); void send(text); }}>
+            {voice.error && <p className="sk-voice-error" role="alert">{voice.error}<button type="button" onClick={voice.clearError} aria-label="關閉">×</button></p>}
             <textarea ref={input} value={text} onChange={e => setText(e.target.value)} rows={1} aria-label="訊息" onKeyDown={onKeyDown} onCompositionEnd={() => { composedAt.current = Date.now(); }} onInput={() => { armed.current = 0; setEnterHint(false); }} placeholder={placeholder} />
             <div className="sk-tools">
               <div className="sk-agent-menu" ref={menuBox}>
@@ -465,6 +484,9 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
                 )}
               </div>
               {enterHint && <span className="sk-enter-hint" role="status">再按一次 Enter 送出</span>}
+              {voice.listening && <span className="sk-enter-hint" role="status">聆聽中…說完按一下麥克風</span>}
+              {speech.speaking && <button type="button" className="sk-stop-speak" onClick={speech.stop}>停止朗讀</button>}
+              {voiceOn && <MicButton listening={voice.listening} disabled={Boolean(busy)} onClick={toggleMic} />}
               <button className="sk-send" type="submit" disabled={Boolean(busy) || !text.trim()} aria-label="送出"><Icon name="up" size={18} /></button>
             </div>
           </form>
