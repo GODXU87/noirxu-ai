@@ -11,7 +11,7 @@ import { pickProvider } from './config';
 import type { Hub } from './hub';
 import { historyProviderOf } from './providers/history';
 import { runOpenAITurn } from './providers/openai';
-import { lastTick } from './tick';
+import { eveningBriefing, lastTick, morningBriefing } from './tick';
 
 // One entry point for every chat message:
 //   1. local router (L0 rules / L1 data reads) — zero model calls, works without API keys;
@@ -54,6 +54,7 @@ export async function handleChat(hub: Hub, ctx: ToolContext, options: ChatOption
     const turn = await runLocal(intent, {
       executor: hub.executor, ctx, memory: hub.memory,
       isConnected: connection => hub.isConnected(ctx.userId, connection as never),
+      briefing: async which => (which === 'morning' ? morningBriefing(hub, ctx.userId, ctx.now()) : eveningBriefing(hub, ctx.userId, ctx.now())),
       schedulerAgeMinutes: async () => { const last = await lastTick(hub); return last ? Math.round((ctx.now().getTime() - Date.parse(last.at)) / 60_000) : null; }
     });
     await hub.cost.recordLocal(intent.kind, ctx.now()).catch(() => null);

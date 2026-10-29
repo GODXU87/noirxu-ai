@@ -17,7 +17,7 @@ export interface LocalTurn {
   events: ToolEvent[];
 }
 
-interface Deps { executor: Executor; ctx: ToolContext; memory: MemorySource | null; isConnected: (connection: string) => Promise<boolean>; schedulerAgeMinutes?: () => Promise<number | null> }
+interface Deps { executor: Executor; ctx: ToolContext; memory: MemorySource | null; isConnected: (connection: string) => Promise<boolean>; schedulerAgeMinutes?: () => Promise<number | null>; briefing?: (which: 'morning' | 'evening') => Promise<{ title: string; full: string[] }> }
 
 const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
 const WEEKDAY = ['日', '一', '二', '三', '四', '五', '六'];
@@ -190,6 +190,11 @@ export async function runLocal(intent: LocalIntent, deps: Deps): Promise<LocalTu
       const head = `${sirFor(seed) ? 'Sir，' : ''}${d.headline}`;
       const gaps = d.gaps.length ? `\n（還沒有：${d.gaps.join('、')}）` : '';
       return { level: 'L1', source: 'tool', intent: intent.kind, reply: `${head}\n${d.lines.join('\n')}${gaps}`, events: [{ tool: 'garmin.health.insight', input, result }] };
+    }
+    case 'briefing': {
+      if (!deps.briefing) return local('早晚報目前無法產生，請稍後再試。');
+      const b = await deps.briefing(intent.which);
+      return { level: 'L1', source: 'tool', intent: intent.kind, reply: `${b.title}\n${b.full.join('\n')}`, events: [] };
     }
     case 'memory_recall': {
       const subject = intent.subject.replace(/^(的)/, '');
