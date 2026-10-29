@@ -11,7 +11,7 @@ import { SasukeNav } from './sasuke/SasukeNav';
 export const metadata: Metadata = {
   title: 'NOIRXU AI',
   description: '在一個對話中查詢與操作 NOIRXU Ledger、Trading Journal、RADAR 與 Gmail。',
-  appleWebApp: { capable: true, title: 'NOIRXU AI', statusBarStyle: 'black-translucent' }
+  appleWebApp: { capable: true, title: 'SASUKE', statusBarStyle: 'black-translucent' }
 };
 export async function generateViewport(): Promise<Viewport> {
   const ui = await uiMode();

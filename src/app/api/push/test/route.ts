@@ -13,8 +13,7 @@ export async function POST(request: Request) {
     const ctx = await requireContext(request, { mutating: true });
     const hub = getHub();
     const now = ctx.now();
-    const time = new Intl.DateTimeFormat('zh-TW', { timeZone: 'Asia/Taipei', hour: '2-digit', minute: '2-digit', hour12: false }).format(now);
-    const report = await hub.push.send(ctx.userId, { title: 'SASUKE 測試通知', body: `${time} 送出。看到這則代表這台裝置可以收到提醒。`, url: '/connections', tag: `test-${now.getTime()}` }, now);
+    const report = await hub.push.send(ctx.userId, { title: 'Sir，通知正常', body: '', url: '/connections', tag: `test-${now.getTime()}` }, now);
     return json({ ok: true, ...report });
   } catch (error) {
     return errorResponse(error);
