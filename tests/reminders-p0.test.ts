@@ -103,7 +103,7 @@ describe('E–F: no burst of advance notices; explicit times kept', () => {
     expect(reminders[0].title).toBe('Sir，準備兒童朝會報告');
     expect(reminders[0].body).toContain('5 個時段');
     expect(reminders[0].body).not.toContain('備註');
-    expect((await hub.delivery.inbox('owner')).filter(e => e.kind !== 'weekly').length).toBe(5);
+    expect((await hub.delivery.inbox('owner')).filter((e: { kind: string }) => e.kind !== 'weekly').length).toBe(5);
     expect([...agenda.reminders.values()].filter(r => r.sent_at).length).toBe(5);
   });
 
