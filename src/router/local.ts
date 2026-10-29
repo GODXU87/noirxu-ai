@@ -186,10 +186,9 @@ export async function runLocal(intent: LocalIntent, deps: Deps): Promise<LocalTu
       const input = { when };
       const result = await executor.invoke('garmin.health.insight', input, ctx);
       if (result.status !== 'ok') return { level: 'L1', source: 'tool', intent: intent.kind, reply: notOk(result), events: [] };
-      const d = result.data as { headline: string; lines: string[]; gaps: string[] };
-      const head = `${sirFor(seed) ? 'Sir，' : ''}${d.headline}`;
+      const d = result.data as { narrative: string[]; gaps: string[] };
       const gaps = d.gaps.length ? `\n（還沒有：${d.gaps.join('、')}）` : '';
-      return { level: 'L1', source: 'tool', intent: intent.kind, reply: `${head}\n${d.lines.join('\n')}${gaps}`, events: [{ tool: 'garmin.health.insight', input, result }] };
+      return { level: 'L1', source: 'tool', intent: intent.kind, reply: `${d.narrative.join('\n')}${gaps}`, events: [{ tool: 'garmin.health.insight', input, result }] };
     }
     case 'briefing': {
       if (!deps.briefing) return local('早晚報目前無法產生，請稍後再試。');

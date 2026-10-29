@@ -86,7 +86,7 @@ export function garminTools(garmin: GarminAdapter, deps: GarminToolDeps = {}): T
           // A rejected key or outage is reported, not hidden behind "no data".
           const sleep = await garmin.sleep(ctx.userId, today).catch(e => (e?.code === 'NOT_FOUND' ? null : Promise.reject(e)));
           const [history, recovery] = await Promise.all([settle(garmin.sleepRange(ctx.userId, addDays(today, -8), addDays(today, -1))), settle(garmin.recovery(ctx.userId, today))]);
-          return { data: { ...morningInsight({ date: today, sleep, history: history ?? [], recovery, profile, waterGoalMl: goal }), note: NOTE } };
+          return { data: { ...morningInsight({ date: today, sleep, history: history ?? [], recovery, profile, waterGoalMl: goal, hour: Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Taipei', hour: '2-digit', hour12: false }).format(ctx.now())) }), note: NOTE } };
         }
         const daily = await garmin.daily(ctx.userId, today).catch(e => (e?.code === 'NOT_FOUND' ? null : Promise.reject(e)));
         const [activities, sleepToday] = await Promise.all([settle(garmin.activities(ctx.userId, { from: today, to: today, limit: 20 })), settle(garmin.sleep(ctx.userId, today))]);
