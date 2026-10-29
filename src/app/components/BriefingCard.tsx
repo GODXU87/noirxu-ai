@@ -57,7 +57,7 @@ export function BriefingCard({ data }: { data: BriefingCardData }) {
       </header>
 
       {data.weather && (
-        <Section icon="sun" label="天氣" meta={data.weather.place}>
+        <Section icon="sun" label={data.kind === 'evening' ? '明天天氣' : '天氣'} meta={data.weather.place}>
           <div className="brief-weather">
             <b>{data.weather.temp_min !== null && data.weather.temp_max !== null ? `${Math.round(data.weather.temp_min)}–${Math.round(data.weather.temp_max)}°` : '—'}</b>
             <span>{data.weather.summary}{data.weather.rain_chance !== null ? ` · 降雨 ${Math.round(data.weather.rain_chance)}%` : ''}</span>
@@ -67,7 +67,7 @@ export function BriefingCard({ data }: { data: BriefingCardData }) {
       )}
 
       {h && (
-        <Section icon="heart" label="身體" meta="Garmin">
+        <Section icon="heart" label={data.kind === 'evening' ? '今天的身體' : '身體'} meta="Garmin">
           {h.signals.length > 0 && <div className="health-chips">{h.signals.map(s => <span key={s.key} className={`health-chip tone-${s.tone}`}>{s.text}</span>)}{h.hydration_ml ? <span className="health-chip">補水 {h.hydration_ml.toLocaleString('en-US')} ml</span> : null}</div>}
           <div className="brief-prose">
             {(more ? h.narrative : h.narrative.slice(0, 1)).map((p, i) => <p key={i}>{p}</p>)}

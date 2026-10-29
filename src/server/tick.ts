@@ -107,13 +107,18 @@ export async function eveningBriefing(hub: Hub, userId: string, now: Date) {
     report.tomorrow.length ? `明天：${report.tomorrow.slice(0, 3).map(i => i.title).join('、')}` : '明天沒有排定的事'
   ].filter((l): l is string => Boolean(l));
   const urgent = (i: { priority: string }) => i.priority === 'urgent' || i.priority === 'high';
-  const health = await healthInsight(hub, userId, now, 'evening').catch(() => null);
+  const [health, tomorrow] = await Promise.all([
+    healthInsight(hub, userId, now, 'evening').catch(() => null),
+    hub.features?.weather ? fetchWeather(placeFromEnv(), fetch, 1).catch(() => null) : Promise.resolve(null)
+  ]);
   if (health?.push_line) lines.unshift(`身體：${health.push_line}`);
+  // Tomorrow's weather the evening before, so an umbrella or a jacket can be ready.
+  if (tomorrow) lines.push(`明天天氣：${weatherLine(tomorrow)}`);
   const full = [...(health ? ['身體：', ...health.narrative.map(l => `  ${l}`)] : []), '待辦：', ...lines.filter(l => !l.startsWith('身體：')).map(l => `  ${l}`)];
   const card: BriefingCard = {
-    kind: 'evening', date: taipeiDate(now), title: 'Sir，今日晚報', weather: null, us: null, radar: null,
+    kind: 'evening', date: taipeiDate(now), title: 'Sir，今日晚報', weather: tomorrow, us: null, radar: null,
     health: health ? { narrative: health.narrative, signals: health.signals ?? [], hydration_ml: health.hydration_ml ?? null } : null,
-    agenda: lines.filter(l => !l.startsWith('身體：')), finance: []
+    agenda: lines.filter(l => !l.startsWith('身體：') && !l.startsWith('明天天氣：')), finance: []
   };
   return { title: 'Sir，今日晚報', body: lines.join('\n'), full, card, important: report.overdue.length > 0 || report.tomorrow.some(urgent) || report.still_open_today.some(urgent) };
 }

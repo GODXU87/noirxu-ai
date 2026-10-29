@@ -9,6 +9,8 @@ describe('weather (Open-Meteo daily format)', () => {
     const w = weatherFromResponse({ daily: { time: ['2026-10-30'], weather_code: [61], temperature_2m_max: [27.4], temperature_2m_min: [21.2], precipitation_probability_max: [70], precipitation_sum: [6.2], uv_index_max: [5.1] } }, DEFAULT_PLACE);
     expect(weatherLine(w)).toBe('林口雨 21–27°C，降雨機率 70%，出門帶傘');
     expect(() => weatherFromResponse({ error: true }, DEFAULT_PLACE)).toThrow('格式不符');
+    const two = { daily: { time: ['2026-10-29', '2026-10-30'], weather_code: [3, 63], temperature_2m_max: [26, 24.6], temperature_2m_min: [19.4, 20.1], precipitation_probability_max: [2, 80], precipitation_sum: [0, 9], uv_index_max: [6, 3] } };
+    expect(weatherLine(weatherFromResponse(two, DEFAULT_PLACE, 1))).toBe('林口雨 20–25°C，降雨機率 80%，出門帶傘');
   });
 });
 
