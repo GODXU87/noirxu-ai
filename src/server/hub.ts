@@ -28,6 +28,7 @@ import { ledgerAssetTools } from '@/tools/ledger/assets';
 import { taskTools } from '@/tools/tasks/tools';
 import { garminTools } from '@/tools/garmin/tools';
 import { GarminClient } from '@/garmin/client';
+import { DEFAULT_PROFILE, HEALTH_PROFILE_KEY } from '@/garmin/insight';
 import { GarminConnectionStore, type GarminAdapter } from '@/garmin/adapter';
 import { TaskService } from '@/tasks/service';
 import { eveningBriefing, morningBriefing } from './tick';
@@ -151,7 +152,10 @@ function build(): Hub {
     ...(features.water ? healthTools(water) : []),
     ...assistantTools({ agenda, water: features.water ? water : undefined, features, isConnected: (userId, connection) => isConnected(userId, connection), invoke }),
     ...(tasks ? taskTools({ tasks, hasTool: name => Boolean(registry.get(name)) }) : []),
-    ...(garmin ? garminTools(garmin) : [])
+    ...(garmin ? garminTools(garmin, {
+      profile: async () => { try { return { ...DEFAULT_PROFILE, ...JSON.parse((await agenda.getSetting(HEALTH_PROFILE_KEY)) ?? '{}') }; } catch { return DEFAULT_PROFILE; } },
+      water: features.water ? async (userId, date) => ({ goal_ml: (await water.prefs(userId)).goal_ml, total_ml: (await water.day(userId, date)).total_ml }) : undefined
+    }) : [])
   ]) registry.register(tool);
 
   const isConnected = async (userId: string, connection: ConnectionId) => {

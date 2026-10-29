@@ -23,9 +23,13 @@ export interface GarminDaily {
 export interface GarminSleep {
   date: string; duration_s: number | null; deep_s: number | null; light_s: number | null; rem_s: number | null; awake_s: number | null;
   awake_count: number | null; quality: string | null; result: string | null; start_local: string | null; end_local: string | null; avg_hr: number | null; avg_sleep_stress: number | null;
+  /** Garmin's recommended bedtime window for the coming night (minutes after midnight), when given. */
+  tonight_bedtime: { start_min: number; end_min: number } | null;
 }
 export interface GarminRecovery {
   date: string; hrv_last_night_avg: number | null; hrv_weekly_avg: number | null; hrv_status: string | null;
+  /** Garmin's personal 'balanced' HRV range. */
+  hrv_balanced_low: number | null; hrv_balanced_high: number | null;
   body_battery_at_wake: number | null; body_battery_latest: number | null; resting_hr: number | null; resting_hr_7d_avg: number | null; sleep_s: number | null;
   /** The Personal API has no training-readiness endpoint; said plainly instead of estimated. */
   not_available: string[];
@@ -37,6 +41,8 @@ export interface GarminAdapter {
   activity(userId: string, id: string): Promise<GarminActivity>;
   daily(userId: string, date: string): Promise<GarminDaily>;
   sleep(userId: string, date: string): Promise<GarminSleep>;
+  /** Up to 31 nights (official limit), oldest first. */
+  sleepRange(userId: string, from: string, to: string): Promise<GarminSleep[]>;
   recovery(userId: string, date: string): Promise<GarminRecovery>;
 }
 
@@ -50,6 +56,7 @@ export class GarminNotConfigured implements GarminAdapter {
   async activity(_userId: string, _id: string): Promise<GarminActivity> { this.fail(); }
   async daily(_userId: string, _date: string): Promise<GarminDaily> { this.fail(); }
   async sleep(_userId: string, _date: string): Promise<GarminSleep> { this.fail(); }
+  async sleepRange(_userId: string, _from: string, _to: string): Promise<GarminSleep[]> { this.fail(); }
   async recovery(_userId: string, _date: string): Promise<GarminRecovery> { this.fail(); }
 }
 

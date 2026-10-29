@@ -797,3 +797,10 @@ button[data-state="error"] { border-color: var(--danger) !important; animation: 
 .cards > *, .conn-list > * { min-width: 0; }
 .conn { overflow-wrap: anywhere; }
 .conn ol { padding-left: 18px; display: grid; gap: 4px; }
+
+/* Garmin body-status chips in the chat */
+.health-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.health-chip { font-size: 12.5px; padding: 3px 10px; border-radius: 999px; background: var(--surface-2); color: var(--text-soft, var(--text)); }
+.health-chip.tone-good { color: var(--up, var(--accent)); background: rgba(73, 210, 155, .1); }
+.health-chip.tone-watch { color: var(--warn); background: rgba(242, 194, 91, .1); }
+.health-chip.tone-low { color: var(--danger); background: rgba(255, 122, 133, .1); }

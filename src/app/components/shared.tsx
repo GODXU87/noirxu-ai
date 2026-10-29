@@ -299,6 +299,33 @@ export function ToolData({ tool, data }: { tool: string; data: any }): ReactNode
       return <p className="hint">{data.halted ? '所有背景自動任務已停止，任務與紀錄都保留。' : '背景自動任務已恢復。'}</p>;
     case 'tasks.list':
       return <div className="view task-list">{data.tasks.map((t: any) => <TaskCard key={t.id} task={t} />)}{!data.tasks.length && <p className="hint">目前沒有自動任務。</p>}</div>;
+    case 'garmin.health.insight':
+      return (
+        <div className="view">
+          <div className="health-chips">{data.signals?.map((sig: any) => <span key={sig.key} className={`health-chip tone-${sig.tone}`}>{sig.text}</span>)}{data.hydration_ml ? <span className="health-chip">補水 {money(data.hydration_ml)} ml</span> : null}</div>
+          <p className="hint">資料日期 {data.date}{data.gaps?.length ? ` · 尚缺：${data.gaps.join('、')}` : ''} · 僅供參考，不是醫療診斷</p>
+        </div>
+      );
+    case 'garmin.sleep.summary': {
+      const h = (sec: number | null) => (sec == null ? '—' : `${Math.floor(sec / 3600)}:${String(Math.round((sec % 3600) / 60)).padStart(2, '0')}`);
+      return <div className="view"><div className="stats"><Stat label="總睡眠" value={h(data.duration_s)} /><Stat label="深睡" value={h(data.deep_s)} /><Stat label="REM" value={h(data.rem_s)} /><Stat label="清醒" value={h(data.awake_s)} /></div><p className="hint">{data.date}{data.start_local && data.end_local ? ` · ${data.start_local}–${data.end_local}` : ''}</p></div>;
+    }
+    case 'garmin.health.daily':
+      return <div className="view"><div className="stats"><Stat label="步數" value={data.steps == null ? '—' : money(data.steps)} /><Stat label="靜息心率" value={data.resting_hr ?? '—'} /><Stat label="Body Battery" value={data.body_battery_latest ?? '—'} /><Stat label="平均壓力" value={data.stress_avg ?? '—'} /></div><p className="hint">{data.date}{data.last_device_sync ? ` · 手錶同步 ${String(data.last_device_sync).slice(11, 16)} UTC` : ''}</p></div>;
+    case 'garmin.activities.list':
+      return (
+        <ul className="rows">
+          {data.activities.slice(0, 12).map((a: any) => <li key={a.id}><span className="muted">{String(a.start_local).slice(5, 16)}</span><span>{a.name || a.type}</span><b>{Math.round(a.duration_s / 60)} 分{a.distance_m ? ` · ${(a.distance_m / 1000).toFixed(1)} km` : ''}</b></li>)}
+          {!data.activities.length && <li className="muted">這段期間沒有運動紀錄</li>}
+        </ul>
+      );
+    case 'garmin.training.compare':
+      return (
+        <ul className="rows">
+          {data.by_type.map((t: any) => <li key={t.type}><span>{t.type}</span><span className="muted">{t.last_week.minutes} → {t.this_week.minutes} 分</span><b>{t.change_pct.minutes == null ? '新增' : `${t.change_pct.minutes > 0 ? '+' : ''}${t.change_pct.minutes}%`}</b></li>)}
+          {!data.by_type.length && <li className="muted">最近兩週沒有運動紀錄</li>}
+        </ul>
+      );
     case 'radar.status':
       return <div className="view"><p className="hint">最新資料交易日：<b>{data.publication?.trade_date ?? '—'}</b></p></div>;
     default:
