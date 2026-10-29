@@ -111,12 +111,12 @@ export class GarminClient implements GarminAdapter {
   }
 
   async sleep(userId: string, date: string): Promise<GarminSleep> {
-    const d = (await this.get<Json | null>(userId, '/sleep-service/sleep/dailySleep', { date })) ?? {};
-    return {
-      date, duration_s: num(d.sleepTimeSeconds), deep_s: num(d.deepSleepSeconds), light_s: num(d.lightSleepSeconds), rem_s: num(d.remSleepSeconds),
-      awake_s: num(d.awakeSleepSeconds), awake_count: num(d.awakeCount), quality: str(d.sleepQualityTypePK), result: str(d.sleepResultTypePK),
-      start_local: str(d.sleepStartTimestampLocal), end_local: str(d.sleepEndTimestampLocal), avg_hr: num(d.avgHeartRate), avg_sleep_stress: num(d.avgSleepStress)
-    };
+    return sleepView(date, (await this.get<Json | null>(userId, '/sleep-service/sleep/dailySleep', { date })) ?? {});
+  }
+
+  async sleepRange(userId: string, from: string, to: string): Promise<GarminSleep[]> {
+    const rows = (await this.get<Json[] | null>(userId, '/sleep-service/sleep/dailySleepSummariesByDate', { startDate: from, endDate: to })) ?? [];
+    return rows.map(r => sleepView(str(r.calendarDate) ?? '', r)).sort((a, b) => a.date.localeCompare(b.date));
   }
 
   async recovery(userId: string, date: string): Promise<GarminRecovery> {
@@ -128,6 +128,7 @@ export class GarminClient implements GarminAdapter {
     const summary = ((hrv ?? {}) as Json).hrvSummary as Json | undefined;
     return {
       date, hrv_last_night_avg: num(summary?.lastNightAvg), hrv_weekly_avg: num(summary?.weeklyAvg), hrv_status: str(summary?.status),
+      hrv_balanced_low: num((summary?.baseline as Json | undefined)?.balancedLow), hrv_balanced_high: num((summary?.baseline as Json | undefined)?.balancedUpper),
       body_battery_at_wake: daily.body_battery_at_wake, body_battery_latest: daily.body_battery_latest,
       resting_hr: daily.resting_hr, resting_hr_7d_avg: daily.resting_hr_7d_avg, sleep_s: sleep?.duration_s ?? null,
       not_available: ['training_readiness（Personal API 沒有提供）']
@@ -143,6 +144,28 @@ export class GarminClient implements GarminAdapter {
     const d = (await this.get<Json | null>(userId, `/activity-service/activity/${encodeURIComponent(id)}`)) ?? {};
     return activityView(d, (d.summaryDTO as Json | undefined) ?? {}, (d.activityTypeDTO as Json | undefined));
   }
+}
+
+/**
+ * Local sleep times arrive as "in user's local timezone offset, in ms" (a number) per the spec,
+ * or as a local date-time string. Either way the wall-clock HH:MM is returned.
+ */
+function localClock(v: unknown): string | null {
+  if (typeof v === 'number' && Number.isFinite(v)) return new Date(v).toISOString().slice(11, 16);
+  if (typeof v === 'string') { const m = v.match(/[T ](\d{2}:\d{2})/); return m ? m[1] : null; }
+  return null;
+}
+
+function sleepView(date: string, d: Json): GarminSleep {
+  const next = d.nextSleepNeed as Json | undefined;
+  const start = num(next?.recommendedBedtimeStartMins);
+  const end = num(next?.recommendedBedtimeEndMins);
+  return {
+    date, duration_s: num(d.sleepTimeSeconds), deep_s: num(d.deepSleepSeconds), light_s: num(d.lightSleepSeconds), rem_s: num(d.remSleepSeconds),
+    awake_s: num(d.awakeSleepSeconds), awake_count: num(d.awakeCount), quality: str(d.sleepQualityTypePK), result: str(d.sleepResultTypePK),
+    start_local: localClock(d.sleepStartTimestampLocal), end_local: localClock(d.sleepEndTimestampLocal), avg_hr: num(d.avgHeartRate), avg_sleep_stress: num(d.avgSleepStress),
+    tonight_bedtime: start !== null && end !== null ? { start_min: start, end_min: end } : null
+  };
 }
 
 /** List rows carry the measurements at the top level; the single-activity endpoint nests them in summaryDTO. */
