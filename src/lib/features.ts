@@ -5,7 +5,7 @@
 // Vercel without touching the rest of the app.
 
 export const ASSISTANT_FEATURES = ['triage', 'commands', 'briefings', 'reply_drafts', 'water', 'tasks', 'voice'] as const;
-export const OPT_IN_FEATURES = ['finance_alerts', 'garmin'] as const;
+export const OPT_IN_FEATURES = ['finance_alerts', 'garmin', 'weather', 'us_markets'] as const;
 export type AssistantFeature = (typeof ASSISTANT_FEATURES)[number] | (typeof OPT_IN_FEATURES)[number];
 export type FeatureFlags = Record<AssistantFeature, boolean>;
 

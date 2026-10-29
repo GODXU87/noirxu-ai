@@ -2,6 +2,9 @@ import 'server-only';
 import { createHash } from 'node:crypto';
 import { buildBriefing, digestMessage, reminderMessage } from '@/agenda/briefing';
 import { buildEveningReport } from '@/assistant/reports';
+import { radarSection } from '@/briefing/sections';
+import { fetchUsQuotes, usMarketLine } from '@/markets/us';
+import { fetchWeather, placeFromEnv, weatherLine } from '@/weather/open-meteo';
 import { taipeiDate } from '@/lib/dates';
 import { dueWaterSlot, waterReminder } from '@/health/water';
 import type { PushMessage } from '@/push/service';
@@ -38,18 +41,38 @@ export async function morningBriefing(hub: Hub, userId: string, now: Date) {
     if (trades.status === 'ok') openPositions = (trades.data as { total_matching: number }).total_matching;
   }
   const brief = buildBriefing({ today, items, ledger, openPositions });
-  const health = await healthLine(hub, userId, now, 'morning');
-  return health ? { ...brief, body: `${health}\n${brief.body}`, lines: [health, ...brief.lines] } : brief;
+  // Context first (weather, body, US close, RADAR), then the agenda. Each source is optional and
+  // independent: one that is off or failing is simply left out, never estimated.
+  const settle = <T,>(p: Promise<T>) => p.catch(() => null);
+  const [weather, health, us, radar] = await Promise.all([
+    hub.features?.weather ? settle(fetchWeather(placeFromEnv())) : Promise.resolve(null),
+    settle(healthInsight(hub, userId, now, 'morning')),
+    hub.features?.us_markets ? settle(fetchUsQuotes()) : Promise.resolve(null),
+    (await hub.isConnected(userId, 'radar')) ? settle(radarSection((n, i, c) => hub.executor.invoke(n, i, c), ctx)) : Promise.resolve(null)
+  ]);
+  const usLine = us ? usMarketLine(us.quotes) : null;
+  const head = [
+    weather ? `天氣：${weatherLine(weather)}` : null,
+    health?.push_line ? `身體：${health.push_line}` : null,
+    usLine,
+    radar?.line ?? null
+  ].filter((l): l is string => Boolean(l));
+  const full = [
+    ...(weather ? [`天氣：${weatherLine(weather)}（Open-Meteo）`] : []),
+    ...(health ? [`身體：${health.headline}`, ...health.lines.map(l => `  ${l}`)] : []),
+    ...(us?.quotes.length ? [`${usLine}`, ...us.quotes.map(q => `  ${q.label} ${q.close.toLocaleString('en-US', { maximumFractionDigits: 2 })}${q.change_pct === null ? '' : `（${q.change_pct > 0 ? '+' : ''}${q.change_pct.toFixed(2)}%）`}`), '  僅為行情參考，不是投資建議。'] : []),
+    ...(radar ? [`RADAR（${radar.trade_date} 資料）：`, ...radar.detail.map(l => `  ${l}`), '  研究參考，不保證報酬，也不會自動下單。'] : []),
+    ...(brief.lines.length ? ['待辦與財務：', ...brief.lines.map(l => `  ${l}`)] : ['待辦：今天和近三天沒有待辦。'])
+  ];
+  return { ...brief, body: [...head, ...brief.lines].join('\n') || brief.body, lines: [...head, ...brief.lines], full };
 }
 
-/** One body-status line from Garmin for the briefings; null when Garmin is off, not set up or unavailable. */
-async function healthLine(hub: Hub, userId: string, now: Date, when: 'morning' | 'evening') {
+async function healthInsight(hub: Hub, userId: string, now: Date, when: 'morning' | 'evening') {
   if (!hub.garmin) return null;
   const result = await hub.executor.invoke('garmin.health.insight', { when }, { userId, now: () => now });
-  if (result.status !== 'ok') return null;
-  const line = (result.data as { push_line?: string }).push_line;
-  return line ? `身體：${line}` : null;
+  return result.status === 'ok' ? result.data as { push_line?: string; headline: string; lines: string[] } : null;
 }
+
 
 /** Evening summary for a scheduled task: what is still open today and what comes tomorrow. */
 export async function eveningBriefing(hub: Hub, userId: string, now: Date) {
@@ -59,11 +82,12 @@ export async function eveningBriefing(hub: Hub, userId: string, now: Date) {
     report.still_open_today.length ? `今天還沒完成：${report.still_open_today.slice(0, 3).map(i => i.title).join('、')}` : null,
     report.overdue.length ? `逾期 ${report.overdue.length} 件` : null,
     report.tomorrow.length ? `明天：${report.tomorrow.slice(0, 3).map(i => i.title).join('、')}` : '明天沒有排定的事'
-  ].filter(Boolean);
+  ].filter((l): l is string => Boolean(l));
   const urgent = (i: { priority: string }) => i.priority === 'urgent' || i.priority === 'high';
-  const health = await healthLine(hub, userId, now, 'evening');
-  if (health) lines.unshift(health);
-  return { title: 'Sir，今日晚報', body: lines.join('\n'), important: report.overdue.length > 0 || report.tomorrow.some(urgent) || report.still_open_today.some(urgent) };
+  const health = await healthInsight(hub, userId, now, 'evening').catch(() => null);
+  if (health?.push_line) lines.unshift(`身體：${health.push_line}`);
+  const full = [...(health ? [`身體：${health.headline}`, ...health.lines.map(l => `  ${l}`)] : []), '待辦：', ...lines.filter(l => !l.startsWith('身體：')).map(l => `  ${l}`)];
+  return { title: 'Sir，今日晚報', body: lines.join('\n'), full, important: report.overdue.length > 0 || report.tomorrow.some(urgent) || report.still_open_today.some(urgent) };
 }
 
 /** Taipei wall-clock HH:MM on `date` as an instant. */
@@ -182,9 +206,10 @@ export async function runTick(hub: Hub, now = new Date()): Promise<TickResult> {
     return record.status === 'provider_accepted';
   };
   // With Garmin, tapping the briefing opens the full body-status analysis (answered locally, no model).
-  const askBody = (q: string) => (hub.garmin ? { url: `/?c=new&ask=${encodeURIComponent(q)}` } : {});
-  const briefing = await daily(`briefing:${OWNER_ID}:${today}`, 'briefing', 8, 11, async () => { const b = await morningBriefing(hub, OWNER_ID, now); return { title: b.title, body: b.body, ...askBody('昨晚睡得怎樣') }; });
-  const evening = await daily(`evening:${OWNER_ID}:${today}`, 'evening', 21, 23, async () => { const b = await eveningBriefing(hub, OWNER_ID, now); return { title: b.title, body: b.body, ...askBody('今天身體狀況如何') }; });
+  // Tapping a briefing opens its full version in a new chat (answered locally, no model).
+  const ask = (q: string) => ({ url: `/?c=new&ask=${encodeURIComponent(q)}` });
+  const briefing = await daily(`briefing:${OWNER_ID}:${today}`, 'briefing', 8, 11, async () => { const b = await morningBriefing(hub, OWNER_ID, now); return { title: b.title, body: b.body, ...ask('早報') }; });
+  const evening = await daily(`evening:${OWNER_ID}:${today}`, 'evening', 21, 23, async () => { const b = await eveningBriefing(hub, OWNER_ID, now); return { title: b.title, body: b.body, ...ask('晚報') }; });
 
   // Water: one notification per reminder slot, only when the user is behind pace.
   let water = false;
