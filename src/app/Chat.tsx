@@ -260,6 +260,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
       if (body.forward) return body.forward as string;
       if (body.command === null) return message;
       if (body.result) setItems(prev => [...prev, { kind: 'tool', result: body.result }]);
+      if (body.reply) setItems(prev => [...prev, { kind: 'assistant', text: body.reply, via: '本地處理' }]);
       if (body.notice) setItems(prev => [...prev, { kind: 'notice', text: body.notice }]);
       if (body.help) setItems(prev => [...prev, { kind: 'help', items: body.help }]);
     } catch {
