@@ -174,11 +174,8 @@ export function MemoryView() {
   useEffect(() => { setCount(listConversations().length); }, []);
   return (
     <main className="stack fp">
-      <Head title="個人記憶" lead="SASUKE 記住的偏好與重要決定，以及你的對話紀錄。" />
-      <section className="card">
-        <p className="section-label">長期記憶</p>
-        <p className="hint">尚未啟用。長期記憶需要在資料庫新增資料表（已設計完成，等待你核准）。啟用前，SASUKE 只會記得同一段對話裡的內容；帳務、交易與行情一律以 Ledger、Journal、RADAR 的即時資料為準，不會用記憶代替。</p>
-      </section>
+      <Head title="個人記憶" lead="SASUKE 記住的偏好、作息、目標與重要決定。只記你要它記的事，不會自動保存聊天內容；帳務、交易與行情一律以即時資料為準。" />
+      <LongTermMemory />
       <section className="card">
         <p className="section-label">對話紀錄</p>
         <p className="hint">{count === null ? '讀取中…' : `這台裝置上有 ${count} 段對話，不會自動刪除。`}</p>
@@ -186,5 +183,63 @@ export function MemoryView() {
       </section>
       {open && <HistoryDialog onClose={() => setOpen(false)} />}
     </main>
+  );
+}
+
+interface Memory { id: string; content: string; category: string; updated_at: string }
+
+function LongTermMemory() {
+  const [items, setItems] = useState<Memory[] | null>(null);
+  const [labels, setLabels] = useState<Record<string, string>>({});
+  const [text, setText] = useState('');
+  const [editing, setEditing] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
+  const [error, setError] = useState('');
+  const load = () => fetch('/api/memory').then(r => r.json()).then(b => { if (b.ok) { setItems(b.memories); setLabels(b.categories); } else setError(b.error?.message ?? '讀不到記憶'); }).catch(() => setError('讀不到記憶'));
+  useEffect(() => { void load(); }, []);
+  async function send(method: 'POST' | 'PATCH' | 'DELETE', body: unknown) {
+    setError('');
+    const res = await fetch('/api/memory', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()).catch(() => null);
+    if (!res?.ok) { setError(res?.error?.message ?? '操作失敗'); return false; }
+    await load();
+    return true;
+  }
+  const groups = Object.entries(labels).map(([key, label]) => ({ key, label, list: (items ?? []).filter(m => m.category === key) })).filter(g => g.list.length);
+  return (
+    <section className="card memory-card">
+      <p className="section-label">長期記憶{items ? <small>{items.length} 筆</small> : null}</p>
+      <form className="row memory-add" onSubmit={e => { e.preventDefault(); if (text.trim().length >= 2) void send('POST', { content: text }).then(ok => ok && setText('')); }}>
+        <input value={text} onChange={e => setText(e.target.value)} placeholder="例如：週三羽球改到晚上 8 點" maxLength={300} aria-label="要記住的事" />
+        <button className="primary" disabled={text.trim().length < 2}>記住</button>
+      </form>
+      <p className="hint">也可以直接在對話裡說「記住…」或「忘記…」。</p>
+      {items === null ? <p className="hint">讀取中…</p> : !items.length ? <p className="hint">還沒有記憶。</p> : groups.map(g => (
+        <div key={g.key} className="memory-group">
+          <p className="memory-group-label">{g.label}</p>
+          <ul>
+            {g.list.map(m => (
+              <li key={m.id}>
+                {editing === m.id ? (
+                  <form className="row" onSubmit={e => { e.preventDefault(); void send('PATCH', { id: m.id, content: draft }).then(ok => ok && setEditing(null)); }}>
+                    <input value={draft} onChange={e => setDraft(e.target.value)} maxLength={300} aria-label="修改記憶" autoFocus />
+                    <button className="primary">儲存</button>
+                    <button type="button" className="ghost" onClick={() => setEditing(null)}>取消</button>
+                  </form>
+                ) : (
+                  <>
+                    <span className="memory-text">{m.content}<small>{m.updated_at.slice(0, 10)}</small></span>
+                    <span className="memory-actions">
+                      <button type="button" className="ghost" onClick={() => { setEditing(m.id); setDraft(m.content); }}>修改</button>
+                      <button type="button" className="ghost" onClick={() => { if (window.confirm(`刪除這筆記憶？\n「${m.content}」`)) void send('DELETE', { id: m.id }); }}>刪除</button>
+                    </span>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+      {error && <p className="hint tone-error">{error}</p>}
+    </section>
   );
 }

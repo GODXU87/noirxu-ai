@@ -73,7 +73,8 @@ export async function POST(request: Request) {
         break;
       }
       case 'memory':
-        return notice('長期記憶會在下一階段開放（需要新增資料表，要你另外核准）。這句話沒有被儲存。');
+        if (!command.arg) return notice('請在 /記憶 後面寫要記住的事，例如「/記憶 週三羽球改到晚上 8 點」。');
+        return json({ ok: true, command: command.name, result: await run('memory.save', { content: command.arg.slice(0, 300) }) });
     }
   } catch (error) {
     return errorResponse(error);

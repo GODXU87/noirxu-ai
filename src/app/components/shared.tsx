@@ -327,6 +327,10 @@ export function ToolData({ tool, data }: { tool: string; data: any }): ReactNode
           {!data.by_type.length && <li className="muted">最近兩週沒有運動紀錄</li>}
         </ul>
       );
+    case 'memory.save':
+      return <p className="hint">{data.updated ? '已更新' : '已記住'}：{data.memory?.content}（{data.memory?.category_label}）</p>;
+    case 'memory.search':
+      return <ul className="rows">{data.memories.map((m: any) => <li key={m.id}><span className="muted">{String(m.updated_at).slice(0, 10)}</span><span>{m.content}</span>{m.stale ? <b className="muted">可能過期</b> : <b />}</li>)}{!data.memories.length && <li className="muted">沒有相關記憶</li>}</ul>;
     case 'radar.status':
       return <div className="view"><p className="hint">最新資料交易日：<b>{data.publication?.trade_date ?? '—'}</b></p></div>;
     default:
