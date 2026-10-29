@@ -53,7 +53,7 @@ const QUICK: Array<{ label: string; text: string; run: boolean; icon: IconName; 
 ];
 
 const WORKING: Partial<Record<CommandName, string>> = {
-  morning: '正在整理早報', evening: '正在整理晚報', water: '更新喝水紀錄', ledger: '正在整理記帳草稿', triage: '正在分析文字', help: '讀取指令'
+  morning: '正在整理早報', evening: '正在整理晚報', weekly: '正在整理本週回顧', water: '更新喝水紀錄', ledger: '正在整理記帳草稿', triage: '正在分析文字', help: '讀取指令'
 };
 
 const SYSTEMS = [['ledger', 'Ledger'], ['journal', 'Journal'], ['radar', 'RADAR'], ['gmail', 'Gmail']] as const;

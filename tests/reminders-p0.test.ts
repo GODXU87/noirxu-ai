@@ -96,12 +96,14 @@ describe('E–F: no burst of advance notices; explicit times kept', () => {
     for (const t of slots) await create({ title: '準備兒童朝會報告', due_date: '2026-10-26', due_time: t, importance: 3, notes: '原始訊息很長的備註' }, taipei('2026-10-23T19:43:00'));
     await runTick(hub, taipei('2026-10-23T20:02:59'));
     expect(sent).toHaveLength(0);
+    // 10/25 is a Sunday: the weekly review also goes out at 20:00, so count the reminders only.
     await runTick(hub, taipei('2026-10-25T20:01:00'));
-    expect(sent).toHaveLength(1);
-    expect(sent[0].title).toBe('Sir，準備兒童朝會報告');
-    expect(sent[0].body).toContain('5 個時段');
-    expect(sent[0].body).not.toContain('備註');
-    expect((await hub.delivery.inbox('owner')).length).toBe(5);
+    const reminders = sent.filter(m => !m.tag?.startsWith('weekly-'));
+    expect(reminders).toHaveLength(1);
+    expect(reminders[0].title).toBe('Sir，準備兒童朝會報告');
+    expect(reminders[0].body).toContain('5 個時段');
+    expect(reminders[0].body).not.toContain('備註');
+    expect((await hub.delivery.inbox('owner')).filter(e => e.kind !== 'weekly').length).toBe(5);
     expect([...agenda.reminders.values()].filter(r => r.sent_at).length).toBe(5);
   });
 
