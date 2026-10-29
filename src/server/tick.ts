@@ -50,6 +50,9 @@ export async function morningBriefing(hub: Hub, userId: string, now: Date) {
     hub.features?.us_markets ? settle(fetchUsQuotes()) : Promise.resolve(null),
     (await hub.isConnected(userId, 'radar')) ? settle(radarSection((n, i, c) => hub.executor.invoke(n, i, c), ctx)) : Promise.resolve(null)
   ]);
+  // Source status in the logs (names and counts only), to confirm a newly enabled source works.
+  if (hub.features?.weather) console.info('[noirxu-ai:briefing-source]', 'weather', weather ? 'ok' : 'unavailable');
+  if (hub.features?.us_markets) console.info('[noirxu-ai:briefing-source]', 'us_markets', us ? `${us.quotes.length} ok` : 'unavailable', us?.errors.length ? `errors: ${us.errors.join('; ').slice(0, 300)}` : '');
   const usLine = us ? usMarketLine(us.quotes) : null;
   const head = [
     weather ? `天氣：${weatherLine(weather)}` : null,
