@@ -1,7 +1,7 @@
 // Explicit shortcut commands. Parsed with plain rules, never guessed by the AI model, so
 // a slash command always does exactly what it says.
 
-export type CommandName = 'morning' | 'evening' | 'weekly' | 'ledger' | 'memory' | 'triage' | 'reply' | 'water' | 'help';
+export type CommandName = 'morning' | 'evening' | 'weekly' | 'quality' | 'ledger' | 'memory' | 'triage' | 'reply' | 'water' | 'help';
 
 export interface ParsedCommand {
   name: CommandName;
@@ -14,6 +14,7 @@ const SLASH: Record<string, CommandName> = {
   早報: 'morning', 晨報: 'morning', morning: 'morning',
   晚報: 'evening', evening: 'evening',
   週報: 'weekly', 周報: 'weekly', 回顧: 'weekly', weekly: 'weekly',
+  品質: 'quality', 自我檢查: 'quality', quality: 'quality',
   記帳: 'ledger', ledger: 'ledger',
   記憶: 'memory', memory: 'memory',
   分診: 'triage', 整理: 'triage', triage: 'triage',
@@ -34,6 +35,7 @@ export const COMMAND_HELP: Array<{ command: string; description: string }> = [
   { command: '/早報', description: '天氣、身體狀況、美股收盤、RADAR、今天的待辦與財務' },
   { command: '/晚報', description: '今天的身體與訓練、未完成的事、明天的安排與上床時間' },
   { command: '/週報', description: '本週回顧：訓練、睡眠、支出、交易、完成的事，和上週比較' },
+  { command: '/品質', description: 'SASUKE 自我檢查：最近工具失敗、被糾正與 👍👎 的紀錄和改進建議' },
   { command: '/記帳 午餐 150 元 刷卡', description: '整理成記帳草稿，你確認後才寫入 Ledger' },
   { command: '/分診 [貼上文字]', description: '從訊息、通知或信件中找出行程、待辦、金額與需要回覆的內容' },
   { command: '/回覆 [貼上信件]', description: '擬回覆草稿（需要 AI）；寄出前一樣要確認' },

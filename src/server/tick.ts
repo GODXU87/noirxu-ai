@@ -104,7 +104,8 @@ export async function weeklyReview(hub: Hub, userId: string, now: Date) {
   const ctx = { userId, now: () => now };
   return buildWeekly({
     invoke: (n, i, c) => hub.executor.invoke(n, i, c), ctx, today: taipeiDate(now), garmin: hub.garmin ?? null,
-    items: await hub.agenda.listItems(userId, { status: 'all' }), connected: c => hub.isConnected(userId, c)
+    items: await hub.agenda.listItems(userId, { status: 'all' }), connected: c => hub.isConnected(userId, c),
+    quality: hub.quality ? await hub.quality.summary(userId, new Date(now.getTime() - 7 * 86_400_000), now).catch(() => null) : null
   });
 }
 

@@ -1,6 +1,7 @@
 import type { AgendaItem } from '@/agenda/rank';
 import type { GarminAdapter, GarminSleep } from '@/garmin/adapter';
 import type { InvokeResult, ToolContext } from '@/hub/types';
+import type { QualitySummary } from '@/quality/log';
 
 // Weekly review (Sunday evening, or '週報' any time): the last 7 days against the 7 before,
 // across Garmin, Ledger, Journal and the agenda, plus a few cross-system observations. All
@@ -18,6 +19,8 @@ export interface WeeklyCard {
   trading: Array<{ currency: string; closed: number; win_rate: number | null; net_pnl: number; last_net_pnl: number | null }> | null;
   tasks: { done: number; open_overdue: number } | null;
   insights: string[];
+  /** SASUKE's own quality self-check for the week (feature 'quality'). */
+  quality?: QualitySummary | null;
 }
 
 const TYPE_LABEL: Record<string, string> = { running: '跑步', strength_training: '重訓', badminton: '羽球', indoor_cardio: '室內有氧', cycling: '騎車', walking: '走路', hiit: 'HIIT', treadmill_running: '跑步機' };
@@ -32,7 +35,7 @@ const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.le
 const ok = <T,>(r: InvokeResult) => (r.status === 'ok' ? r.data as T : null);
 const hm = (s: number) => `${Math.floor(s / 3600)} 小時 ${Math.round((s % 3600) / 60)} 分`;
 
-export async function buildWeekly(deps: { invoke: Invoke; ctx: ToolContext; today: string; garmin: GarminAdapter | null; items: AgendaItem[]; connected: (c: 'ledger' | 'journal') => Promise<boolean> }): Promise<WeeklyCard> {
+export async function buildWeekly(deps: { invoke: Invoke; ctx: ToolContext; today: string; garmin: GarminAdapter | null; items: AgendaItem[]; connected: (c: 'ledger' | 'journal') => Promise<boolean>; quality?: QualitySummary | null }): Promise<WeeklyCard> {
   const { invoke, ctx, today } = deps;
   const range = { from: addDays(today, -6), to: today, prev_from: addDays(today, -13), prev_to: addDays(today, -7) };
   const settle = <T,>(p: Promise<T>) => p.catch(() => null);
@@ -105,7 +108,7 @@ export async function buildWeekly(deps: { invoke: Invoke; ctx: ToolContext; toda
   if (spending && spending.change_pct !== null && spending.change_pct >= 30 && spending.top[0]) insights.push(`支出比上週多 ${spending.change_pct}%，最大宗是${spending.top[0].name}（${spending.currency} ${spending.top[0].amount.toLocaleString('en-US')}）。`);
   if (sleep && sleep.short_nights >= 3) insights.push(`這週有 ${sleep.short_nights} 晚睡不到 6.5 小時。`);
 
-  return { kind: 'weekly', range, training, sleep, spending, trading, tasks, insights };
+  return { kind: 'weekly', range, training, sleep, spending, trading, tasks, insights, quality: deps.quality ?? null };
 }
 
 export function weeklyPushBody(w: WeeklyCard): string {

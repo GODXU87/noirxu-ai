@@ -664,6 +664,18 @@ button[data-state="error"] { border-color: var(--danger) !important; animation: 
 @media (prefers-reduced-motion: reduce) { .sk-home, .sk-modal, .sk-modal-panel { animation: none; } }
 
 .ui-sasuke .msg-via { display: inline-flex; margin-top: 6px; font-size: 11px; color: var(--muted); letter-spacing: .02em; }
+.ui-sasuke .msg-foot { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+.ui-sasuke .msg-foot .msg-via { margin-top: 0; }
+.ui-sasuke .msg-rate { display: inline-flex; gap: 2px; margin-left: auto; opacity: .55; transition: opacity .15s ease; }
+.ui-sasuke .msg.assistant:hover .msg-rate, .ui-sasuke .msg-rate:focus-within, .ui-sasuke .msg-rate:has(.is-on) { opacity: 1; }
+.ui-sasuke .msg-rate button { min-height: 0; width: 28px; height: 28px; padding: 0; display: grid; place-items: center; border: 0; border-radius: 8px; background: none; color: var(--muted); }
+.ui-sasuke .msg-rate button:hover:not(:disabled) { background: var(--surface-2); color: var(--text); }
+.ui-sasuke .msg-rate button.is-on { color: var(--accent); }
+.ui-sasuke .msg-rate button:disabled:not(.is-on) { opacity: .35; }
+@media (hover: none) { .ui-sasuke .msg-rate { opacity: .8; } }
+.quality-tool { overflow-wrap: anywhere; min-width: 0; }
+.quality-issues { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
+.quality-issues li span { display: block; font-size: 11.5px; }
 .ui-sasuke .msg-via::before { content: ""; width: 5px; height: 5px; margin: auto 6px auto 0; border-radius: 50%; background: var(--accent); opacity: .7; }
 
 /* Notification diagnostics (both interfaces) */

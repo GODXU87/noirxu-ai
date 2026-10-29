@@ -44,6 +44,11 @@ export async function POST(request: Request) {
       case 'weekly':
         if (!hub.features.briefings) return notice('回顧目前已關閉。');
         return json({ ok: true, command: command.name, result: { status: 'ok', tool: 'assistant.weekly.card', data: await weeklyReview(hub, ctx.userId, ctx.now()), links: [] } });
+      case 'quality': {
+        if (!hub.quality) return notice('品質自我檢查目前已關閉。');
+        const now = ctx.now();
+        return json({ ok: true, command: command.name, result: { status: 'ok', tool: 'assistant.quality.card', data: { summary: await hub.quality.summary(ctx.userId, new Date(now.getTime() - 7 * 86_400_000), now) }, links: [] } });
+      }
       case 'ledger':
         if (!command.arg) return notice('請在 /記帳 後面寫內容，例如「/記帳 午餐 150 元 刷卡」。');
         return json({ ok: true, command: command.name, result: await run('assistant.ledger.draft', { text: command.arg.slice(0, 300) }) });

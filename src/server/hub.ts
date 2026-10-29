@@ -28,6 +28,7 @@ import { ledgerAssetTools } from '@/tools/ledger/assets';
 import { taskTools } from '@/tools/tasks/tools';
 import { memoryTools } from '@/tools/memory/tools';
 import { MemoryStore } from '@/memory/store';
+import { QualityLog } from '@/quality/log';
 import { garminTools } from '@/tools/garmin/tools';
 import { GarminClient } from '@/garmin/client';
 import { DEFAULT_PROFILE, HEALTH_PROFILE_KEY } from '@/garmin/insight';
@@ -53,6 +54,8 @@ export interface Hub {
   /** Long-term memory (what the user asked SASUKE to remember). */
   memory: MemorySource | null;
   memories: MemoryStore;
+  /** Quality self-check log (feature 'quality'); null when the feature is off. */
+  quality: QualityLog | null;
   vault: TokenVault;
   water: WaterService;
   /** Background tasks (feature 'tasks'); null when the feature is off. */
@@ -173,7 +176,7 @@ function build(): Hub {
   };
 
   executor = new Executor({ registry, store, isConnected });
-  hub = { config, features, storageMode, registry, executor, ledger, journal, radar, gmail, agenda, push, delivery, cost, memory: memories, memories, vault, water, tasks, garmin, isConnected };
+  hub = { config, features, storageMode, registry, executor, ledger, journal, radar, gmail, agenda, push, delivery, cost, memory: memories, memories, quality: features.quality ? new QualityLog(agenda, vault) : null, vault, water, tasks, garmin, isConnected };
   return hub;
 }
 

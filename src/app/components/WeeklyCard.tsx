@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react';
 import { Icon, type IconName } from './Icon';
+import { QualitySection, type QualitySummaryData } from './QualityCard';
 
 // The weekly review card: this week against last week, one section per source, and SASUKE's
 // cross-system observations at the top (only the ones the data supports).
@@ -15,6 +16,7 @@ export interface WeeklyCardData {
   trading: Array<{ currency: string; closed: number; win_rate: number | null; net_pnl: number; last_net_pnl: number | null }> | null;
   tasks: { done: number; open_overdue: number } | null;
   insights: string[];
+  quality?: QualitySummaryData | null;
 }
 
 const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
@@ -97,6 +99,8 @@ export function WeeklyCard({ data }: { data: WeeklyCardData }) {
           <p className="brief-prose">完成 {data.tasks.done} 件{data.tasks.open_overdue ? `，還有 ${data.tasks.open_overdue} 件逾期` : '，沒有逾期的事'}。</p>
         </Section>
       )}
+
+      {data.quality && <QualitySection summary={data.quality} />}
 
       <p className="brief-foot">交易數字依幣別分開計算，不是投資建議；健康數據來自 Garmin，不是醫療診斷。</p>
     </article>

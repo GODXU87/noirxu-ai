@@ -14,7 +14,7 @@ import { callTool, ProposalCard, RichText, ToolCard, type InvokeResult } from '.
 
 type Item =
   | { kind: 'user'; text: string }
-  | { kind: 'assistant'; text: string; via?: string }
+  | { kind: 'assistant'; text: string; via?: string; route?: string; rated?: 'up' | 'down' }
   | { kind: 'error'; text: string; retry?: string }
   | { kind: 'tool'; result: InvokeResult }
   | { kind: 'notice'; text: string }
@@ -30,6 +30,7 @@ const STYLE_KEY = 'noirxu-ai-style';
 const PALETTE: Array<{ command: string; fill: string; label: string; run: boolean; feature: keyof FeatureFlags }> = [
   { command: '/早報', fill: '/早報', label: '今天的行程、最重要的三件事、逾期與提醒', run: true, feature: 'briefings' },
   { command: '/晚報', fill: '/晚報', label: '今天完成了什麼、明天先做什麼', run: true, feature: 'briefings' },
+  { command: '/品質', fill: '/品質', label: 'SASUKE 自我檢查：失誤、被糾正與評分', run: true, feature: 'quality' },
   { command: '/記帳', fill: '/記帳 ', label: '一句話記帳，確認後才寫入 Ledger', run: false, feature: 'commands' },
   { command: '/分診', fill: '/分診 ', label: '貼上訊息，找出行程、待辦、帳單與要回覆的事', run: false, feature: 'triage' },
   { command: '/回覆', fill: '/回覆 ', label: '貼上信件，擬回覆草稿（需要 AI）', run: false, feature: 'reply_drafts' },
@@ -54,7 +55,7 @@ const QUICK: Array<{ label: string; text: string; run: boolean; icon: IconName; 
 ];
 
 const WORKING: Partial<Record<CommandName, string>> = {
-  morning: '正在整理早報', evening: '正在整理晚報', weekly: '正在整理本週回顧', water: '更新喝水紀錄', ledger: '正在整理記帳草稿', triage: '正在分析文字', help: '讀取指令'
+  morning: '正在整理早報', evening: '正在整理晚報', weekly: '正在整理本週回顧', quality: '正在整理自我檢查', water: '更新喝水紀錄', ledger: '正在整理記帳草稿', triage: '正在分析文字', help: '讀取指令'
 };
 
 const SYSTEMS = [['ledger', 'Ledger'], ['journal', 'Journal'], ['radar', 'RADAR'], ['gmail', 'Gmail']] as const;
@@ -63,6 +64,11 @@ const TOOL_LABELS: Record<string, string> = { ledger: 'Ledger', journal: 'Journa
 function toolLabel(tool: string) { return TOOL_LABELS[tool.split('.')[0]] ?? tool; }
 
 /** How the server handled a reply; details (tokens, cost) live in Settings → AI 成本保護. */
+/** Same tag as the server's quality log ("L1 garmin_sleep", "L2"). */
+function routeTag(route?: { level: string; intent?: string }) {
+  return route ? [route.level, route.intent].filter(Boolean).join(' ').slice(0, 60) : undefined;
+}
+
 function routeLabel(route?: { level: string; source: string }) {
   if (!route) return undefined;
   if (route.source === 'ai') return 'AI 分析';
@@ -141,6 +147,18 @@ function turns(items: Item[]) {
   return out;
 }
 
+function Rating({ rated, onRate }: { rated?: 'up' | 'down'; onRate: (rating: 'up' | 'down') => void }) {
+  return (
+    <span className="msg-rate" role="group" aria-label="評分這則回覆">
+      {(['up', 'down'] as const).map(r => (
+        <button key={r} type="button" className={rated === r ? 'is-on' : undefined} disabled={Boolean(rated)} aria-pressed={rated === r} aria-label={r === 'up' ? '回覆有幫助' : '回覆不好'} onClick={() => onRate(r)}>
+          <Icon name={r === 'up' ? 'thumb-up' : 'thumb-down'} size={14} />
+        </button>
+      ))}
+    </span>
+  );
+}
+
 export function Chat({ connected, features, variant = 'classic', ai = null }: { connected: Record<string, boolean>; features: FeatureFlags; variant?: 'classic' | 'sasuke'; ai?: string | null }) {
   const sasuke = variant === 'sasuke';
   const router = useRouter();
@@ -166,6 +184,8 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   const voice = useVoiceInput(spoken => setText(spoken));
   const speech = useSpeech();
   const voiceTurn = useRef(false);
+  /** Route of the last reply, sent with the next message so a 「不對」 is pinned on it. */
+  const lastRoute = useRef<string | undefined>(undefined);
   const textRef = useRef('');
   textRef.current = text;
   const voiceOn = sasuke && features.voice && voice.supported;
@@ -288,7 +308,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   async function chat(message: string) {
     setBusy('思考中');
     const payload = notes.length ? `[系統紀錄]\n${notes.join('\n')}\n\n${message}` : message;
-    const request = { method: 'POST', headers: { 'Content-Type': 'application/json', ...(sasuke ? { Accept: 'application/x-ndjson' } : {}) }, body: JSON.stringify({ text: payload, history, style: currentStyle(style) }) };
+    const request = { method: 'POST', headers: { 'Content-Type': 'application/json', ...(sasuke ? { Accept: 'application/x-ndjson' } : {}) }, body: JSON.stringify({ text: payload, history, style: currentStyle(style), previous_route: lastRoute.current }) };
     const shown = new Set<number>();
     try {
       const response = await fetch('/api/chat', request);
@@ -326,8 +346,9 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
       setItems(prev => [
         ...prev,
         ...body.events.filter((_: unknown, i: number) => !shown.has(i)).map((e: { result: InvokeResult }) => { if (e.result.status === 'confirmation_required') setPending(p => [...p, (e.result as { proposalId: string }).proposalId]); return { kind: 'tool' as const, result: e.result }; }),
-        ...(body.reply ? [{ kind: 'assistant' as const, text: body.reply, via: routeLabel(body.route) }] : [])
+        ...(body.reply ? [{ kind: 'assistant' as const, text: body.reply, via: routeLabel(body.route), route: routeTag(body.route) }] : [])
       ]);
+      lastRoute.current = routeTag(body.route);
       if (voiceTurn.current && body.reply) speech.speak(body.reply);
     } catch {
       setItems(prev => [...prev, shown.size
@@ -337,6 +358,16 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
       voiceTurn.current = false;
       setBusy(null); scroll();
     }
+  }
+
+  /** 👍 / 👎 on a reply, for the quality self-check. One rating per reply. */
+  async function rate(index: number, rating: 'up' | 'down') {
+    const item = items[index];
+    if (item?.kind !== 'assistant' || item.rated) return;
+    setItems(prev => prev.map((it, i) => (i === index && it.kind === 'assistant' ? { ...it, rated: rating } : it)));
+    const response = await fetch('/api/quality', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rating, text: item.text.slice(0, 600), source: item.route }) }).catch(() => null);
+    if (!response?.ok) setItems(prev => prev.map((it, i) => (i === index && it.kind === 'assistant' ? { ...it, rated: undefined } : it)));
+    else if (rating === 'down') setItems(prev => [...prev, { kind: 'notice', text: '收到，Sir。這則已記下，週報的自我檢查會列出來；若方便，直接告訴我哪裡不對，我會修正。' }]);
   }
 
   function retry(index: number, message: string) {
@@ -428,7 +459,19 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
       }
       return <ToolCard key={index} result={item.result} />;
     }
-    if (item.kind === 'assistant') return <div key={index} className="msg assistant"><RichText text={item.text} />{sasuke && item.via && <span className="msg-via">{item.via}</span>}</div>;
+    if (item.kind === 'assistant') {
+      return (
+        <div key={index} className="msg assistant">
+          <RichText text={item.text} />
+          {sasuke && (item.via || features.quality) && (
+            <div className="msg-foot">
+              {item.via && <span className="msg-via">{item.via}</span>}
+              {features.quality && <Rating rated={item.rated} onRate={rating => rate(index, rating)} />}
+            </div>
+          )}
+        </div>
+      );
+    }
     if (item.kind === 'notice') return <div key={index} className="msg assistant"><p>{item.text}</p></div>;
     if (item.kind === 'help') {
       return (
