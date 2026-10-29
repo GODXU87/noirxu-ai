@@ -4,6 +4,7 @@ import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { money, toolLabel, toolSystem } from '@/lib/tool-labels';
 import { flash } from './feedback';
 import { Icon } from './Icon';
+import { BriefingCard, type BriefingCardData } from './BriefingCard';
 
 export interface Link { label: string; url: string }
 export interface Preview { title: string; fields: Array<{ label: string; value: string }>; body?: string; warnings?: string[] }
@@ -352,6 +353,8 @@ const READ_ONLY = /\.(list|get|search|status|summary|analyze|scan|read|statistic
 
 export function ToolCard({ result }: { result: Extract<InvokeResult, { status: 'ok' | 'error' }> }) {
   const ok = result.status === 'ok';
+  // The briefing is its own card: no tool header, no raw data.
+  if (ok && result.tool === 'assistant.briefing.card') return <BriefingCard data={result.data as BriefingCardData} />;
   const view = ok ? ToolData({ tool: result.tool, data: result.data }) : null;
   const reminder = ok && result.tool === 'agenda.items.create' && (result.data as { kind?: string })?.kind === 'reminder';
   return (

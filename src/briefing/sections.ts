@@ -14,7 +14,14 @@ const shortDate = (d: string) => d.slice(5).replace('-', '/');
  * RADAR (Taiwan market, end of day): the NOIRXU list, stocks stronger than the market and the
  * sectors with the strongest money flow. Field names follow RADAR's integration API.
  */
-export async function radarSection(invoke: Invoke, ctx: ToolContext): Promise<{ line: string; detail: string[]; trade_date: string } | null> {
+export interface RadarStock { symbol: string; name: string; note: string | null }
+export interface RadarDigest {
+  line: string; detail: string[]; trade_date: string;
+  /** null = that list could not be read (said so on the card, never filled in). */
+  list: RadarStock[] | null; strong: RadarStock[] | null; sectors: string[] | null;
+}
+
+export async function radarSection(invoke: Invoke, ctx: ToolContext): Promise<RadarDigest | null> {
   const [list, strong, sectors] = await Promise.all([
     invoke('radar.signals.scan', { kind: 'noirxu_list', limit: 3 }, ctx),
     invoke('radar.signals.scan', { kind: 'stronger_than_market', limit: 3 }, ctx),
@@ -39,5 +46,11 @@ export async function radarSection(invoke: Invoke, ctx: ToolContext): Promise<{ 
     if (s.length) detail.push(`資金流前三產業：${s.map(r => text(r.name)).join('、')}`);
   }
   if (!detail.length) return null;
-  return { trade_date: tradeDate, detail, line: `RADAR（${shortDate(tradeDate)} 資料）：${detail[0].replace(/^NOIRXU 清單：/, 'NOIRXU 清單 ')}` };
+  const stocks = (r: InvokeResult, note: (row: Row) => string | null): RadarStock[] | null => (r.status === 'ok' ? rows(r).map(x => ({ symbol: text(x.symbol) ?? '', name: text(x.name) ?? '', note: note(x) })) : null);
+  const sectorNames = sectors.status === 'ok'
+    ? ((sectors.data as { data?: { sectors?: Row[] } }).data?.sectors ?? []).filter(r => text(r.name)).sort((a, b) => Number(a.rank ?? 999) - Number(b.rank ?? 999)).slice(0, 3).map(r => text(r.name)!)
+    : null;
+  return {
+    list: stocks(list, x => text(x.setup_label)), strong: stocks(strong, () => null), sectors: sectorNames,
+    trade_date: tradeDate, detail, line: `RADAR（${shortDate(tradeDate)} 資料）：${detail[0].replace(/^NOIRXU 清單：/, 'NOIRXU 清單 ')}` };
 }

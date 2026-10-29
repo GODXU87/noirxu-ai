@@ -67,13 +67,33 @@ export async function morningBriefing(hub: Hub, userId: string, now: Date) {
     ...(radar ? [`RADAR（${radar.trade_date} 資料）：`, ...radar.detail.map(l => `  ${l}`), '  研究參考，不保證報酬，也不會自動下單。'] : []),
     ...(brief.lines.length ? ['待辦與財務：', ...brief.lines.map(l => `  ${l}`)] : ['待辦：今天和近三天沒有待辦。'])
   ];
-  return { ...brief, body: [...head, ...brief.lines].join('\n') || brief.body, lines: [...head, ...brief.lines], full };
+  const card: BriefingCard = {
+    kind: 'morning', date: today, title: brief.title, weather, radar,
+    health: health ? { narrative: health.narrative, signals: health.signals ?? [], hydration_ml: health.hydration_ml ?? null } : null,
+    us: us && (us.quotes.length || us.errors.length) ? { quotes: us.quotes, missing: us.errors.length } : null,
+    agenda: brief.lines.filter(l => l.startsWith('【')),
+    finance: brief.lines.filter(l => !l.startsWith('【'))
+  };
+  return { ...brief, body: [...head, ...brief.lines].join('\n') || brief.body, lines: [...head, ...brief.lines], full, card };
+}
+
+/** What the briefing card in the chat shows: each source structured, or null when off / unavailable. */
+export interface BriefingCard {
+  kind: 'morning' | 'evening';
+  date: string;
+  title: string;
+  weather: Awaited<ReturnType<typeof fetchWeather>> | null;
+  health: { narrative: string[]; signals: Array<{ key: string; tone: string; text: string }>; hydration_ml: number | null } | null;
+  us: { quotes: Awaited<ReturnType<typeof fetchUsQuotes>>['quotes']; missing: number } | null;
+  radar: Awaited<ReturnType<typeof radarSection>>;
+  agenda: string[];
+  finance: string[];
 }
 
 async function healthInsight(hub: Hub, userId: string, now: Date, when: 'morning' | 'evening') {
   if (!hub.garmin) return null;
   const result = await hub.executor.invoke('garmin.health.insight', { when }, { userId, now: () => now });
-  return result.status === 'ok' ? result.data as { push_line?: string; headline: string; lines: string[]; narrative: string[] } : null;
+  return result.status === 'ok' ? result.data as { push_line?: string; headline: string; lines: string[]; narrative: string[]; signals?: Array<{ key: string; tone: string; text: string }>; hydration_ml?: number | null } : null;
 }
 
 
@@ -90,7 +110,12 @@ export async function eveningBriefing(hub: Hub, userId: string, now: Date) {
   const health = await healthInsight(hub, userId, now, 'evening').catch(() => null);
   if (health?.push_line) lines.unshift(`身體：${health.push_line}`);
   const full = [...(health ? ['身體：', ...health.narrative.map(l => `  ${l}`)] : []), '待辦：', ...lines.filter(l => !l.startsWith('身體：')).map(l => `  ${l}`)];
-  return { title: 'Sir，今日晚報', body: lines.join('\n'), full, important: report.overdue.length > 0 || report.tomorrow.some(urgent) || report.still_open_today.some(urgent) };
+  const card: BriefingCard = {
+    kind: 'evening', date: taipeiDate(now), title: 'Sir，今日晚報', weather: null, us: null, radar: null,
+    health: health ? { narrative: health.narrative, signals: health.signals ?? [], hydration_ml: health.hydration_ml ?? null } : null,
+    agenda: lines.filter(l => !l.startsWith('身體：')), finance: []
+  };
+  return { title: 'Sir，今日晚報', body: lines.join('\n'), full, card, important: report.overdue.length > 0 || report.tomorrow.some(urgent) || report.still_open_today.some(urgent) };
 }
 
 /** Taipei wall-clock HH:MM on `date` as an instant. */

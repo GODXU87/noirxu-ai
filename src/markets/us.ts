@@ -4,7 +4,8 @@ import { ToolError } from '@/hub/errors';
 
 // Last US session close from Alpha Vantage (GLOBAL_QUOTE; the user's own free key in
 // ALPHAVANTAGE_API_KEY, never in the app or the chat). Feature 'us_markets'. The free plan
-// allows 25 requests a day, so five symbols are read once per Taipei day and cached (sealed).
+// allows 25 requests a day and about one a second: five symbols, read one per ~1.1 s, each kept
+// for the Taipei day (sealed) so it is never asked for twice.
 // Index levels are not on the free plan: the ETFs that track them are used and labelled as
 // such. Prices only — research context, never a trading signal, never an order.
 
@@ -21,7 +22,7 @@ export const US_SYMBOLS: Array<{ symbol: string; label: string }> = [
 export function quoteFromAlphaVantage(body: unknown, symbol: string, label: string): UsQuote {
   const b = (body ?? {}) as Record<string, unknown>;
   const note = b.Note ?? b.Information ?? b['Error Message'];
-  if (typeof note === 'string') throw new ToolError('UPSTREAM_UNAVAILABLE', /frequency|limit|premium|per day/i.test(note) ? `Alpha Vantage 查詢額度已滿（${label}）` : `Alpha Vantage 拒絕查詢 ${label}`);
+  if (typeof note === 'string') throw new ToolError('UPSTREAM_UNAVAILABLE', /per second|sparingly|burst/i.test(note) ? `Alpha Vantage 查詢太快（${label}）` : /frequency|limit|premium|per day/i.test(note) ? `Alpha Vantage 今日額度已滿（${label}）` : `Alpha Vantage 拒絕查詢 ${label}`);
   const q = b['Global Quote'] as Record<string, string> | undefined;
   const close = Number(q?.['05. price']);
   const date = q?.['07. latest trading day'];
@@ -34,31 +35,33 @@ export interface UsQuoteDeps { apiKey: string | undefined; store?: AgendaStore; 
 
 const cacheKey = (now: Date) => `markets:us:${new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(now)}`;
 
-export async function fetchUsQuotes(deps: UsQuoteDeps, symbols = US_SYMBOLS): Promise<{ quotes: UsQuote[]; errors: string[] }> {
+export async function fetchUsQuotes(deps: UsQuoteDeps & { pauseMs?: number }, symbols = US_SYMBOLS): Promise<{ quotes: UsQuote[]; errors: string[] }> {
   if (!deps.apiKey) return { quotes: [], errors: ['ALPHAVANTAGE_API_KEY 尚未設定'] };
   const now = deps.now ?? new Date();
   const key = cacheKey(now);
-  if (deps.store && deps.vault) {
-    const sealed = await deps.store.getSetting(key);
-    if (sealed) return { quotes: JSON.parse(deps.vault.open(sealed, key)) as UsQuote[], errors: [] };
-  }
+  // Quotes already read today are kept (sealed) one by one, so a retry only asks for the missing
+  // ones and the 25-a-day free quota is never spent twice on the same symbol.
+  const cached: UsQuote[] = deps.store && deps.vault ? await deps.store.getSetting(key).then(s => (s ? JSON.parse(deps.vault!.open(s, key)) as UsQuote[] : [])) : [];
+  const missing = symbols.filter(s => !cached.some(c => c.symbol === s.symbol));
   const fetcher = deps.fetcher ?? fetch;
-  const quotes: UsQuote[] = [];
+  const fresh: UsQuote[] = [];
   const errors: string[] = [];
-  // One after another: the free plan also limits requests per minute.
-  for (const { symbol, label } of symbols) {
+  const pause = deps.pauseMs ?? 1100;
+  for (const [i, { symbol, label }] of missing.entries()) {
+    // The free plan allows about one request per second.
+    if (i > 0 && pause > 0) await new Promise(r => setTimeout(r, pause));
     try {
       const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(symbol)}&apikey=${encodeURIComponent(deps.apiKey)}`;
       const response = await fetcher(url, { signal: AbortSignal.timeout(10_000) });
       if (!response.ok) throw new ToolError('UPSTREAM_UNAVAILABLE', `${label}：HTTP ${response.status}`);
-      quotes.push(quoteFromAlphaVantage(await response.json().catch(() => null), symbol, label));
+      fresh.push(quoteFromAlphaVantage(await response.json().catch(() => null), symbol, label));
     } catch (error) {
       errors.push(error instanceof Error ? error.message : `${label}：讀取失敗`);
     }
   }
-  // Cache only a complete set, so a rate-limited morning can be retried later the same day.
-  if (deps.store && deps.vault && quotes.length === symbols.length) await deps.store.putSetting(key, deps.vault.seal(JSON.stringify(quotes), key));
-  return { quotes, errors };
+  const all = [...cached, ...fresh];
+  if (deps.store && deps.vault && fresh.length) await deps.store.putSetting(key, deps.vault.seal(JSON.stringify(all), key));
+  return { quotes: symbols.map(s => all.find(q => q.symbol === s.symbol)).filter((q): q is UsQuote => Boolean(q)), errors };
 }
 
 export function usMarketLine(quotes: UsQuote[]) {
