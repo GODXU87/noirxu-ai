@@ -268,3 +268,14 @@
 .ui-sasuke.hud { --hud-radius: 8px; }
 .ui-sasuke.hud .card::after, .ui-sasuke.hud .panel::after, .ui-sasuke.hud .brief::after, .ui-sasuke.hud .tool::after, .ui-sasuke.hud .proposal::after, .ui-sasuke.hud .tg-tile::after, .ui-sasuke.hud .login-card::after { border-radius: 0; }
 .ui-sasuke.hud .sk-notice, .ui-sasuke.hud .sk-notice:hover:not(:disabled) { background: none; box-shadow: none; }
+
+/* Rich replies in the HUD */
+.ui-sasuke.hud .rich h4 { display: flex; align-items: center; gap: 8px; letter-spacing: .04em; }
+.ui-sasuke.hud .rich h4::before { content: ""; width: 3px; height: 13px; border-radius: 2px; background: var(--accent); box-shadow: 0 0 8px rgba(95, 224, 242, .7); }
+.ui-sasuke.hud .rich-table { border-color: var(--line-strong); background: rgba(8, 14, 20, .6); }
+.ui-sasuke.hud .rich-table th { background: rgba(95, 224, 242, .06); color: var(--accent); letter-spacing: .08em; }
+.ui-sasuke.hud .rich-table td { font-family: var(--mono); font-size: 13px; }
+.ui-sasuke.hud .rich-table td:first-child { font-family: var(--font); font-size: 14px; }
+.ui-sasuke.hud .rich-note { background: rgba(255, 201, 102, .06); }
+.ui-sasuke.hud .rich strong { color: #ffffff; text-shadow: 0 0 12px rgba(95, 224, 242, .35); }
+.ui-sasuke.hud .msg-speak { background: transparent; box-shadow: none; }

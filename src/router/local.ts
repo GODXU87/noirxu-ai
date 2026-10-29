@@ -33,7 +33,7 @@ function sirFor(seed: string) {
 }
 
 /** Every reply addresses Sir once: in front or at the end of the first sentence. */
-function withSir(text: string, seed: string) {
+export function withSir(text: string, seed: string) {
   if (/Sir/.test(text)) return text;
   return sirFor(seed) ? `Sir，${text}` : text.replace(/。/, '，Sir。');
 }

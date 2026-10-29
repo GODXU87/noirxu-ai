@@ -7,12 +7,15 @@ import { buildWeekly, weeklyPushBody } from '@/briefing/weekly';
 import { fetchUsQuotes, usMarketLine } from '@/markets/us';
 import { fetchWeather, placeFromEnv, weatherLine } from '@/weather/open-meteo';
 import { taipeiDate } from '@/lib/dates';
-import { dueWaterSlot, waterReminder } from '@/health/water';
+import { afternoonBodyAlert, morningBodyAlert, type BodyAlert } from '@/health/alerts';
+import { dueWaterSlot, waterReminder, waterSlots, WATER_DAILY_MAX } from '@/health/water';
+import type { GarminDaily } from '@/garmin/adapter';
+import { ProactiveNotifier } from '@/notify/policy';
 import type { PushMessage } from '@/push/service';
 import type { Hub } from './hub';
 import { OWNER_ID } from './session';
 
-export interface TickResult { reminders: number; briefing: boolean; evening?: boolean; pushed: number; water?: boolean; tasks?: { ran: number; waiting: number; error?: string } }
+export interface TickResult { reminders: number; briefing: boolean; evening?: boolean; pushed: number; water?: boolean; health?: boolean; tasks?: { ran: number; waiting: number; error?: string } }
 
 function taipeiHour(now: Date): number {
   return Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Taipei', hour: '2-digit', hour12: false }).format(now));
@@ -266,19 +269,52 @@ export async function runTick(hub: Hub, now = new Date()): Promise<TickResult> {
     const slot = dueWaterSlot(prefs, now);
     if (slot) {
       const key = `water:${OWNER_ID}:${today}:${slot}`;
+      // At most WATER_DAILY_MAX a day: count the earlier slots that already went out.
+      const earlier = waterSlots(prefs).filter(s => s < slot);
+      const sent = (await Promise.all(earlier.map(s => hub.delivery.get(`water:${OWNER_ID}:${today}:${s}`)))).filter(r => r?.status === 'provider_accepted').length;
       // Always from current totals; once the user is back on pace, nothing more is sent.
-      const message = waterReminder(prefs, await hub.water.day(OWNER_ID, today), now);
+      const message = sent >= WATER_DAILY_MAX ? null : waterReminder(prefs, await hub.water.day(OWNER_ID, today), now);
       if (message) {
         const record = await count(key, 'water', OWNER_ID, { ...message, url: '/', tag: `water-${today}` }, new Date(taipeiInstant(today, slot).getTime() + 60 * 60_000));
         water = record.status === 'provider_accepted';
       }
     }
   }
+  // Body-state alerts (Garmin): a morning recovery check (09–12) and an afternoon drain check
+  // (14–18), each at most once a day and through the proactive limits. Without an alert, Garmin
+  // is looked at no more than every 30 minutes.
+  let health = false;
+  if (hub.features?.health_alerts && hub.garmin) {
+    const notifier = new ProactiveNotifier(hub.agenda, hub.vault, hub.delivery);
+    const check = async (slot: 'morning' | 'afternoon', from: number, to: number, build: () => Promise<BodyAlert | null>) => {
+      if (hour < from || hour >= to) return;
+      const key = `health-alert:${OWNER_ID}:${today}:${slot}`;
+      if (await hub.delivery.get(key)) return;
+      const checkedKey = `health-alert:checked:${OWNER_ID}:${slot}`;
+      const checked = await hub.agenda.getSetting(checkedKey);
+      if (checked && now.getTime() - Number(checked) < 30 * 60_000) return;
+      if (!(await hub.agenda.compareAndSetSetting(checkedKey, checked, String(now.getTime())))) return;
+      const alert = await build().catch(() => null);
+      if (!alert) return;
+      const record = await notifier.notify({ key, kind: 'health', userId: OWNER_ID, message: { ...alert, url: `/?c=new&ask=${encodeURIComponent('我身體狀況如何')}`, tag: `health-${today}-${slot}` }, priority: 'normal', now, expiresAt: taipeiInstant(today, `${String(to).padStart(2, '0')}:00`) });
+      health = health || record.status === 'provider_accepted';
+    };
+    const ctx = { userId: OWNER_ID, now: () => now };
+    await check('morning', 9, 12, async () => {
+      const r = await hub.executor.invoke('garmin.health.insight', { when: 'morning', hydration: false }, ctx);
+      return r.status === 'ok' ? morningBodyAlert(r.data as Parameters<typeof morningBodyAlert>[0], `${today}:m`) : null;
+    });
+    await check('afternoon', 14, 18, async () => {
+      const r = await hub.executor.invoke('garmin.health.daily', {}, ctx);
+      return r.status === 'ok' ? afternoonBodyAlert(r.data as GarminDaily, `${today}:a`) : null;
+    });
+  }
+
   // Background tasks run after the reminders, so a failing task never delays a reminder.
   let tasks: TickResult['tasks'];
   if (hub.tasks) {
     try { tasks = await hub.tasks.runDue(now); }
     catch (error) { tasks = { ran: 0, waiting: 0, error: error instanceof Error ? error.message.slice(0, 200) : 'task run failed' }; }
   }
-  return { reminders, briefing, evening, pushed, water, ...(tasks ? { tasks } : {}) };
+  return { reminders, briefing, evening, pushed, water, health, ...(tasks ? { tasks } : {}) };
 }

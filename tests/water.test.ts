@@ -49,11 +49,11 @@ describe('water pace and reminders', () => {
     expect(expectedByNow(prefs, at('2026-10-22T22:00:00'))).toBe(2000);
   });
 
-  it('has reminder slots every 2 hours from 09:00 to 21:00', () => {
-    expect(waterSlots(prefs)).toEqual(['09:00', '11:00', '13:00', '15:00', '17:00', '19:00', '21:00']);
-    expect(dueWaterSlot(prefs, at('2026-10-22T13:20:00'))).toBe('13:00');
-    expect(dueWaterSlot(prefs, at('2026-10-22T14:10:00'))).toBeNull();
-    expect(dueWaterSlot({ ...prefs, enabled: false }, at('2026-10-22T13:20:00'))).toBeNull();
+  it('has reminder slots every 3 hours from 09:00 to 21:00', () => {
+    expect(waterSlots(prefs)).toEqual(['09:00', '12:00', '15:00', '18:00', '21:00']);
+    expect(dueWaterSlot(prefs, at('2026-10-22T12:20:00'))).toBe('12:00');
+    expect(dueWaterSlot(prefs, at('2026-10-22T13:10:00'))).toBeNull();
+    expect(dueWaterSlot({ ...prefs, enabled: false }, at('2026-10-22T12:20:00'))).toBeNull();
   });
 
   it('only reminds when behind pace', () => {
@@ -114,11 +114,20 @@ describe('water reminders in the scheduler', () => {
   }
 
   it('sends one reminder per slot when behind pace', async () => {
-    const now = at('2026-10-22T13:05:00');
+    const now = at('2026-10-22T12:05:00');
     const { hub, sent } = hubWith(now);
     await runTick(hub, now);
     await runTick(hub, new Date(now.getTime() + 10 * 60_000));
     expect(sent.filter(m => m.tag?.startsWith('water-'))).toHaveLength(1);
+  });
+
+  it('sends at most three a day', async () => {
+    const { hub, sent } = hubWith(new Date('2026-10-22T01:05:00Z'));
+    for (const hhmm of ['09:05', '12:05', '15:05', '18:05', '21:05']) {
+      const t = new Date(`2026-10-22T${hhmm}:00+08:00`);
+      await runTick(hub, t);
+    }
+    expect(sent.filter(m => m.tag?.startsWith('water-'))).toHaveLength(3);
   });
 
   it('stays quiet when on pace, when switched off, or outside the window', async () => {
@@ -137,4 +146,15 @@ describe('water reminders in the scheduler', () => {
     await runTick(late.hub, at('2026-10-22T23:30:00'));
     expect(late.sent).toHaveLength(0);
   });
+});
+
+describe('water reminders stay gentle', () => {
+  const day = (total: number, lastAt?: string) => ({ date: '2026-10-22', total_ml: total, entries: lastAt ? [{ at: lastAt, ml: total }] : [] });
+  it('ignores small gaps and a drink logged in the last 90 minutes', () => {
+    const noon = new Date('2026-10-22T04:30:00Z'); // 12:30 Taipei, expected ≈ 580 ml
+    expect(waterReminder(DEFAULT_WATER_PREFS, day(300), noon)).toBeNull();
+    expect(waterReminder(DEFAULT_WATER_PREFS, day(0), noon)).not.toBeNull();
+    expect(waterReminder(DEFAULT_WATER_PREFS, day(100, '2026-10-22T03:40:00Z'), noon)).toBeNull();
+  });
+
 });

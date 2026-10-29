@@ -15,7 +15,9 @@ export interface WaterPrefs {
 export interface WaterEntry { at: string; ml: number }
 export interface WaterDay { date: string; total_ml: number; entries: WaterEntry[] }
 
-export const DEFAULT_WATER_PREFS: WaterPrefs = { enabled: true, goal_ml: 2000, start: '09:00', end: '21:00', interval_hours: 2 };
+export const DEFAULT_WATER_PREFS: WaterPrefs = { enabled: true, goal_ml: 2000, start: '09:00', end: '21:00', interval_hours: 3 };
+/** At most this many water notifications a day, whatever the slots. */
+export const WATER_DAILY_MAX = 3;
 export const WATER_LIMITS = { minLog: 10, maxLog: 3000, minGoal: 500, maxGoal: 6000 } as const;
 
 export type WaterCommand =
@@ -111,10 +113,15 @@ export function waterProgress(prefs: WaterPrefs, day: WaterDay, now: Date) {
   };
 }
 
-/** Null when the user is on pace, so nobody gets nagged for no reason. */
+/**
+ * Null unless the user is clearly behind: at least 400 ml (or a fifth of the goal) under pace,
+ * and nothing logged in the last 90 minutes. Small gaps are left alone, so it never nags.
+ */
 export function waterReminder(prefs: WaterPrefs, day: WaterDay, now: Date): { title: string; body: string } | null {
   const p = waterProgress(prefs, day, now);
-  if (p.behind_ml < 150 || p.remaining_ml === 0) return null;
+  if (p.remaining_ml === 0 || p.behind_ml < Math.max(400, Math.round(prefs.goal_ml * 0.2))) return null;
+  const last = day.entries.at(-1);
+  if (last && now.getTime() - Date.parse(last.at) < 90 * 60_000) return null;
   const suggest = Math.min(500, Math.max(200, Math.round(p.behind_ml / 50) * 50));
   // Wording varies by day and slot; a retry of the same slot keeps the same words.
   const slot = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false }).format(now);

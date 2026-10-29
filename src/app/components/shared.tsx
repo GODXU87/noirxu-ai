@@ -441,21 +441,74 @@ export function ProposalCard({ result, onDone }: { result: Extract<InvokeResult,
 }
 
 /** Minimal, safe Markdown: headings, bullets, **bold**. No HTML is ever injected. */
+/** Inline marks the replies use: **bold**, `code`, and [label](https://…) links. Anything else stays text. */
+function inlineMarks(line: string): ReactNode[] {
+  return line.split(/(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\(https?:\/\/[^)\s]+\))/g).map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**') && part.length > 4) return <strong key={i}>{part.slice(2, -2)}</strong>;
+    if (part.startsWith('`') && part.endsWith('`') && part.length > 2) return <code key={i}>{part.slice(1, -1)}</code>;
+    const link = /^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)$/.exec(part);
+    if (link) return <a key={i} href={link[2]} target="_blank" rel="noreferrer">{link[1]}</a>;
+    return <Fragment key={i}>{part}</Fragment>;
+  });
+}
+
+const cells = (row: string) => row.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
+
+/**
+ * The reply as clean blocks: headings, paragraphs, bullet and numbered lists, tables,
+ * a closing note ("> …") and dividers, so a model's markdown never shows as raw symbols.
+ */
 export function RichText({ text }: { text: string }) {
-  const inline = (line: string) => line.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
-    part.startsWith('**') && part.endsWith('**') ? <strong key={i}>{part.slice(2, -2)}</strong> : <Fragment key={i}>{part}</Fragment>);
   const blocks: ReactNode[] = [];
-  let list: string[] = [];
-  const flush = () => { if (list.length) { blocks.push(<ul key={`l${blocks.length}`}>{list.map((item, i) => <li key={i}>{inline(item)}</li>)}</ul>); list = []; } };
-  for (const raw of text.split('\n')) {
-    const line = raw.trimEnd();
-    const bullet = /^\s*(?:[-*•]|\d+\.)\s+(.*)$/.exec(line);
-    if (bullet) { list.push(bullet[1]); continue; }
-    flush();
+  const lines = text.replace(/\r/g, '').split('\n');
+  let i = 0;
+  const key = () => `b${blocks.length}`;
+  while (i < lines.length) {
+    const line = lines[i].trimEnd();
+    if (!line.trim()) { i += 1; continue; }
+    // Table: a header row, a --- separator, then rows.
+    if (/^\s*\|.*\|\s*$/.test(line) && i + 1 < lines.length && /^\s*\|?\s*:?-{2,}/.test(lines[i + 1])) {
+      const head = cells(line);
+      const rows: string[][] = [];
+      i += 2;
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) { rows.push(cells(lines[i])); i += 1; }
+      blocks.push(
+        <div key={key()} className="rich-table"><table>
+          <thead><tr>{head.map((h, c) => <th key={c}>{inlineMarks(h)}</th>)}</tr></thead>
+          <tbody>{rows.map((r, ri) => <tr key={ri}>{head.map((_, c) => <td key={c}>{inlineMarks(r[c] ?? '')}</td>)}</tr>)}</tbody>
+        </table></div>
+      );
+      continue;
+    }
+    // Lists: consecutive items of one kind; deeper indents become a sub-level.
+    const bulletRe = /^(\s*)(?:[-*•])\s+(.*)$/;
+    const numberRe = /^(\s*)\d+[.)、]\s+(.*)$/;
+    const listRe = bulletRe.test(line) ? bulletRe : numberRe.test(line) ? numberRe : null;
+    if (listRe) {
+      const items: Array<{ text: string; sub: boolean }> = [];
+      // Same kind continues the list; the other kind only as an indented sub-item.
+      while (i < lines.length && (listRe.test(lines[i]) || (/^\s{2,}/.test(lines[i]) && (bulletRe.test(lines[i]) || numberRe.test(lines[i]))))) {
+        const m = (bulletRe.exec(lines[i]) ?? numberRe.exec(lines[i]))!;
+        items.push({ text: m[2], sub: m[1].length >= 2 && items.length > 0 });
+        i += 1;
+      }
+      const ordered = listRe === numberRe;
+      const body = items.map((it, n) => <li key={n} className={it.sub ? 'sub' : undefined}>{inlineMarks(it.text)}</li>);
+      blocks.push(ordered ? <ol key={key()}>{body}</ol> : <ul key={key()}>{body}</ul>);
+      continue;
+    }
     const heading = /^#{1,4}\s+(.*)$/.exec(line);
-    if (heading) blocks.push(<h4 key={`h${blocks.length}`}>{inline(heading[1])}</h4>);
-    else if (line) blocks.push(<p key={`p${blocks.length}`}>{inline(line)}</p>);
+    if (heading) { blocks.push(<h4 key={key()}>{inlineMarks(heading[1].replace(/\*\*/g, ''))}</h4>); i += 1; continue; }
+    if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) { blocks.push(<hr key={key()} />); i += 1; continue; }
+    const note = /^\s*>\s?(.*)$/.exec(line);
+    if (note) {
+      const parts: string[] = [];
+      while (i < lines.length && /^\s*>\s?/.test(lines[i])) { parts.push(lines[i].replace(/^\s*>\s?/, '')); i += 1; }
+      blocks.push(<p key={key()} className="rich-note">{inlineMarks(parts.join(' '))}</p>);
+      continue;
+    }
+    blocks.push(<p key={key()}>{inlineMarks(line)}</p>);
+    i += 1;
   }
-  flush();
   return <div className="rich">{blocks}</div>;
 }
