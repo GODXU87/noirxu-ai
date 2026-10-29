@@ -148,6 +148,18 @@ function turns(items: Item[]) {
   return out;
 }
 
+/** "SASUKE · ONLINE · 15:20" under the mark (shown by the HUD theme). The clock runs in the browser only. */
+function HudStatus() {
+  const [clock, setClock] = useState('');
+  useEffect(() => {
+    const tick = () => setClock(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Taipei', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date()));
+    tick();
+    const id = window.setInterval(tick, 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+  return <p className="hud-status" aria-hidden="true"><i /><span><b>SASUKE</b></span><span>ONLINE</span>{clock && <span>TPE {clock}</span>}</p>;
+}
+
 function Rating({ rated, onRate }: { rated?: 'up' | 'down'; onRate: (rating: 'up' | 'down') => void }) {
   return (
     <span className="msg-rate" role="group" aria-label="評分這則回覆">
@@ -561,6 +573,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
           <section className="sk-home">
             <span className="sk-home-mark"><SasukeMark size={44} state={agentState} /></span>
             <p className="sk-home-name">SASUKE</p>
+            <HudStatus />
             <h1 className="sk-hello">{greeting()}，Sir。</h1>
             <p className="sk-ask">{askLine()}</p>
             {notices.length > 0 && (

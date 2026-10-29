@@ -1,0 +1,270 @@
+/* =====================================================================
+   SASUKE HUD theme (feature 'hud', on by default; NOIRXU_AI_DISABLED_FEATURES=hud
+   turns it off and the plain SASUKE look returns). Layered over .ui-sasuke only:
+   deep-space background with a faint grid, glass panels with hairline cyan edges
+   and corner brackets, instrument-style labels and numbers, an arc-reactor mark.
+   Decoration stays quiet: text contrast first, motion only where it means something.
+   ===================================================================== */
+
+.ui-sasuke.hud {
+  --bg: #04070b;
+  --surface: #0a1118;
+  --surface-2: #0f1922;
+  --surface-3: #16232e;
+  --line: rgba(120, 214, 255, .10);
+  --line-strong: rgba(120, 214, 255, .20);
+  --text: #e9f5fb;
+  --text-soft: #b3c4cf;
+  --muted: #7a8c99;
+  --accent: #5fe0f2;
+  --accent-2: #3d8bff;
+  --accent-dim: rgba(95, 224, 242, .10);
+  --accent-ink: #021318;
+  --up: #4fe0a6;
+  --down: #ff7d8c;
+  --warn: #ffc966;
+  --danger: #ff7d8c;
+  --radius: 14px;
+  --hud-radius: 12px;
+  --hud-glass: linear-gradient(180deg, rgba(15, 26, 36, .86), rgba(7, 13, 19, .86));
+  --hud-edge: rgba(95, 224, 242, .55);
+  --hud-glow: 0 0 0 1px rgba(95, 224, 242, .22), 0 0 28px -8px rgba(95, 224, 242, .45);
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Roboto Mono", Menlo, Consolas, monospace;
+  --shadow: 0 24px 60px -30px rgba(0, 0, 0, .9);
+}
+
+/* Space: a cool glow from the top right, a faint instrument grid that fades out. */
+.ui-sasuke.hud, .ui-sasuke.hud body { background-color: var(--bg); }
+.ui-sasuke.hud body {
+  background-image:
+    radial-gradient(1100px 620px at 78% -12%, rgba(61, 139, 255, .14), transparent 62%),
+    radial-gradient(900px 520px at -10% 108%, rgba(95, 224, 242, .07), transparent 60%);
+  background-attachment: fixed;
+}
+.ui-sasuke.hud body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background-image:
+    linear-gradient(rgba(120, 214, 255, .045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(120, 214, 255, .045) 1px, transparent 1px);
+  background-size: 44px 44px;
+  -webkit-mask-image: radial-gradient(ellipse 80% 70% at 60% 30%, #000 20%, transparent 75%);
+  mask-image: radial-gradient(ellipse 80% 70% at 60% 30%, #000 20%, transparent 75%);
+}
+.ui-sasuke.hud .shell, .ui-sasuke.hud .login { position: relative; z-index: 1; }
+.ui-sasuke.hud ::selection { background: rgba(95, 224, 242, .28); }
+.ui-sasuke.hud * { scrollbar-width: thin; scrollbar-color: rgba(95, 224, 242, .25) transparent; }
+
+/* ---------- Panels: glass, hairline edge, corner brackets ---------- */
+.ui-sasuke.hud .card,
+.ui-sasuke.hud .panel,
+.ui-sasuke.hud .brief,
+.ui-sasuke.hud .tool,
+.ui-sasuke.hud .proposal,
+.ui-sasuke.hud .tg-tile,
+.ui-sasuke.hud .pl-card {
+  position: relative;
+  background: var(--hud-glass);
+  border: 1px solid var(--line);
+  border-radius: var(--hud-radius);
+  box-shadow: inset 0 1px 0 rgba(160, 230, 255, .05), var(--shadow);
+}
+.ui-sasuke.hud .card::after,
+.ui-sasuke.hud .panel::after,
+.ui-sasuke.hud .brief::after,
+.ui-sasuke.hud .tool::after,
+.ui-sasuke.hud .proposal::after,
+.ui-sasuke.hud .tg-tile::after {
+  content: ""; position: absolute; inset: -1px; pointer-events: none;
+  background:
+    linear-gradient(var(--hud-edge), var(--hud-edge)) top left / 14px 1px,
+    linear-gradient(var(--hud-edge), var(--hud-edge)) top left / 1px 14px,
+    linear-gradient(var(--hud-edge), var(--hud-edge)) bottom right / 14px 1px,
+    linear-gradient(var(--hud-edge), var(--hud-edge)) bottom right / 1px 14px;
+  background-repeat: no-repeat;
+  border-radius: var(--hud-radius);
+  opacity: .8;
+}
+.ui-sasuke.hud .tg-tile::after { opacity: .5; }
+.ui-sasuke.hud .tg-tile { box-shadow: inset 0 1px 0 rgba(160, 230, 255, .05); }
+.ui-sasuke.hud .tg-tile:hover:not(:disabled) { background: var(--hud-glass); border-color: var(--line-strong); box-shadow: var(--hud-glow); }
+.ui-sasuke.hud .tg-tile:hover::after { opacity: 1; }
+
+/* Instrument labels: small, tracked, cool. */
+.ui-sasuke.hud .section-label,
+.ui-sasuke.hud .brief-label,
+.ui-sasuke.hud .tg-label,
+.ui-sasuke.hud .tool header,
+.ui-sasuke.hud .brief-kicker,
+.ui-sasuke.hud .eyebrow {
+  font-size: 11.5px; letter-spacing: .14em; color: var(--muted); font-weight: 600;
+}
+.ui-sasuke.hud .section-label::before { width: 3px; height: 12px; border-radius: 2px; background: var(--accent); box-shadow: 0 0 10px rgba(95, 224, 242, .7); }
+.ui-sasuke.hud .brief-kicker { color: var(--accent); font-family: var(--mono); letter-spacing: .1em; }
+.ui-sasuke.hud .tool header .sys, .ui-sasuke.hud .sys { font-family: var(--mono); font-size: 10.5px; letter-spacing: .12em; color: var(--accent); background: var(--accent-dim); border-radius: 4px; padding: 1px 6px; }
+
+/* Numbers read like instruments. */
+.ui-sasuke.hud .tg-big,
+.ui-sasuke.hud .brief-num,
+.ui-sasuke.hud .brief-weather b,
+.ui-sasuke.hud .brief-quotes b,
+.ui-sasuke.hud .stat b,
+.ui-sasuke.hud .hero-stats b,
+.ui-sasuke.hud .water-total,
+.ui-sasuke.hud .msg-via {
+  font-family: var(--mono); font-variant-numeric: tabular-nums; letter-spacing: 0;
+}
+.ui-sasuke.hud .tg-big { font-weight: 600; font-size: 20px; }
+.ui-sasuke.hud .tg-meter { background: rgba(120, 214, 255, .08); }
+.ui-sasuke.hud .tg-meter i { background: linear-gradient(90deg, var(--accent-2), var(--accent)); box-shadow: 0 0 10px rgba(95, 224, 242, .6); }
+.ui-sasuke.hud .bar { background: rgba(120, 214, 255, .08); }
+.ui-sasuke.hud .bar span, .ui-sasuke.hud .bar-accent { background: linear-gradient(90deg, var(--accent-2), var(--accent)) !important; box-shadow: 0 0 10px rgba(95, 224, 242, .5); }
+
+/* Page titles: crisp, with a thin scan line under them. */
+.ui-sasuke.hud .page-head h1, .ui-sasuke.hud .fp-head h1, .ui-sasuke.hud .fp h1 { font-weight: 650; letter-spacing: .02em; }
+.ui-sasuke.hud .fp-head, .ui-sasuke.hud .page-head { position: relative; padding-bottom: 14px; }
+.ui-sasuke.hud .fp-head::after, .ui-sasuke.hud .page-head::after {
+  content: ""; position: absolute; left: 0; bottom: 0; width: min(240px, 60%); height: 1px;
+  background: linear-gradient(90deg, var(--accent), rgba(95, 224, 242, 0));
+  box-shadow: 0 0 8px rgba(95, 224, 242, .5);
+}
+
+/* ---------- Controls ---------- */
+.ui-sasuke.hud button { background: rgba(15, 25, 34, .9); box-shadow: inset 0 0 0 1px var(--line); transition: box-shadow .16s ease, background-color .16s ease, color .16s ease; }
+.ui-sasuke.hud button:hover:not(:disabled) { background: rgba(22, 35, 46, .95); box-shadow: inset 0 0 0 1px var(--line-strong), 0 0 18px -8px rgba(95, 224, 242, .6); }
+.ui-sasuke.hud button.primary, .ui-sasuke.hud button.accent, .ui-sasuke.hud .sk-new {
+  background: linear-gradient(135deg, #7beeff, var(--accent) 45%, var(--accent-2)); color: var(--accent-ink);
+  box-shadow: 0 0 0 1px rgba(95, 224, 242, .4), 0 8px 26px -10px rgba(61, 139, 255, .8);
+}
+.ui-sasuke.hud button.primary:hover:not(:disabled), .ui-sasuke.hud button.accent:hover:not(:disabled), .ui-sasuke.hud .sk-new:hover:not(:disabled) {
+  background: linear-gradient(135deg, #a6f5ff, #7beeff 45%, #5a9dff); box-shadow: 0 0 0 1px rgba(95, 224, 242, .6), 0 10px 30px -8px rgba(61, 139, 255, .9);
+}
+.ui-sasuke.hud button.ghost, .ui-sasuke.hud button.link, .ui-sasuke.hud .sk-icon, .ui-sasuke.hud .msg-rate button { box-shadow: none; background: transparent; }
+.ui-sasuke.hud .sk-quick button, .ui-sasuke.hud .fp-ask { background: rgba(10, 17, 24, .6); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.ui-sasuke.hud .sk-quick button:hover:not(:disabled), .ui-sasuke.hud .fp-ask:hover { box-shadow: inset 0 0 0 1px rgba(95, 224, 242, .45), 0 0 18px -6px rgba(95, 224, 242, .55); color: var(--text); }
+.ui-sasuke.hud input, .ui-sasuke.hud textarea, .ui-sasuke.hud select { background-color: rgba(8, 14, 20, .9); border: 1px solid var(--line); }
+.ui-sasuke.hud input:focus, .ui-sasuke.hud textarea:focus, .ui-sasuke.hud select:focus { border-color: rgba(95, 224, 242, .55); box-shadow: 0 0 0 3px rgba(95, 224, 242, .10); }
+.ui-sasuke.hud .pill, .ui-sasuke.hud .tag, .ui-sasuke.hud .health-chip, .ui-sasuke.hud .brief-chip { box-shadow: inset 0 0 0 1px var(--line); }
+
+/* ---------- Composer: the command line ---------- */
+.ui-sasuke.hud .composer form.sk-composer {
+  background: linear-gradient(180deg, rgba(14, 24, 33, .82), rgba(7, 12, 18, .9));
+  border: 1px solid var(--line-strong); border-radius: 18px;
+  -webkit-backdrop-filter: blur(16px) saturate(140%); backdrop-filter: blur(16px) saturate(140%);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .4), 0 22px 60px -28px rgba(0, 0, 0, .95), 0 0 40px -22px rgba(95, 224, 242, .5);
+}
+.ui-sasuke.hud .composer form.sk-composer:focus-within {
+  border-color: rgba(95, 224, 242, .55);
+  box-shadow: 0 0 0 1px rgba(95, 224, 242, .25), 0 22px 60px -28px rgba(0, 0, 0, .95), 0 0 46px -14px rgba(95, 224, 242, .6);
+}
+.ui-sasuke.hud .composer textarea { background: transparent; border: 0; box-shadow: none; }
+.ui-sasuke.hud .composer textarea:focus { box-shadow: none; }
+
+/* ---------- Conversation ---------- */
+.ui-sasuke.hud .msg.user {
+  background: linear-gradient(135deg, rgba(61, 139, 255, .18), rgba(95, 224, 242, .10));
+  box-shadow: inset 0 0 0 1px rgba(95, 224, 242, .22); border-radius: 16px 16px 4px 16px;
+}
+.ui-sasuke.hud .agent-avatar { position: relative; border-radius: 50%; box-shadow: 0 0 0 1px var(--line-strong), 0 0 18px -6px rgba(95, 224, 242, .7); background: radial-gradient(circle, rgba(95, 224, 242, .12), rgba(5, 9, 13, .9) 70%); }
+.ui-sasuke.hud .msg-via::before { box-shadow: 0 0 6px var(--accent); }
+.ui-sasuke.hud .msg-via { font-size: 10.5px; letter-spacing: .1em; }
+
+/* ---------- Navigation ---------- */
+.ui-sasuke.hud .sk-sidebar, .ui-sasuke.hud .sk-drawer {
+  background: linear-gradient(180deg, rgba(8, 14, 20, .96), rgba(4, 7, 11, .98));
+  box-shadow: inset -1px 0 0 var(--line), 20px 0 60px -40px rgba(61, 139, 255, .5);
+}
+.ui-sasuke.hud .sk-word b { background: linear-gradient(90deg, #dffaff, var(--accent)); -webkit-background-clip: text; background-clip: text; color: transparent; letter-spacing: .26em; }
+.ui-sasuke.hud .sk-word small { font-family: var(--mono); font-size: 9.5px; letter-spacing: .16em; }
+.ui-sasuke.hud .sk-nav a, .ui-sasuke.hud .sk-bottom > a { position: relative; border-radius: 10px; }
+.ui-sasuke.hud .sk-nav a:hover, .ui-sasuke.hud .sk-bottom > a:hover { background: rgba(95, 224, 242, .05); }
+.ui-sasuke.hud .sk-nav a[aria-current="page"], .ui-sasuke.hud .sk-bottom > a[aria-current="page"] {
+  background: linear-gradient(90deg, rgba(95, 224, 242, .14), rgba(95, 224, 242, .02) 70%, transparent);
+  box-shadow: inset 0 0 0 1px rgba(95, 224, 242, .12);
+}
+.ui-sasuke.hud .sk-nav a[aria-current="page"]::before, .ui-sasuke.hud .sk-bottom > a[aria-current="page"]::before {
+  content: ""; position: absolute; left: 0; top: 9px; bottom: 9px; width: 2px; border-radius: 2px;
+  background: var(--accent); box-shadow: 0 0 10px var(--accent);
+}
+.ui-sasuke.hud .sk-nav a[aria-current="page"] svg { filter: drop-shadow(0 0 6px rgba(95, 224, 242, .8)); }
+.ui-sasuke.hud .sk-top {
+  background: rgba(4, 7, 11, .72);
+  box-shadow: 0 1px 0 var(--line);
+}
+.ui-sasuke.hud .sk-head-btn { background: rgba(12, 20, 28, .8); box-shadow: inset 0 0 0 1px var(--line); }
+.ui-sasuke.hud .sk-head-btn:hover:not(:disabled) { box-shadow: inset 0 0 0 1px var(--line-strong), 0 0 16px -6px rgba(95, 224, 242, .7); }
+
+/* ---------- Home: arc-reactor mark and system line ---------- */
+.ui-sasuke.hud .sk-home-mark {
+  background: radial-gradient(circle at 50% 50%, rgba(95, 224, 242, .16), rgba(4, 8, 12, .95) 62%);
+  border-radius: 50%; box-shadow: 0 0 0 1px rgba(95, 224, 242, .25), 0 0 60px -10px rgba(61, 139, 255, .55);
+}
+.ui-sasuke.hud .sk-home-mark::before {
+  content: ""; position: absolute; inset: -9px; border-radius: 50%; pointer-events: none;
+  background: conic-gradient(from 0deg, transparent 0 18%, rgba(95, 224, 242, .85) 24%, transparent 30% 52%, rgba(61, 139, 255, .8) 58%, transparent 64% 100%);
+  -webkit-mask: radial-gradient(circle, transparent calc(50% - 1.5px), #000 calc(50% - 1px));
+  mask: radial-gradient(circle, transparent calc(50% - 1.5px), #000 calc(50% - 1px));
+  animation: hud-spin 14s linear infinite;
+}
+.ui-sasuke.hud .sk-home-mark::after {
+  content: ""; position: absolute; inset: -17px; border-radius: 50%; pointer-events: none; filter: none;
+  background: repeating-conic-gradient(rgba(120, 214, 255, .35) 0 1.2deg, transparent 1.2deg 10deg);
+  -webkit-mask: radial-gradient(circle, transparent calc(50% - 3px), #000 calc(50% - 2.5px), #000 calc(50% - .5px), transparent 50%);
+  mask: radial-gradient(circle, transparent calc(50% - 3px), #000 calc(50% - 2.5px), #000 calc(50% - .5px), transparent 50%);
+  animation: hud-spin 40s linear infinite reverse;
+}
+@keyframes hud-spin { to { transform: rotate(1turn); } }
+.ui-sasuke.hud .sk-hello { background: linear-gradient(180deg, #ffffff, #bfeeff 70%, #8fdcf0); -webkit-background-clip: text; background-clip: text; color: transparent; letter-spacing: .01em; }
+.hud-status { display: none; }
+.ui-sasuke.hud .hud-status {
+  display: inline-flex; align-items: center; gap: 8px; margin: 0 0 12px;
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .2em; color: var(--muted);
+}
+.ui-sasuke.hud .hud-status i { width: 6px; height: 6px; border-radius: 50%; background: var(--up); box-shadow: 0 0 8px var(--up); animation: hud-pulse 2.4s ease-in-out infinite; }
+.ui-sasuke.hud .hud-status b { color: var(--accent); font-weight: 600; }
+.ui-sasuke.hud .hud-status span + span::before { content: "·"; margin-right: 8px; opacity: .6; }
+@keyframes hud-pulse { 50% { opacity: .35; } }
+.ui-sasuke.hud .sk-home-name { display: none; }
+.ui-sasuke.hud .sk-notices li { background: rgba(10, 17, 24, .8); box-shadow: inset 0 0 0 1px var(--line); }
+
+/* Briefing and weekly cards: section rules become hairlines. */
+.ui-sasuke.hud .brief-sec { border-color: var(--line); }
+.ui-sasuke.hud .brief-head h3 { letter-spacing: .01em; }
+
+/* Live reply caret glows. */
+.ui-sasuke.hud .msg.assistant.is-live > :last-child::after { box-shadow: 0 0 8px var(--accent); }
+
+/* Loading skeletons shimmer in the accent. */
+.ui-sasuke.hud .pl-bar, .ui-sasuke.hud .tg-skel i, .ui-sasuke.hud .mc-skeleton i {
+  background: linear-gradient(90deg, rgba(120, 214, 255, .05), rgba(120, 214, 255, .14), rgba(120, 214, 255, .05)); background-size: 200% 100%;
+}
+
+/* Login */
+.ui-sasuke.hud .login-card { padding: 28px 22px 24px; border-radius: 16px; background: var(--hud-glass); border: 1px solid var(--line); box-shadow: var(--shadow), 0 0 60px -30px rgba(61, 139, 255, .6); position: relative; }
+.ui-sasuke.hud .login-card::after {
+  content: ""; position: absolute; inset: -1px; pointer-events: none; border-radius: 16px;
+  background:
+    linear-gradient(var(--hud-edge), var(--hud-edge)) top left / 18px 1px,
+    linear-gradient(var(--hud-edge), var(--hud-edge)) top left / 1px 18px,
+    linear-gradient(var(--hud-edge), var(--hud-edge)) bottom right / 18px 1px,
+    linear-gradient(var(--hud-edge), var(--hud-edge)) bottom right / 1px 18px;
+  background-repeat: no-repeat;
+}
+.ui-sasuke.hud .login-card .brand span { letter-spacing: .3em; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-sasuke.hud .sk-home-mark::before, .ui-sasuke.hud .sk-home-mark::after, .ui-sasuke.hud .hud-status i { animation: none; }
+}
+
+/* Fixes after review */
+.ui-sasuke.hud .agenda-main { border-radius: 8px; background: transparent; box-shadow: none; }
+.ui-sasuke.hud .agenda-main:hover:not(:disabled) { background: rgba(95, 224, 242, .05); box-shadow: none; }
+.ui-sasuke.hud .agenda-row .rail { box-shadow: 0 0 8px currentColor; }
+.ui-sasuke.hud .agenda-row.prio-urgent .rail { color: var(--danger); }
+.ui-sasuke.hud .agenda-row.prio-high .rail { color: var(--warn); }
+.ui-sasuke.hud .agenda-row.prio-normal .rail { color: var(--accent); }
+.ui-sasuke.hud .sk-word small { letter-spacing: .1em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ui-sasuke.hud { --hud-edge: rgba(95, 224, 242, .85); }
+.ui-sasuke.hud .card::after, .ui-sasuke.hud .panel::after, .ui-sasuke.hud .brief::after, .ui-sasuke.hud .tool::after, .ui-sasuke.hud .proposal::after { opacity: .9; filter: drop-shadow(0 0 3px rgba(95, 224, 242, .6)); }
+.ui-sasuke.hud { --hud-radius: 8px; }
+.ui-sasuke.hud .card::after, .ui-sasuke.hud .panel::after, .ui-sasuke.hud .brief::after, .ui-sasuke.hud .tool::after, .ui-sasuke.hud .proposal::after, .ui-sasuke.hud .tg-tile::after, .ui-sasuke.hud .login-card::after { border-radius: 0; }
+.ui-sasuke.hud .sk-notice, .ui-sasuke.hud .sk-notice:hover:not(:disabled) { background: none; box-shadow: none; }
