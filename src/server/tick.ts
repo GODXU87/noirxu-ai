@@ -92,7 +92,8 @@ export interface BriefingCard {
 
 async function healthInsight(hub: Hub, userId: string, now: Date, when: 'morning' | 'evening') {
   if (!hub.garmin) return null;
-  const result = await hub.executor.invoke('garmin.health.insight', { when }, { userId, now: () => now });
+  // The briefings leave hydration out (the water reminders already cover it).
+  const result = await hub.executor.invoke('garmin.health.insight', { when, hydration: false }, { userId, now: () => now });
   return result.status === 'ok' ? result.data as { push_line?: string; headline: string; lines: string[]; narrative: string[]; signals?: Array<{ key: string; tone: string; text: string }>; hydration_ml?: number | null } : null;
 }
 

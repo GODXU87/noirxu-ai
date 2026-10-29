@@ -76,7 +76,7 @@ export function garminTools(garmin: GarminAdapter, deps: GarminToolDeps = {}): T
       name: 'garmin.health.insight',
       description: '身體狀況分析（固定規則，不用 AI 推估）。morning：昨晚睡眠和近 7 晚平均比較、HRV 對照個人平衡範圍、起床 Body Battery、靜息心率對照 7 日平均，判斷今天適合照計畫/收一點/恢復，配合使用者每週訓練安排給建議與補水量。evening：今天步數、強度分鐘、壓力、Body Battery、運動紀錄、Garmin 建議上床時間、補水。使用者問身體狀況、睡得好不好、今天適不適合運動時優先使用。唯讀，不是醫療診斷。',
       connection: 'internal', kind: 'read', cacheTtlMs: CACHE_MS,
-      input: z.object({ when: z.enum(['morning', 'evening']).default('morning'), date }).strict(), output: anyRecord,
+      input: z.object({ when: z.enum(['morning', 'evening']).default('morning'), date, hydration: z.boolean().default(true).describe('false = 不含補水建議（早晚報用）') }).strict(), output: anyRecord,
       async run(value, ctx) {
         const today = day(value.date, ctx.now());
         const profile = (await settle(deps.profile?.() ?? Promise.resolve(DEFAULT_PROFILE))) ?? DEFAULT_PROFILE;
@@ -86,11 +86,11 @@ export function garminTools(garmin: GarminAdapter, deps: GarminToolDeps = {}): T
           // A rejected key or outage is reported, not hidden behind "no data".
           const sleep = await garmin.sleep(ctx.userId, today).catch(e => (e?.code === 'NOT_FOUND' ? null : Promise.reject(e)));
           const [history, recovery] = await Promise.all([settle(garmin.sleepRange(ctx.userId, addDays(today, -8), addDays(today, -1))), settle(garmin.recovery(ctx.userId, today))]);
-          return { data: { ...morningInsight({ date: today, sleep, history: history ?? [], recovery, profile, waterGoalMl: goal, hour: Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Taipei', hour: '2-digit', hour12: false }).format(ctx.now())) }), note: NOTE } };
+          return { data: { ...morningInsight({ date: today, sleep, history: history ?? [], recovery, profile, waterGoalMl: goal, includeWater: value.hydration, hour: Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Taipei', hour: '2-digit', hour12: false }).format(ctx.now())) }), note: NOTE } };
         }
         const daily = await garmin.daily(ctx.userId, today).catch(e => (e?.code === 'NOT_FOUND' ? null : Promise.reject(e)));
         const [activities, sleepToday] = await Promise.all([settle(garmin.activities(ctx.userId, { from: today, to: today, limit: 20 })), settle(garmin.sleep(ctx.userId, today))]);
-        return { data: { ...eveningInsight({ date: today, daily, activities: activities ?? [], sleepToday, profile, waterGoalMl: goal, waterTodayMl: water?.total_ml ?? null }), note: NOTE } };
+        return { data: { ...eveningInsight({ date: today, daily, activities: activities ?? [], sleepToday, profile, waterGoalMl: goal, waterTodayMl: water?.total_ml ?? null, includeWater: value.hydration }), note: NOTE } };
       }
     }),
     defineTool({

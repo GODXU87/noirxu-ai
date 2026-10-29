@@ -59,7 +59,7 @@ function sessionAdvice(session: string | undefined, readiness: Insight['readines
   return `建議今天${session}改成輕量或恢復課（伸展、活動度 20–30 分鐘），把高強度留到恢復後。`;
 }
 
-export function morningInsight(input: { date: string; sleep: GarminSleep | null; history: GarminSleep[]; recovery: GarminRecovery | null; profile: HealthProfile; waterGoalMl: number; hour?: number }): Insight {
+export function morningInsight(input: { date: string; sleep: GarminSleep | null; history: GarminSleep[]; recovery: GarminRecovery | null; profile: HealthProfile; waterGoalMl: number; hour?: number; includeWater?: boolean }): Insight {
   const signals: Signal[] = [];
   const lines: string[] = [];
   const gaps: string[] = [];
@@ -119,11 +119,12 @@ export function morningInsight(input: { date: string; sleep: GarminSleep | null;
   const headline = readiness === 'go' ? '狀態不錯，今天可以照計畫練。' : readiness === 'moderate' ? '恢復普通，今天練但收一點。' : readiness === 'easy' ? '身體還在恢復，今天以輕量為主。' : 'Garmin 還沒有今天的完整資料。';
   const pushParts = [sleep?.duration_s ? `睡 ${short(sleep.duration_s)}` : null, signals.find(s => s.key === 'hrv')?.text, recovery?.body_battery_at_wake != null ? `BB ${recovery.body_battery_at_wake}` : null].filter(Boolean);
   const pushAdvice = readiness === 'go' ? `${session ?? '訓練'}照計畫` : readiness === 'moderate' ? `${session ?? '訓練'}收一點` : readiness === 'easy' ? '今天以恢復為主' : '';
-  const narrative = morningNarrative({ ...input, base, readiness, session, hydration, planned, lows });
-  return { when: 'morning', date: input.date, headline, lines, suggestion, readiness, hydration_ml: hydration, signals, narrative, push_line: [pushParts.join(' · '), pushAdvice].filter(Boolean).join(' → '), gaps };
+  const water = input.includeWater !== false;
+  const narrative = morningNarrative({ ...input, base, readiness, session, hydration, planned, lows, includeWater: water });
+  return { when: 'morning', date: input.date, headline, lines: water ? lines : lines.filter(l => !l.startsWith('補水：')), suggestion, readiness, hydration_ml: water ? hydration : null, signals, narrative, push_line: [pushParts.join(' · '), pushAdvice].filter(Boolean).join(' → '), gaps };
 }
 
-export function eveningInsight(input: { date: string; daily: GarminDaily | null; activities: GarminActivity[]; sleepToday: GarminSleep | null; profile: HealthProfile; waterGoalMl: number; waterTodayMl: number | null }): Insight {
+export function eveningInsight(input: { date: string; daily: GarminDaily | null; activities: GarminActivity[]; sleepToday: GarminSleep | null; profile: HealthProfile; waterGoalMl: number; waterTodayMl: number | null; includeWater?: boolean }): Insight {
   const lines: string[] = [];
   const gaps: string[] = [];
   const signals: Signal[] = [];
@@ -157,8 +158,9 @@ export function eveningInsight(input: { date: string; daily: GarminDaily | null;
 
   const headline = tired ? '今天消耗不小，今晚好好恢復。' : input.activities.length ? '今天練得紮實，收尾做好就好。' : '今天比較輕鬆，維持節奏。';
   const push = [d?.steps != null ? `${d.steps.toLocaleString('en-US')} 步` : null, minutes ? `運動 ${minutes} 分` : null, d?.body_battery_latest != null ? `BB ${d.body_battery_latest}` : null].filter(Boolean).join(' · ');
-  const narrative = eveningNarrative({ d, activities: input.activities, minutes, tired, bedtime: bedtime ?? null, nextSession, tomorrowDay: WEEKDAY[tomorrow.getUTCDay()], hydration, drank });
-  return { when: 'evening', date: input.date, headline, lines, suggestion, readiness: null, hydration_ml: hydration, signals, narrative, push_line: [push, bedtime ? `${clockOf(bedtime.start_min)} 前上床` : null].filter(Boolean).join(' → '), gaps };
+  const water = input.includeWater !== false;
+  const narrative = eveningNarrative({ d, activities: input.activities, minutes, tired, bedtime: bedtime ?? null, nextSession, tomorrowDay: WEEKDAY[tomorrow.getUTCDay()], hydration, drank: water ? drank : null });
+  return { when: 'evening', date: input.date, headline, lines: water ? lines : lines.filter(l => !l.startsWith('補水：')), suggestion, readiness: null, hydration_ml: water ? hydration : null, signals, narrative, push_line: [push, bedtime ? `${clockOf(bedtime.start_min)} 前上床` : null].filter(Boolean).join(' → '), gaps };
 }
 
 // ---- SASUKE's voice -------------------------------------------------------------------------
@@ -171,7 +173,7 @@ const LIGHTER: Record<string, string> = {
   跑步耐力: '改成輕鬆的 Zone 2，距離縮短三成'
 };
 
-function morningNarrative(x: { sleep: GarminSleep | null; recovery: GarminRecovery | null; base: number | null; readiness: Insight['readiness']; session: string | undefined; hydration: number; planned: number; lows: number; hour?: number }): string[] {
+function morningNarrative(x: { sleep: GarminSleep | null; recovery: GarminRecovery | null; base: number | null; readiness: Insight['readiness']; session: string | undefined; hydration: number; planned: number; lows: number; hour?: number; includeWater?: boolean }): string[] {
   const out: string[] = [];
   const greet = (x.hour ?? 8) < 11 ? '早安，Sir。' : 'Sir，';
   const s = x.sleep;
@@ -205,7 +207,8 @@ function morningNarrative(x: { sleep: GarminSleep | null; recovery: GarminRecove
 
   const water = `水今天喝到 ${x.hydration.toLocaleString('en-US')} ml 左右${x.planned ? '，訓練時每 15–20 分鐘喝幾口' : ''}`;
   const close = x.readiness === 'go' ? '難得狀態這麼好，別浪費了。' : x.readiness === 'moderate' ? '今晚若能早點上床，明天的狀態會更好。' : x.readiness === 'easy' ? '今天別勉強，練習中有任何不舒服就先停下來。' : '';
-  out.push(`${water}。${close}`);
+  if (x.includeWater !== false) out.push(`${water}。${close}`);
+  else if (close) out.push(close);
   if (x.lows >= 2) out.push('這些是手錶的趨勢，不是醫療判斷；如果連續幾天都這樣，或身體覺得不對，請找醫師看看。');
   return out;
 }
