@@ -6,6 +6,7 @@ import type { FeatureFlags } from '@/lib/features';
 import { MicButton, useSpeech, useVoiceInput } from './components/Voice';
 import { money } from '@/lib/tool-labels';
 import { BrandMark, Icon, type IconName } from './components/Icon';
+import { TodayGlance, useToday } from './components/TodayGlance';
 import { AssistantCard, WaterMeter } from './components/assistant';
 import { importLegacySession, loadConversation, newConversationId, resumeActive, saveConversation, touchActive } from './sasuke/conversations';
 import { useRouter } from 'next/navigation';
@@ -169,6 +170,8 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   const [notes, setNotes] = useState<string[]>([]);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
+  /** Reply text as it streams in; replaced by the finished reply when the turn ends. */
+  const [live, setLive] = useState('');
   const [style, setStyle] = useState<ReplyStyle>('professional');
   const [paletteIndex, setPaletteIndex] = useState(0);
   const armed = useRef(0);
@@ -196,11 +199,14 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
     voice.start(textRef.current);
   }
   const empty = items.length === 0;
-  const brief = useBrief(empty && features.briefings);
+  // The SASUKE home uses the light per-source glance; the full briefing only on the classic home.
+  const brief = useBrief(empty && features.briefings && !sasuke);
+  const today = useToday(empty && sasuke);
   const inbox = useInbox(empty && sasuke);
   // Shown only when something real needs attention: overdue items or unread notifications.
   const notices = [
     ...(brief && !brief.failed && brief.overdue > 0 ? [{ key: 'overdue', tone: 'prio-urgent', text: `${brief.overdue} 件事已過期`, ask: '有哪些事已經過期了？' }] : []),
+    ...(today.data.agenda?.overdue > 0 ? [{ key: 'overdue', tone: 'prio-urgent', text: `${today.data.agenda.overdue} 件事已過期`, ask: '有哪些事已經過期了？' }] : []),
     ...inbox.slice(0, 2).map(i => ({ key: i.key, tone: 'prio-high', text: i.title, ask: `關於這則提醒：「${i.title}」，現在狀況如何？` }))
   ];
   const [water, setWater] = useState<any>(null);
@@ -318,6 +324,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
+        let draft = '';
         let index = 0;
         for (;;) {
           const { value, done } = await reader.read();
@@ -329,7 +336,8 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
             buffer = buffer.slice(newline + 1);
             if (!line) continue;
             const event = JSON.parse(line);
-            if (event.type === 'tool_start') setBusy(`正在使用 ${toolLabel(event.tool)}`);
+            if (event.type === 'text') { const before = draft.length; draft += event.delta; setLive(draft); if (Math.floor(before / 120) !== Math.floor(draft.length / 120) || before === 0) scroll(); }
+            else if (event.type === 'tool_start') { draft = ''; setLive(''); setBusy(`正在使用 ${toolLabel(event.tool)}`); }
             else if (event.type === 'tool_done') { shown.add(index++); if (event.result?.status === 'confirmation_required') setPending(p => [...p, event.result.proposalId]); setItems(prev => [...prev, { kind: 'tool', result: event.result }]); scroll(); setBusy('整理結果'); if (String(event.tool).startsWith('agenda.')) window.dispatchEvent(new Event('noirxu-reminders-changed')); }
             else if (event.type === 'done') body = event;
           }
@@ -356,6 +364,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
         : { kind: 'error', text: '網路錯誤，訊息沒有送出。', retry: message }]);
     } finally {
       voiceTurn.current = false;
+      setLive('');
       setBusy(null); scroll();
     }
   }
@@ -559,6 +568,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
                 {notices.map(n => <li key={n.key}><span className={`sk-dot ${n.tone}`} /><button type="button" className="sk-notice" onClick={() => pick(n.ask, true)}>{n.text}</button></li>)}
               </ul>
             )}
+            <TodayGlance data={today.data} loading={today.loading} ask={text => pick(text, true)} />
             {composer}
             <nav className="sk-quick" aria-label="常用">
               {QUICK.filter(c => !c.feature || features[c.feature]).map(c => <button key={c.label} type="button" onClick={() => pick(c.text, c.run)}><Icon name={c.icon} size={14} />{c.label}</button>)}
@@ -608,7 +618,13 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
             )}
           </Fragment>
         ))}
-        {busy && (
+        {busy && live && (
+          <div className="agent-turn">
+            <span className="agent-avatar thinking" aria-hidden="true">{sasuke ? <SasukeMark size={24} state="thinking" /> : <BrandMark size={26} />}</span>
+            <div className="agent-body"><div className="msg assistant is-live" aria-live="polite"><RichText text={live} /></div></div>
+          </div>
+        )}
+        {busy && !live && (
           <div className="agent-turn">
             <span className="agent-avatar thinking" aria-hidden="true">{sasuke ? <SasukeMark size={22} state="thinking" /> : <BrandMark size={26} />}</span>
             <div className="agent-body">{sasuke

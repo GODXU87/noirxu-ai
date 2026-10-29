@@ -22,8 +22,15 @@ export function ServiceWorker() {
         console.error('[noirxu-ai] service worker registration failed', error);
       }
     );
+    // The per-minute background schedule does the real work; opening the app only nudges it,
+    // at most once every 2 minutes, so switching pages does not queue extra server work.
     const catchUp = () => {
       if (document.visibilityState !== 'visible' || location.pathname.startsWith('/login')) return;
+      try {
+        const last = Number(sessionStorage.getItem('sasuke:catchup') ?? 0);
+        if (Date.now() - last < 2 * 60_000) return;
+        sessionStorage.setItem('sasuke:catchup', String(Date.now()));
+      } catch { /* storage blocked: just nudge */ }
       void fetch('/api/cron/catchup', { method: 'POST' }).catch(() => undefined);
     };
     // While the app is open, fire delivery exactly when a reminder is due instead of waiting

@@ -167,7 +167,9 @@ export interface TurnLimits {
 
 export type ProgressEvent =
   | { type: 'tool_start'; tool: string }
-  | { type: 'tool_done'; tool: string; result: ToolEvent['result'] };
+  | { type: 'tool_done'; tool: string; result: ToolEvent['result'] }
+  /** Reply text as the model writes it (streamed providers only); the final reply still comes in 'done'. */
+  | { type: 'text'; delta: string };
 
 export async function runAgentTurn(options: {
   client: Anthropic;
