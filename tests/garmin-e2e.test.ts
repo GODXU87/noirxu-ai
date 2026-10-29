@@ -27,9 +27,9 @@ describe('Garmin body status end to end', () => {
     const { client, requests } = fakeOpenAI();
     const r = await handleChat(hub, ctxAt(NOW), { style: 'professional', history: [], text: '昨晚睡得怎樣', clients: { openai: () => client } });
     expect(requests).toHaveLength(0);
-    expect(r.ok && r.reply).toContain('狀態不錯，今天可以照計畫練。');
-    expect(r.ok && r.reply).toContain('近 4 晚平均 7 小時 0 分，多 36 分');
-    expect(r.ok && r.reply).toContain('今天健身照計畫進行');
+    expect(r.ok && r.reply).toMatch(/^早安，Sir。昨晚睡了 7 小時 36 分（23:40–07:16），比平常多睡了 36 分鐘/);
+    expect(r.ok && r.reply).toContain('今天的健身可以放心照計畫來');
+    expect(r.ok && r.reply).toContain('難得狀態這麼好，別浪費了。');
     const brief = await morningBriefing(hub, 'owner', new Date(NOW));
     expect(brief.body.split('\n')[0]).toBe('身體：睡 7h36m · HRV 平衡 · BB 71 → 健身照計畫');
   });

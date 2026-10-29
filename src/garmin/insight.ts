@@ -28,6 +28,8 @@ export interface Insight {
   readiness: 'go' | 'moderate' | 'easy' | null;
   hydration_ml: number | null;
   signals: Signal[];
+  /** The same analysis in SASUKE's voice: Sir, the meaning first, numbers as evidence, a caring close. */
+  narrative: string[];
   /** One short line for the lock screen. */
   push_line: string;
   gaps: string[];
@@ -57,7 +59,7 @@ function sessionAdvice(session: string | undefined, readiness: Insight['readines
   return `建議今天${session}改成輕量或恢復課（伸展、活動度 20–30 分鐘），把高強度留到恢復後。`;
 }
 
-export function morningInsight(input: { date: string; sleep: GarminSleep | null; history: GarminSleep[]; recovery: GarminRecovery | null; profile: HealthProfile; waterGoalMl: number }): Insight {
+export function morningInsight(input: { date: string; sleep: GarminSleep | null; history: GarminSleep[]; recovery: GarminRecovery | null; profile: HealthProfile; waterGoalMl: number; hour?: number }): Insight {
   const signals: Signal[] = [];
   const lines: string[] = [];
   const gaps: string[] = [];
@@ -117,7 +119,8 @@ export function morningInsight(input: { date: string; sleep: GarminSleep | null;
   const headline = readiness === 'go' ? '狀態不錯，今天可以照計畫練。' : readiness === 'moderate' ? '恢復普通，今天練但收一點。' : readiness === 'easy' ? '身體還在恢復，今天以輕量為主。' : 'Garmin 還沒有今天的完整資料。';
   const pushParts = [sleep?.duration_s ? `睡 ${short(sleep.duration_s)}` : null, signals.find(s => s.key === 'hrv')?.text, recovery?.body_battery_at_wake != null ? `BB ${recovery.body_battery_at_wake}` : null].filter(Boolean);
   const pushAdvice = readiness === 'go' ? `${session ?? '訓練'}照計畫` : readiness === 'moderate' ? `${session ?? '訓練'}收一點` : readiness === 'easy' ? '今天以恢復為主' : '';
-  return { when: 'morning', date: input.date, headline, lines, suggestion, readiness, hydration_ml: hydration, signals, push_line: [pushParts.join(' · '), pushAdvice].filter(Boolean).join(' → '), gaps };
+  const narrative = morningNarrative({ ...input, base, readiness, session, hydration, planned, lows });
+  return { when: 'morning', date: input.date, headline, lines, suggestion, readiness, hydration_ml: hydration, signals, narrative, push_line: [pushParts.join(' · '), pushAdvice].filter(Boolean).join(' → '), gaps };
 }
 
 export function eveningInsight(input: { date: string; daily: GarminDaily | null; activities: GarminActivity[]; sleepToday: GarminSleep | null; profile: HealthProfile; waterGoalMl: number; waterTodayMl: number | null }): Insight {
@@ -154,5 +157,72 @@ export function eveningInsight(input: { date: string; daily: GarminDaily | null;
 
   const headline = tired ? '今天消耗不小，今晚好好恢復。' : input.activities.length ? '今天練得紮實，收尾做好就好。' : '今天比較輕鬆，維持節奏。';
   const push = [d?.steps != null ? `${d.steps.toLocaleString('en-US')} 步` : null, minutes ? `運動 ${minutes} 分` : null, d?.body_battery_latest != null ? `BB ${d.body_battery_latest}` : null].filter(Boolean).join(' · ');
-  return { when: 'evening', date: input.date, headline, lines, suggestion, readiness: null, hydration_ml: hydration, signals, push_line: [push, bedtime ? `${clockOf(bedtime.start_min)} 前上床` : null].filter(Boolean).join(' → '), gaps };
+  const narrative = eveningNarrative({ d, activities: input.activities, minutes, tired, bedtime: bedtime ?? null, nextSession, tomorrowDay: WEEKDAY[tomorrow.getUTCDay()], hydration, drank });
+  return { when: 'evening', date: input.date, headline, lines, suggestion, readiness: null, hydration_ml: hydration, signals, narrative, push_line: [push, bedtime ? `${clockOf(bedtime.start_min)} 前上床` : null].filter(Boolean).join(' → '), gaps };
+}
+
+// ---- SASUKE's voice -------------------------------------------------------------------------
+// Fixed phrasing chosen by the numbers, so it stays honest and costs no model call. Sir once,
+// at the start; no jokes when the body is struggling.
+
+const LIGHTER: Record<string, string> = {
+  羽球: '少打一兩局、避開連續的高強度對抗，局間記得補水',
+  健身: '重量抓平常八成、少一組，把動作做乾淨就好',
+  跑步耐力: '改成輕鬆的 Zone 2，距離縮短三成'
+};
+
+function morningNarrative(x: { sleep: GarminSleep | null; recovery: GarminRecovery | null; base: number | null; readiness: Insight['readiness']; session: string | undefined; hydration: number; planned: number; lows: number; hour?: number }): string[] {
+  const out: string[] = [];
+  const greet = (x.hour ?? 8) < 11 ? '早安，Sir。' : 'Sir，';
+  const s = x.sleep;
+  if (s?.duration_s) {
+    const diff = x.base !== null ? Math.round((s.duration_s - x.base) / 60) : null;
+    const window = s.start_local && s.end_local ? `（${s.start_local}–${s.end_local}）` : '';
+    const vs = diff === null ? '' : diff <= -30 ? `，比你這週的平均少了約 ${-diff} 分鐘` : diff >= 30 ? `，比平常多睡了 ${diff} 分鐘` : '，和平常差不多';
+    const good = [s.awake_count === 0 ? '中間沒有醒來' : s.awake_count ? `中間醒來 ${s.awake_count} 次` : null, s.deep_s !== null && s.deep_s >= 3600 ? '深睡也夠' : s.deep_s !== null ? '深睡偏少' : null].filter(Boolean);
+    const join = diff !== null && diff <= -30 && s.awake_count === 0 ? '，不過' : '，';
+    out.push(`${greet}昨晚睡了 ${hm(s.duration_s)}${window}${vs}${good.length ? `${join}${good.join('，')}` : ''}。`);
+  } else out.push(`${greet}昨晚的睡眠資料還沒同步過來，我先看其他指標。`);
+
+  const r = x.recovery;
+  if (r) {
+    const parts: string[] = [];
+    const hrv = r.hrv_last_night_avg;
+    const inRange = hrv !== null && r.hrv_balanced_low !== null && hrv >= r.hrv_balanced_low;
+    if (hrv !== null) parts.push(inRange ? `HRV ${hrv} 在你的平衡範圍內，神經系統恢復得不錯` : `HRV ${hrv} 低於你平常的範圍，身體還有點緊繃`);
+    const up = r.resting_hr !== null && r.resting_hr_7d_avg !== null ? r.resting_hr - r.resting_hr_7d_avg : 0;
+    const bb = r.body_battery_at_wake;
+    const tiredBits = [up >= 3 ? `靜息心率 ${r.resting_hr} 比這週平均高了 ${up}` : null, bb !== null && bb < 70 ? `起床 Body Battery 只有 ${bb}` : null].filter(Boolean);
+    if (tiredBits.length) parts.push(`${parts.length ? '但' : ''}${tiredBits.join('，')}，身體可能還在消化前幾天的訓練`);
+    else if (bb !== null) parts.push(`起床 Body Battery ${bb}，電量充足`);
+    if (parts.length) out.push(`${parts.join('；')}。`);
+  }
+
+  const sess = x.session;
+  if (x.readiness === 'go') out.push(sess ? `今天的${sess}可以放心照計畫來，狀態允許拉高強度${sess === '跑步耐力' ? '，想練 HYROX 節奏段也行' : ''}。` : '今天沒有排課，狀態不錯，想動的話可以安排一次有質量的訓練。');
+  else if (x.readiness === 'moderate') out.push(sess ? `所以今天的${sess}照練，但收一點：${LIGHTER[sess] ?? '強度降一級'}。` : '今天沒有排課，動一動可以，強度放中低就好。');
+  else if (x.readiness === 'easy') out.push(sess ? `今天建議別硬練：${sess}改成伸展或活動度 20–30 分鐘，高強度留到恢復之後。` : '今天就以休息為主，散步、伸展就很好。');
+
+  const water = `水今天喝到 ${x.hydration.toLocaleString('en-US')} ml 左右${x.planned ? '，訓練時每 15–20 分鐘喝幾口' : ''}`;
+  const close = x.readiness === 'go' ? '難得狀態這麼好，別浪費了。' : x.readiness === 'moderate' ? '今晚若能早點上床，明天的狀態會更好。' : x.readiness === 'easy' ? '今天別勉強，練習中有任何不舒服就先停下來。' : '';
+  out.push(`${water}。${close}`);
+  if (x.lows >= 2) out.push('這些是手錶的趨勢，不是醫療判斷；如果連續幾天都這樣，或身體覺得不對，請找醫師看看。');
+  return out;
+}
+
+function eveningNarrative(x: { d: GarminDaily | null; activities: GarminActivity[]; minutes: number; tired: boolean; bedtime: { start_min: number; end_min: number } | null; nextSession: string | undefined; tomorrowDay: string; hydration: number; drank: number | null }): string[] {
+  const out: string[] = [];
+  const d = x.d;
+  const steps = d?.steps != null ? `今天走了 ${d.steps.toLocaleString('en-US')} 步${d.step_goal ? (d.steps >= d.step_goal ? '，目標達成' : `，離目標還差 ${(d.step_goal - d.steps).toLocaleString('en-US')} 步`) : ''}` : null;
+  const workout = x.activities.length ? x.activities.map(a => `${a.name || a.type} ${Math.round(a.duration_s / 60)} 分鐘${a.avg_hr ? `（平均心率 ${a.avg_hr}）` : ''}`).join('、') : null;
+  out.push(`Sir，${x.activities.length ? '今天辛苦了。' : '今天過得還好嗎？'}${[steps, workout ? `練了${workout}` : '今天沒有運動紀錄'].filter(Boolean).join('；')}。`);
+  if (d?.body_battery_latest != null || d?.stress_avg != null) {
+    const bb = d?.body_battery_latest;
+    const feel = x.tired ? '消耗確實不小' : bb != null && bb >= 50 ? '電量還算充足' : '在正常範圍';
+    out.push(`${[bb != null ? `Body Battery 現在剩 ${bb}` : null, d?.stress_avg != null ? `平均壓力 ${d.stress_avg}` : null].filter(Boolean).join('，')}，${feel}。`);
+  }
+  const bed = x.bedtime ? `Garmin 建議今晚 ${clockOf(x.bedtime.start_min)}–${clockOf(x.bedtime.end_min)} 上床` : '今晚盡量睡滿 7–8 小時';
+  out.push(`${bed}${x.nextSession ? `，明天（週${x.tomorrowDay}）是${x.nextSession}日，${x.tired ? '早點睡會比較撐得住' : '睡好就能有好表現'}` : ''}。`);
+  if (x.drank !== null && x.drank < x.hydration) out.push(`睡前再補約 ${Math.min(500, round50(x.hydration - x.drank)).toLocaleString('en-US')} ml 水，分幾口喝，別一次灌完。`);
+  return out;
 }

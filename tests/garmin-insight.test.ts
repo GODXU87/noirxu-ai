@@ -68,3 +68,20 @@ describe('evening body-status analysis', () => {
     expect(classify('昨晚睡得怎樣')).toEqual({ kind: 'garmin', which: 'sleep' });
   });
 });
+
+describe("SASUKE's voice", () => {
+  it('reads like a butler: Sir, the meaning, the evidence and a caring close (real numbers from 2026-10-29)', () => {
+    const base = ['2026-10-22', '2026-10-23', '2026-10-24', '2026-10-25', '2026-10-26', '2026-10-27', '2026-10-28'].map(d => night(d, 7.917));
+    const r = morningInsight({
+      date: '2026-10-29', hour: 9, history: base, profile: DEFAULT_PROFILE, waterGoalMl: 2000,
+      sleep: night('2026-10-29', 7.6, { start_local: '22:09', end_local: '05:48' }),
+      recovery: recovery({ hrv_last_night_avg: 66, hrv_balanced_low: 62, hrv_balanced_high: 81, body_battery_at_wake: 63, resting_hr: 53, resting_hr_7d_avg: 49 })
+    });
+    expect(r.narrative).toEqual([
+      '早安，Sir。昨晚睡了 7 小時 36 分（22:09–05:48），和平常差不多，中間沒有醒來，深睡也夠。',
+      'HRV 66 在你的平衡範圍內，神經系統恢復得不錯；但靜息心率 53 比這週平均高了 4，起床 Body Battery 只有 63，身體可能還在消化前幾天的訓練。',
+      '所以今天的健身照練，但收一點：重量抓平常八成、少一組，把動作做乾淨就好。',
+      '水今天喝到 2,500 ml 左右，訓練時每 15–20 分鐘喝幾口。今晚若能早點上床，明天的狀態會更好。'
+    ]);
+  });
+});
