@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import type { ConnectionStatus } from '@/server/connections';
 import { toolLabel } from '@/lib/tool-labels';
 import { Notifications } from '../components/Notifications';
+import { VoiceSettingsCard } from '../components/Voice';
 
 interface TestResult { ok: boolean; tool: string; code?: string; message?: string; tradeDate?: string | null }
 
@@ -139,6 +140,8 @@ export function Connections({ initial, gmailResult, redirectUri, garmin = false 
         <section className="card"><p className="hint">本地能回答的問題不呼叫付費 AI；可設定每日、每月上限並查看實際用量。</p><div className="row"><a href="/cost"><button type="button">查看與設定</button></a></div></section>
         <p className="section-label">通知</p>
         <section className="card"><Notifications /></section>
+        <p className="section-label">語音</p>
+        <section className="card"><VoiceSettingsCard /></section>
       </div>
     </main>
   );

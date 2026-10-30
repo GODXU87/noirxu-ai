@@ -22,7 +22,11 @@ export const RECOGNITION_OPTIONS = { lang: 'zh-TW', continuous: false, interimRe
 
 /** Reply text for read-back: drops markdown, links and code, and keeps it short. */
 export function speakable(reply: string, max = 220): string {
-  const plain = reply
+  // Tables are read row by row ("SPY，612.30，+0.42%。"); separator rows and dividers are dropped.
+  const lines = reply.split('\n')
+    .filter(line => !/^\s*\|?\s*:?-{2,}[-|:\s]*$/.test(line) && !/^\s*(-{3,}|\*{3,})\s*$/.test(line))
+    .map(line => (/^\s*\|.*\|\s*$/.test(line) ? `${line.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim()).filter(Boolean).join('，')}。` : line.replace(/^\s*#{1,4}\s+(.*)$/, '$1。').replace(/^\s*(?:[-*•]|\d+[.)、])\s+(.*?)[。.]?$/, '$1。')));
+  const plain = lines.join('\n')
     .replace(/```[\s\S]*?```/g, '')
     .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
     .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')

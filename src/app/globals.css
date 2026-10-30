@@ -918,3 +918,37 @@ button[data-state="error"] { border-color: var(--danger) !important; animation: 
 .msg.assistant.is-live > :last-child::after { content: ""; display: inline-block; width: 7px; height: 1em; margin-left: 3px; vertical-align: -2px; border-radius: 2px; background: var(--accent); opacity: .7; animation: live-caret 1s steps(2, start) infinite; }
 @keyframes live-caret { to { visibility: hidden; } }
 @media (prefers-reduced-motion: reduce) { .msg.assistant.is-live > :last-child::after { animation: none; } }
+
+/* Rich reply blocks */
+.rich ol { margin: 0 0 8px; padding-left: 22px; }
+.rich li { margin: 2px 0; }
+.rich li.sub { margin-left: 18px; list-style: circle; }
+.rich ol li::marker { font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 600; }
+.rich ul li::marker { color: var(--accent); }
+.rich code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .9em; padding: 1px 6px; border-radius: 5px; background: var(--surface-2); }
+.rich hr { border: 0; height: 1px; margin: 12px 0; background: var(--line-strong); }
+.rich-note { margin: 10px 0 4px !important; padding: 8px 12px; border-left: 2px solid var(--warn); border-radius: 0 8px 8px 0; background: rgba(242, 194, 91, .07); color: var(--text-soft); font-size: 14px; }
+.rich-table { margin: 4px 0 12px; overflow-x: auto; border-radius: 10px; border: 1px solid var(--line); }
+.rich-table table { width: 100%; border-collapse: collapse; font-size: 14px; line-height: 1.5; }
+.rich-table th { text-align: left; font-weight: 600; font-size: 12.5px; color: var(--muted); background: var(--surface-2); white-space: nowrap; }
+.rich-table th, .rich-table td { padding: 8px 12px; border-bottom: 1px solid var(--line); }
+.rich-table tr:last-child td { border-bottom: 0; }
+.rich-table td { font-variant-numeric: tabular-nums; }
+.ui-sasuke .rich h4 { font-size: 15px; font-weight: 650; margin: 16px 0 6px; color: var(--text); }
+.ui-sasuke .rich > :first-child { margin-top: 0; }
+
+/* Voice: read-aloud button, conversation mode, settings */
+.ui-sasuke .msg-speak { min-height: 0; width: 28px; height: 28px; padding: 0; display: grid; place-items: center; border: 0; border-radius: 8px; background: none; color: var(--muted); opacity: .7; }
+.ui-sasuke .msg-speak:hover:not(:disabled) { background: var(--surface-2); color: var(--text); opacity: 1; }
+.ui-sasuke .msg-speak.is-on { color: var(--accent); opacity: 1; }
+.ui-sasuke .sk-mic.is-conversation { box-shadow: inset 0 0 0 1px rgba(95, 224, 242, .45); color: var(--accent); }
+.voice-settings { display: grid; gap: 12px; }
+.voice-opt { display: flex; align-items: flex-start; gap: 12px; cursor: pointer; }
+.voice-opt input { width: 18px; height: 18px; margin-top: 2px; flex: none; accent-color: var(--accent); }
+.voice-opt span { display: grid; gap: 2px; }
+.voice-opt b { font-size: 14px; font-weight: 600; }
+.voice-opt small { font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+.voice-rate { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; color: var(--text-soft); }
+.voice-rate span { margin-right: 6px; }
+.ui-sasuke .voice-rate button { min-height: 0; padding: 6px 12px; font-size: 12.5px; }
+.ui-sasuke .voice-rate button.on { background: var(--accent-dim); color: var(--accent); box-shadow: inset 0 0 0 1px rgba(95, 224, 242, .4); }

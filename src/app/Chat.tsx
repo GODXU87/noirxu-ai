@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { parseCommand, type CommandName } from '@/assistant/commands';
 import type { FeatureFlags } from '@/lib/features';
-import { MicButton, useSpeech, useVoiceInput } from './components/Voice';
+import { MicButton, SpeakButton, STOP_WORDS, useSpeech, useVoiceInput, useVoiceSettings } from './components/Voice';
 import { money } from '@/lib/tool-labels';
 import { BrandMark, Icon, type IconName } from './components/Icon';
 import { TodayGlance, useToday } from './components/TodayGlance';
@@ -148,6 +148,18 @@ function turns(items: Item[]) {
   return out;
 }
 
+/** "SASUKE · ONLINE · 15:20" under the mark (shown by the HUD theme). The clock runs in the browser only. */
+function HudStatus() {
+  const [clock, setClock] = useState('');
+  useEffect(() => {
+    const tick = () => setClock(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Taipei', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date()));
+    tick();
+    const id = window.setInterval(tick, 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+  return <p className="hud-status" aria-hidden="true"><i /><span><b>SASUKE</b></span><span>ONLINE</span>{clock && <span>TPE {clock}</span>}</p>;
+}
+
 function Rating({ rated, onRate }: { rated?: 'up' | 'down'; onRate: (rating: 'up' | 'down') => void }) {
   return (
     <span className="msg-rate" role="group" aria-label="評分這則回覆">
@@ -182,20 +194,60 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   const [pending, setPending] = useState<string[]>([]);
   const feedEnd = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
-  // Voice: one utterance per tap into the composer (editable); a turn started by voice gets its
-  // reply read aloud, which can be stopped at any time.
-  const voice = useVoiceInput(spoken => setText(spoken));
+  // Voice: the words fill the composer as Sir speaks and, by default, go out when he stops.
+  // A turn started by voice is read aloud; in conversation mode SASUKE then listens again.
+  // Saying 「結束」 or tapping the mic ends it. Settings live on 設定與連線 (per device).
+  const { settings: voiceSettings } = useVoiceSettings();
+  const voice = useVoiceInput(spoken => setText(spoken), heard => {
+    if (conversationOn.current && STOP_WORDS.test(heard.trim())) {
+      conversationOn.current = false; voiceTurn.current = false; setText('');
+      speech.speak('好的，Sir。有需要隨時叫我。', { rate: voiceSettings.rate });
+      return;
+    }
+    if (voiceSettings.autoSend) void send(heard);
+  });
   const speech = useSpeech();
   const voiceTurn = useRef(false);
+  const conversationOn = useRef(false);
+  const [canSpeak, setCanSpeak] = useState(false);
+  const [speakingAt, setSpeakingAt] = useState<number | null>(null);
+  useEffect(() => { setCanSpeak(typeof window !== 'undefined' && 'speechSynthesis' in window); }, []);
+  /** After a voice turn: read the reply (if wanted), then listen again in conversation mode. */
+  function voiceReply(reply: string) {
+    if (!voiceTurn.current) return;
+    voiceTurn.current = false;
+    const again = () => {
+      if (!conversationOn.current) return;
+      window.setTimeout(() => {
+        if (!conversationOn.current) return;
+        voiceTurn.current = true;
+        if (!voice.start('')) { conversationOn.current = false; voiceTurn.current = false; }
+      }, 350);
+    };
+    if (voiceSettings.readAloud && reply) speech.speak(reply, { rate: voiceSettings.rate, onEnd: again });
+    else again();
+  }
+  function speakItem(index: number, text: string) {
+    if (speakingAt === index && speech.speaking) { speech.stop(); setSpeakingAt(null); return; }
+    setSpeakingAt(index);
+    speech.speak(text, { rate: voiceSettings.rate, onEnd: () => setSpeakingAt(null) });
+  }
   /** Route of the last reply, sent with the next message so a 「不對」 is pinned on it. */
   const lastRoute = useRef<string | undefined>(undefined);
   const textRef = useRef('');
   textRef.current = text;
   const voiceOn = sasuke && features.voice && voice.supported;
   function toggleMic() {
-    if (voice.listening) { voice.stop(); return; }
+    if (voice.listening || conversationOn.current) {
+      // A tap while listening (or between turns in conversation mode) ends the conversation.
+      conversationOn.current = false; voiceTurn.current = false;
+      voice.stop(); speech.stop();
+      return;
+    }
     speech.stop();
+    speech.unlock();
     voiceTurn.current = true;
+    conversationOn.current = voiceSettings.conversation;
     voice.start(textRef.current);
   }
   const empty = items.length === 0;
@@ -287,7 +339,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
     if (command) {
       setBusy(WORKING[command.name] ?? '處理中');
       const forward = await runCommand(message);
-      if (forward === null) { setBusy(null); scroll(); return; }
+      if (forward === null) { setBusy(null); scroll(); voiceReply('Sir，已經為您整理好了，請看畫面上的卡片。'); return; }
       message = forward;
     }
     await chat(message);
@@ -357,13 +409,14 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
         ...(body.reply ? [{ kind: 'assistant' as const, text: body.reply, via: routeLabel(body.route), route: routeTag(body.route) }] : [])
       ]);
       lastRoute.current = routeTag(body.route);
-      if (voiceTurn.current && body.reply) speech.speak(body.reply);
+      voiceReply(body.reply ?? '');
     } catch {
       setItems(prev => [...prev, shown.size
         ? { kind: 'error', text: '連線中斷：上方已顯示的工具結果是真的已執行的部分，AI 的回覆沒有收到。' }
         : { kind: 'error', text: '網路錯誤，訊息沒有送出。', retry: message }]);
     } finally {
-      voiceTurn.current = false;
+      // A voice turn that ended in an error also ends the conversation.
+      if (voiceTurn.current) { voiceTurn.current = false; conversationOn.current = false; }
       setLive('');
       setBusy(null); scroll();
     }
@@ -472,9 +525,10 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
       return (
         <div key={index} className="msg assistant">
           <RichText text={item.text} />
-          {sasuke && (item.via || features.quality) && (
+          {sasuke && (item.via || features.quality || features.voice) && (
             <div className="msg-foot">
               {item.via && <span className="msg-via">{item.via}</span>}
+              {canSpeak && features.voice && <SpeakButton active={speakingAt === index && speech.speaking} onClick={() => speakItem(index, item.text)} />}
               {features.quality && <Rating rated={item.rated} onRate={rating => rate(index, rating)} />}
             </div>
           )}
@@ -536,9 +590,9 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
                 )}
               </div>
               {enterHint && <span className="sk-enter-hint" role="status">再按一次 Enter 送出</span>}
-              {voice.listening && <span className="sk-enter-hint" role="status">聆聽中…說完按一下麥克風</span>}
+              {voice.listening && <span className="sk-enter-hint" role="status">{voiceSettings.autoSend ? '聆聽中…說完會自動送出' : '聆聽中…說完按一下麥克風'}</span>}
               {speech.speaking && <button type="button" className="sk-stop-speak" onClick={speech.stop}>停止朗讀</button>}
-              {voiceOn && <MicButton listening={voice.listening} disabled={Boolean(busy)} onClick={toggleMic} />}
+              {voiceOn && <MicButton listening={voice.listening} conversation={voiceSettings.conversation} disabled={Boolean(busy) && !conversationOn.current} onClick={toggleMic} />}
               <button className="sk-send" type="submit" disabled={Boolean(busy) || !text.trim()} aria-label="送出"><Icon name="up" size={18} /></button>
             </div>
           </form>
@@ -561,6 +615,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
           <section className="sk-home">
             <span className="sk-home-mark"><SasukeMark size={44} state={agentState} /></span>
             <p className="sk-home-name">SASUKE</p>
+            <HudStatus />
             <h1 className="sk-hello">{greeting()}，Sir。</h1>
             <p className="sk-ask">{askLine()}</p>
             {notices.length > 0 && (

@@ -41,7 +41,7 @@ describe('SASUKE persona: system prompt', () => {
   it('sets the Sir rules, humor limits and the exact status vocabulary', () => {
     expect(prompt).toContain('稱呼使用者為「Sir」（S 大寫）');
     expect(prompt).toContain('不使用「先生」「老闆」');
-    expect(prompt).toContain('一則回覆最多出現一次 Sir');
+    expect(prompt).toContain('每一則回覆都要稱呼 Sir 一次，而且只用一次');
     expect(prompt).toContain('不要固定用「Sir，」開頭');
     expect(prompt).toContain('不開玩笑');
     expect(prompt).toContain('不引用、不模仿任何電影或作品的台詞');

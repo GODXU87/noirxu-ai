@@ -80,7 +80,7 @@ describe('zero model calls on the local path', () => {
     expect(((await handleChat(stale.hub, ctxAt(NOW), { ...base, text: '你記得我的體重嗎' })) as any).reply).toContain('可能已經變了');
 
     const none = chatHub({ memories: [] });
-    expect(((await handleChat(none.hub, ctxAt(NOW), { ...base, text: '你記得我的體重嗎' })) as any).reply).toBe('我沒有保存你的體重。');
+    expect(((await handleChat(none.hub, ctxAt(NOW), { ...base, text: '你記得我的體重嗎' })) as any).reply).toMatch(/^Sir，我沒有保存你的體重。$|^我沒有保存你的體重，Sir。$/);
 
     const off = chatHub();
     expect(((await handleChat(off.hub, ctxAt(NOW), { ...base, text: '你記得我的生日嗎' })) as any).reply).toContain('長期記憶目前還沒啟用');

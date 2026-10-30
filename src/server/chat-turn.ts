@@ -3,7 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import type { ToolContext } from '@/hub/types';
 import { classify } from '@/router/intents';
-import { runLocal } from '@/router/local';
+import { runLocal, withSir } from '@/router/local';
 import { memoryContext, searchMemories } from '@/router/memory';
 import { taipeiDate } from '@/lib/dates';
 import { fetchUsQuotes } from '@/markets/us';
@@ -89,6 +89,8 @@ async function chatTurn(hub: Hub, ctx: ToolContext, options: ChatOptions): Promi
       schedulerAgeMinutes: async () => { const last = await lastTick(hub); return last ? Math.round((ctx.now().getTime() - Date.parse(last.at)) / 60_000) : null; }
     });
     await hub.cost.recordLocal(intent.kind, ctx.now()).catch(() => null);
+    // Every reply addresses Sir, including the short and error ones.
+    turn.reply = withSir(turn.reply, `${intent.kind}:${options.text}`);
     const messages = [...options.history, { role: 'user', content: options.text }, { role: 'assistant', content: turn.reply }];
     return { ok: true, provider: 'local', messages, reply: turn.reply, events: turn.events, route: { level: turn.level, source: turn.source, intent: intent.kind }, contextReset: false };
   }
