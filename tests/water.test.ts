@@ -130,6 +130,14 @@ describe('water reminders in the scheduler', () => {
     expect(sent.filter(m => m.tag?.startsWith('water-'))).toHaveLength(3);
   });
 
+  it('does not send a water reminder next to the evening briefing', async () => {
+    const now = at('2026-10-22T21:05:00');
+    const { hub, sent } = hubWith(now);
+    await runTick(hub, now);
+    expect(sent.some(m => m.tag?.startsWith('evening-'))).toBe(true);
+    expect(sent.filter(m => m.tag?.startsWith('water-'))).toHaveLength(0);
+  });
+
   it('stays quiet when on pace, when switched off, or outside the window', async () => {
     const now = at('2026-10-22T13:05:00');
     const onPace = hubWith(now);

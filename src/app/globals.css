@@ -952,3 +952,8 @@ button[data-state="error"] { border-color: var(--danger) !important; animation: 
 .voice-rate span { margin-right: 6px; }
 .ui-sasuke .voice-rate button { min-height: 0; padding: 6px 12px; font-size: 12.5px; }
 .ui-sasuke .voice-rate button.on { background: var(--accent-dim); color: var(--accent); box-shadow: inset 0 0 0 1px rgba(95, 224, 242, .4); }
+/* Stacked in-app notifications */
+.sk-toasts { position: fixed; z-index: 30; left: 50%; top: calc(12px + env(safe-area-inset-top) + var(--vv-top, 0px)); transform: translateX(-50%); width: min(92vw, 420px); display: grid; gap: 8px; }
+.sk-toasts .sk-toast { position: static; transform: none; width: 100%; }
+.sk-toasts .sk-toast { animation-name: toast-drop; }
+@keyframes toast-drop { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }

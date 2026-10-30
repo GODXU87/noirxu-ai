@@ -72,7 +72,7 @@ export function parseTaskText(raw: string, today: string): TaskParse {
   const briefing = /(早報|整理今天|今天的(工作|事|行程))/.test(text) ? 'morning' as const : /(晚報|整理明天|明天的(工作|事|行程))/.test(text) ? 'evening' as const : null;
   let defaultTime: string | undefined;
   if ('error' in schedule && briefing && /(每天|每日|每晚|每早)/.test(text) && !/(每週|每周|每月|工作日|平日|週末|周末)/.test(text)) {
-    defaultTime = briefing === 'morning' ? '08:00' : '21:00';
+    defaultTime = briefing === 'morning' ? '07:00' : '21:00';
     schedule = { type: 'daily', time: defaultTime };
   }
   // "幫我想個週末去哪走走" mentions a recurring word but asks for no reminder: not a task at all.

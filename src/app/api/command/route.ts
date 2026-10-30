@@ -37,7 +37,7 @@ export async function POST(request: Request) {
       case 'evening': {
         if (!hub.features.briefings) return notice('早報與晚報目前已關閉。');
         // The same full briefing as the notification (weather, body, US close, RADAR, agenda),
-        // so /早報, 「早報」 and the 08:00 push never disagree.
+        // so /早報, 「早報」 and the 07:00 push never disagree.
         const b = command.name === 'morning' ? await morningBriefing(hub, ctx.userId, ctx.now()) : await eveningBriefing(hub, ctx.userId, ctx.now());
         return json({ ok: true, command: command.name, result: { status: 'ok', tool: 'assistant.briefing.card', data: b.card, links: [] } });
       }

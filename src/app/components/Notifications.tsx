@@ -177,7 +177,7 @@ export function Notifications() {
       <div className="diag-head">
         <div>
           <b>{needsAction ? '這台裝置需要處理' : '這台裝置可以接收通知'}</b>
-          <p className="hint">提醒會在前一晚與當天早上送出，每天 08:00 送早報、21:00 送晚報。所有通知也會保留在站內紀錄。</p>
+          <p className="hint">提醒會在前一晚與當天早上送出，每天 07:00 送早報（等 Garmin 同步昨晚睡眠，最晚 07:45）、21:00 送晚報。所有通知也會保留在站內紀錄。</p>
         </div>
         <span className={`state-chip ${needsAction ? 'error' : 'ok'}`}>{needsAction ? '需要處理' : '正常'}</span>
       </div>
