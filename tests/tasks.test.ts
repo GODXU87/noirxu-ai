@@ -128,6 +128,144 @@ describe('task scheduler', () => {
     expect((await store.getProposal(task.runs[0].steps[0].proposal_id!))?.status).toBe('succeeded');
   });
 
+  it('resumes remaining steps once across concurrent approval scans and a second approval', async () => {
+    const { tasks, executor, expenseRun, send } = setup();
+    const task = await tasks.create({ userId: 'owner', title: 'two approvals', kind: 'background', schedule: { type: 'once', at: '2026-10-23T00:00:00Z' }, now: T(BEFORE), steps: [
+      { type: 'tool', tool: 'ledger.expense.create', input: { amount: 1 } },
+      { type: 'tool', tool: 'ledger.expense.create', input: { amount: 2 } },
+      { type: 'notify', title: 'done', body: '' }
+    ] });
+    await tasks.runDue(T(DUE));
+    const first = (await tasks.get(task.id))!.waiting_proposal!;
+    await executor.confirm(first, ctxAt(DUE));
+    await Promise.all(Array.from({ length: 5 }, () => tasks.runDue(T('2026-10-23T00:01:00Z'))));
+    const waiting = (await tasks.get(task.id))!;
+    expect(waiting.status).toBe('waiting_approval');
+    expect(waiting.waiting_proposal).not.toBe(first);
+    expect(waiting.runs).toHaveLength(1);
+    await executor.confirm(waiting.waiting_proposal!, ctxAt('2026-10-23T00:01:00Z'));
+    await Promise.all(Array.from({ length: 5 }, () => tasks.runDue(T('2026-10-23T00:02:00Z'))));
+    await tasks.runDue(T('2026-10-23T00:03:00Z'));
+    const finished = (await tasks.get(task.id))!;
+    expect(finished.status).toBe('completed');
+    expect(finished.runs).toHaveLength(1);
+    expect(finished.runs[0].steps.map(s => s.status)).toEqual(['ok', 'ok', 'ok']);
+    expect(expenseRun).toHaveBeenCalledTimes(2);
+    expect(send).toHaveBeenCalledTimes(3); // two approval prompts and one completion
+  });
+
+  it('retries an old notification after a newer recurring slot and never resends accepted keys', async () => {
+    const { tasks, send } = setup({ sends: [none, accepted] });
+    const task = await tasks.create({ userId: 'owner', title: 'retry', kind: 'recurring', schedule: { type: 'interval', minutes: 30 }, now: T(BEFORE), steps: [{ type: 'notify', title: 'retry', body: '' }] });
+    await tasks.runDue(T('2026-10-22T23:30:00Z'));
+    const oldKey = (await tasks.get(task.id))!.runs[0].steps[0].delivery_key;
+    await Promise.all(Array.from({ length: 3 }, () => tasks.runDue(T('2026-10-23T00:00:00Z'))));
+    const latest = (await tasks.get(task.id))!;
+    expect(latest.runs).toHaveLength(2);
+    expect(latest.runs[1].steps[0]).toMatchObject({ delivery_key: oldKey, delivery_status: 'provider_accepted' });
+    await tasks.runDue(T('2026-10-23T00:01:00Z'));
+    expect(send).toHaveBeenCalledTimes(3); // old failure, new slot, old retry
+  });
+
+  it.each(['rejected', 'outcome_unknown', 'failed', 'expired', 'missing'] as const)('never resumes remaining steps for %s approval', async status => {
+    const { tasks, executor, store, send } = setup();
+    const task = await tasks.create({ userId: 'owner', title: 'blocked continuation', kind: 'background', schedule: { type: 'once', at: '2026-10-23T00:00:00Z' }, now: T(BEFORE), steps: [
+      { type: 'tool', tool: 'ledger.expense.create', input: { amount: 1 } }, { type: 'notify', title: 'must not send', body: '' }
+    ] });
+    await tasks.runDue(T(DUE));
+    const proposal = await store.getProposal((await tasks.get(task.id))!.waiting_proposal!);
+    vi.spyOn(store, 'getProposal').mockResolvedValue(status === 'missing' ? null : { ...proposal!, ...(status === 'expired' ? { expiresAt: BEFORE } : { status }) });
+    await tasks.runDue(T('2026-10-23T00:01:00Z'));
+    expect((await tasks.get(task.id))!.runs[0].steps).toHaveLength(1);
+    expect(send).toHaveBeenCalledTimes(1); // approval request only
+  });
+
+  it('stops a resumed run before its next step when cancellation revokes its claim', async () => {
+    const { tasks, executor, send, analytics } = setup();
+    const task = await tasks.create({ userId: 'owner', title: 'cancel continuation', kind: 'background', schedule: { type: 'once', at: '2026-10-23T00:00:00Z' }, now: T(BEFORE), steps: [
+      { type: 'tool', tool: 'ledger.expense.create', input: { amount: 1 } },
+      { type: 'tool', tool: 'ledger.analytics.get', input: { month: '2026-10' } },
+      { type: 'notify', title: 'must not send', body: '' }
+    ] });
+    await tasks.runDue(T(DUE));
+    await executor.confirm((await tasks.get(task.id))!.waiting_proposal!, ctxAt(DUE));
+    analytics.mockImplementationOnce(async () => {
+      await tasks.control('owner', task.id, 'cancel', T(DUE));
+      return { data: LEDGER_OCTOBER };
+    });
+    await tasks.runDue(T('2026-10-23T00:01:00Z'));
+    expect(send).toHaveBeenCalledTimes(1);
+    expect((await tasks.get(task.id))!.status).toBe('cancelled');
+  });
+
+  it.each(['invoke', 'approval-notify'] as const)('keeps cancellation terminal during resumed %s even if the new proposal is later approved', async phase => {
+    const { tasks, executor, send } = setup();
+    const task = await tasks.create({ userId: 'owner', title: 'cancel approval race', kind: 'background', schedule: { type: 'once', at: '2026-10-23T00:00:00Z' }, now: T(BEFORE), steps: [
+      { type: 'tool', tool: 'ledger.expense.create', input: { amount: 1 } },
+      { type: 'tool', tool: 'ledger.expense.create', input: { amount: 2 } },
+      { type: 'notify', title: 'must not send', body: '' }
+    ] });
+    await tasks.runDue(T(DUE));
+    await executor.confirm((await tasks.get(task.id))!.waiting_proposal!, ctxAt(DUE));
+    let secondProposal: string | undefined;
+    const invoke = executor.invoke.bind(executor);
+    vi.spyOn(executor, 'invoke').mockImplementationOnce(async (...args) => {
+      if (phase === 'invoke') await tasks.control('owner', task.id, 'cancel', T(DUE));
+      const result = await invoke(...args);
+      if (result.status === 'confirmation_required') secondProposal = result.proposalId;
+      return result;
+    });
+    if (phase === 'approval-notify') send.mockImplementationOnce(async () => {
+      await tasks.control('owner', task.id, 'cancel', T(DUE));
+      return accepted;
+    });
+    await tasks.runDue(T('2026-10-23T00:01:00Z'));
+    expect((await tasks.get(task.id))!).toMatchObject({ status: 'cancelled', next_at: null });
+    expect((await tasks.get(task.id))!.waiting_proposal).toBeUndefined();
+    expect(send).toHaveBeenCalledTimes(phase === 'invoke' ? 1 : 2);
+    expect(secondProposal).toBeTruthy();
+    await executor.confirm(secondProposal!, ctxAt('2026-10-23T00:02:00Z'));
+    await tasks.runDue(T('2026-10-23T00:03:00Z'));
+    expect((await tasks.get(task.id))!.status).toBe('cancelled');
+    expect(send).toHaveBeenCalledTimes(phase === 'invoke' ? 1 : 2);
+  });
+
+  it('retains a pending delivery key beyond bounded history and retries it after trimming', async () => {
+    const agenda = new MemoryAgendaStore();
+    const statuses = new Map<string, string>();
+    const tasks = new TaskService({ store: agenda, vault, executor: { invoke: async () => { throw new Error('not used'); } }, proposals: new MemoryHubStore(),
+      notify: async ({ key }) => { statuses.set(key, 'retry_pending'); return { status: 'retry_pending' }; },
+      briefing: async () => ({ title: '', body: '' }), redeliver: async key => statuses.get(key) ?? null });
+    const task = await tasks.create({ userId: 'owner', title: 'history', kind: 'recurring', schedule: { type: 'interval', minutes: 30 }, now: T(BEFORE), steps: [{ type: 'notify', title: 'history', body: '' }] });
+    for (let i = 1; i <= 21; i++) await tasks.runDue(new Date(T(BEFORE).getTime() + i * 30 * 60_000));
+    const firstKey = [...statuses.keys()][0];
+    const trimmed = (await tasks.get(task.id))!;
+    expect(trimmed.runs).toHaveLength(20);
+    expect(trimmed.pending_delivery_keys).toContain(firstKey);
+    statuses.set(firstKey, 'provider_accepted');
+    await tasks.runDue(new Date(T(BEFORE).getTime() + 21 * 30 * 60_000 + 60_000));
+    expect((await tasks.get(task.id))!.pending_delivery_keys).not.toContain(firstKey);
+  });
+
+  it.each(['paused', 'cancelled'] as const)('bounds and rotates delivery retries for %s tasks; global halt suppresses them', async status => {
+    const agenda = new MemoryAgendaStore();
+    const visited: string[] = [];
+    const tasks = new TaskService({ store: agenda, vault, executor: { invoke: async () => { throw new Error('not used'); } }, proposals: new MemoryHubStore(),
+      notify: async () => ({ status: 'pending' }), briefing: async () => ({ title: '', body: '' }),
+      redeliver: async key => { visited.push(key); return 'retry_pending'; } });
+    const task = await tasks.create({ userId: 'owner', title: 'bounded queue', kind: 'recurring', schedule: { type: 'interval', minutes: 30 }, now: T(BEFORE), steps: [] });
+    const k = `task:${task.id}`;
+    agenda.settings.set(k, vault.seal(JSON.stringify({ ...task, status, pending_delivery_keys: Array.from({ length: 105 }, (_, i) => `key-${i}`) }), k));
+    await tasks.runDue(T(DUE));
+    expect(visited).toHaveLength(100);
+    await tasks.runDue(T(DUE));
+    expect(visited).toHaveLength(200);
+    expect(visited.slice(100, 105)).toEqual(['key-100', 'key-101', 'key-102', 'key-103', 'key-104']);
+    await tasks.setHalted(true, T(DUE));
+    await tasks.runDue(T(DUE));
+    expect(visited).toHaveLength(200);
+  });
+
   it('an approval left unanswered past the confirmation window fails without writing', async () => {
     const { tasks, executor, expenseRun } = setup();
     const id = (await executor.invoke('tasks.create', { title: '記帳', schedule: { type: 'once', at: '2026-10-23T00:00:00Z' }, steps: [{ type: 'tool', tool: 'ledger.expense.create', input: { amount: 1 } }] }, ctxAt(BEFORE)) as any).data.task.id;

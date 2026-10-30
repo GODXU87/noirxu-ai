@@ -142,24 +142,35 @@ export class TaskService {
     return { ran, waiting };
   }
 
-  /** Notifications from the latest run that no device accepted yet are retried through delivery (its own backoff and expiry). */
+  /** Retry already-created deliveries even for paused/cancelled tasks; halt stops all work.
+   * The durable key queue survives history trimming. Each tick visits at most 100 keys,
+   * rotating nonterminal keys to the end; DeliveryService owns leases/backoff/expiry.
+   */
   private async retryDeliveries(id: string, now: Date) {
     const redeliver = this.deps.redeliver;
     if (!redeliver) return;
     const task = await this.get(id);
-    const pending = task?.runs[0]?.steps.filter(s => s.delivery_key && PENDING_DELIVERY.includes(s.delivery_status ?? '')) ?? [];
-    if (!pending.length) return;
+    if (!task) return;
+    const keys = [...new Set([...(task.pending_delivery_keys ?? []), ...task.runs.flatMap(r => r.steps.filter(s => s.delivery_key && PENDING_DELIVERY.includes(s.delivery_status ?? '')).map(s => s.delivery_key!))])];
+    const batch = keys.slice(0, 100);
+    if (!batch.length) return;
     const updates = new Map<string, string>();
-    for (const step of pending) {
-      const status = await redeliver(step.delivery_key!, now);
-      if (status && status !== step.delivery_status) updates.set(step.delivery_key!, status);
+    for (const key of batch) {
+      try {
+        const status = await redeliver(key, now);
+        if (status) updates.set(key, status);
+      } catch { /* A transient delivery lookup failure stays queued for the next tick. */ }
     }
-    if (!updates.size) return;
     await this.update(id, t => {
-      const [latest, ...rest] = t.runs;
-      if (!latest) return null;
-      const steps = latest.steps.map(s => (s.delivery_key && updates.has(s.delivery_key) ? { ...s, delivery_status: updates.get(s.delivery_key), summary: deliveryLabel(updates.get(s.delivery_key)!) } : s));
-      return { ...t, runs: [{ ...latest, steps }, ...rest] };
+      const runs = t.runs.map(run => ({ ...run, steps: run.steps.map(s => {
+        const status = s.delivery_key && updates.get(s.delivery_key);
+        return status && PENDING_DELIVERY.includes(s.delivery_status ?? '') ? { ...s, delivery_status: status, summary: deliveryLabel(status) } : s;
+      }) }));
+      const current = [...new Set([...(t.pending_delivery_keys ?? []), ...keys, ...runs.flatMap(r => r.steps.filter(s => s.delivery_key && PENDING_DELIVERY.includes(s.delivery_status ?? '')).map(s => s.delivery_key!))])];
+      const terminal = new Set(runs.flatMap(r => r.steps.filter(s => s.delivery_key && !PENDING_DELIVERY.includes(s.delivery_status ?? '')).map(s => s.delivery_key!)));
+      for (const [key, status] of updates) if (!PENDING_DELIVERY.includes(status)) terminal.add(key);
+      const pending = current.filter(key => !terminal.has(key));
+      return { ...t, runs, pending_delivery_keys: [...pending.filter(key => !batch.includes(key)), ...pending.filter(key => batch.includes(key))] };
     });
   }
 
@@ -195,9 +206,19 @@ export class TaskService {
     return true;
   }
 
-  private async executeSteps(task: Task, run: TaskRun, now: Date) {
+  private async executeSteps(task: Task, run: TaskRun, now: Date, start = 0) {
     const ctx = { userId: task.user_id, now: () => now };
+    const continuationStopped = async () => {
+      if (start === 0) return false;
+      const current = await this.get(task.id);
+      if (current && current.claim === task.claim && current.status !== 'cancelled') return false;
+      run.status = 'failed';
+      run.error = '任務已停止，沒有繼續執行剩餘步驟';
+      return true;
+    };
     for (const [index, step] of task.steps.entries()) {
+      if (index < start) continue;
+      if (await continuationStopped()) return;
       if (step.type === 'notify' || step.type === 'briefing') {
         let message: PushMessage;
         if (step.type === 'notify') {
@@ -211,6 +232,7 @@ export class TaskService {
           }
           message = { title: brief.title, body: brief.body, url: '/tasks', tag: `task-${task.id}` };
         }
+        if (await continuationStopped()) return;
         const deliveryKey = `task:${task.id}:${run.slot}:${index}`;
         const result = await this.deps.notify({ key: deliveryKey, userId: task.user_id, message, now, proactive: task.kind === 'conditional' || (step.type === 'notify' && step.include_results) });
         run.steps.push({ step: index, type: step.type, status: 'ok', summary: deliveryLabel(result.status), delivery_key: deliveryKey, delivery_status: result.status });
@@ -219,8 +241,10 @@ export class TaskService {
       const readOnly = READ_SUFFIX.test(step.tool);
       run.tool_calls = (run.tool_calls ?? 0) + 1;
       let result: InvokeResult = await this.invokeWithTimeout(step.tool, step.input ?? {}, ctx, readOnly);
+      if (await continuationStopped()) return;
       // Read-only steps get one quick retry; writes are never repeated automatically.
       if (result.status === 'error' && readOnly && result.code !== 'NOT_CONNECTED' && result.code !== 'INVALID_INPUT') { run.tool_calls += 1; result = await this.invokeWithTimeout(step.tool, step.input ?? {}, ctx, readOnly); }
+      if (await continuationStopped()) return;
       if (result.status === 'confirmation_required') {
         run.steps.push({ step: index, type: 'tool', tool: step.tool, status: 'waiting_approval', summary: result.preview.title, proposal_id: result.proposalId });
         run.status = 'waiting_approval';
@@ -250,11 +274,13 @@ export class TaskService {
 
   /** Records a run and moves the task on: next slot, finished, or waiting for approval. */
   private finish(task: Task, run: TaskRun, now: Date): Task {
-    const runs = [run, ...task.runs].slice(0, MAX_RUNS_KEPT);
-    const base = { ...task, runs, lease_until: undefined, claim: undefined, updated_at: now.toISOString(), last_error: run.error };
-    if (run.status === 'waiting_approval') return { ...base, status: 'waiting_approval', waiting_proposal: run.steps.find(s => s.proposal_id)?.proposal_id };
-    const fired = task.condition && run.status === 'completed' ? { condition_fired_for: taipeiDate(now).slice(0, 7) } : {};
+    const history = [run, ...task.runs.filter(r => r.id !== run.id)];
+    const runs = history.slice(0, MAX_RUNS_KEPT);
+    const pending_delivery_keys = [...new Set([...(task.pending_delivery_keys ?? []), ...history.flatMap(r => r.steps.filter(s => s.delivery_key && PENDING_DELIVERY.includes(s.delivery_status ?? '')).map(s => s.delivery_key!))])];
+    const base = { ...task, runs, pending_delivery_keys, waiting_proposal: undefined, lease_until: undefined, claim: undefined, updated_at: now.toISOString(), last_error: run.error };
     if (task.status === 'cancelled') return { ...base, status: 'cancelled', next_at: null };
+    if (run.status === 'waiting_approval') return { ...base, status: 'waiting_approval', waiting_proposal: run.steps.find(s => s.status === 'waiting_approval')?.proposal_id };
+    const fired = task.condition && run.status === 'completed' ? { condition_fired_for: taipeiDate(now).slice(0, 7) } : {};
     const next = task.schedule.type === 'once' ? null : nextRun(task.schedule, now);
     if (!next) return { ...base, ...fired, status: run.status === 'completed' ? 'completed' : run.status === 'outcome_unknown' ? 'outcome_unknown' : run.status === 'skipped' || run.status === 'not_met' ? 'completed' : 'failed', next_at: null };
     // Recurring tasks keep going after a failed run; the run history shows what happened.
@@ -291,13 +317,23 @@ export class TaskService {
   }
 
   private async resolveApproval(task: Task, outcome: 'completed' | 'cancelled' | 'failed' | 'outcome_unknown', error: string | undefined, now: Date) {
-    await this.update(task.id, t => {
+    const claim = randomUUID();
+    const claimed = await this.update(task.id, t => {
       if (t.status !== 'waiting_approval' || t.waiting_proposal !== task.waiting_proposal) return null;
-      const [latest, ...rest] = t.runs;
-      const run: TaskRun = { ...latest, status: outcome === 'cancelled' ? 'failed' : outcome, finished_at: now.toISOString(), error };
-      const resumed = { ...t, status: 'queued' as const, waiting_proposal: undefined, runs: rest };
-      return this.finish(resumed, run, now);
+      if (!t.runs[0]?.steps.some(s => s.proposal_id === t.waiting_proposal && s.status === 'waiting_approval')) return null;
+      return { ...t, status: 'running', claim, lease_until: new Date(now.getTime() + LEASE_MS).toISOString(), updated_at: now.toISOString() };
     });
+    if (!claimed || claimed.claim !== claim) return;
+    const latest = claimed.runs[0];
+    const approved = latest.steps.find(s => s.proposal_id === claimed.waiting_proposal && s.status === 'waiting_approval')!;
+    const run: TaskRun = { ...latest, status: outcome === 'cancelled' ? 'failed' : outcome, error,
+      steps: latest.steps.map(s => s === approved ? { ...s, status: outcome === 'completed' ? 'ok' : 'error', summary: error ?? (outcome === 'completed' ? '已確認並執行' : '執行結果不明') } : s) };
+    if (outcome === 'completed') {
+      try { await this.executeSteps(claimed, run, now, approved.step + 1); }
+      catch (e) { run.status = 'failed'; run.error = e instanceof Error ? e.message.slice(0, 200) : '執行失敗'; }
+    }
+    run.finished_at = now.toISOString();
+    await this.update(task.id, t => t.claim !== claim ? null : this.finish(t, run, now));
   }
 
   /** A run that crashed mid-way: writes may or may not have happened, so it is not repeated. */
