@@ -1,5 +1,7 @@
 'use client';
 
+import { GoalCard } from './Goals';
+
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { money, toolLabel, toolSystem } from '@/lib/tool-labels';
 import { flash } from './feedback';
@@ -19,13 +21,14 @@ export type ConfirmResult =
   | { status: 'failed' | 'outcome_unknown'; tool: string; proposalId: string; code: string; message: string; candidates?: unknown[]; links: Link[] };
 
 /** Calls one tool through the same executor the chat uses (writes still need confirmation). */
-export async function callTool(name: string, input: unknown = {}): Promise<InvokeResult> {
+export async function callTool(name: string, input: unknown = {}, signal?: AbortSignal): Promise<InvokeResult> {
   try {
     const response = await fetch(`/api/tools/${encodeURIComponent(name)}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input)
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal
     });
     const body = await response.json();
     if (!body.ok) return { status: 'error', tool: name, code: body.error?.code ?? 'ERROR', message: body.error?.message ?? '發生錯誤' };
+    if (typeof window !== 'undefined' && body.result?.status === 'ok' && /^tasks\.(create|update|halt)$/.test(name)) window.dispatchEvent(new Event('noirxu-tasks-changed'));
     return body.result as InvokeResult;
   } catch {
     return { status: 'error', tool: name, code: 'NETWORK', message: '網路錯誤，請稍後再試。' };
@@ -151,20 +154,39 @@ export function TaskCard({ task: initial }: { task: any }) {
   const [task, setTask] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [historyError, setHistoryError] = useState('');
   const [runs, setRuns] = useState<any[] | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const mounted = useRef(false);
+  const latest = useRef(initial); latest.current = initial;
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const acting = useRef(false);
+  useEffect(() => { if (!acting.current) setTask(initial); }, [initial]);
   const finished = task.status === 'cancelled' || task.status === 'completed';
   async function act(action: 'pause' | 'resume' | 'cancel', button: HTMLButtonElement) {
-    setBusy(true); setError('');
+    acting.current = true; setBusy(true); setError('');
     const result = await callTool('tasks.update', { id: task.id, action });
+    acting.current = false;
+    if (!mounted.current) return;
     setBusy(false);
     if (result.status === 'ok') setTask((result.data as any).task);
-    else { setError(result.status === 'error' ? result.message : '更新失敗'); flash(button, 'error'); }
+    else { setTask(latest.current); setError(result.status === 'error' ? result.message : '更新失敗'); flash(button, 'error'); }
   }
-  async function history() {
-    if (runs) { setRuns(null); return; }
-    const result = await callTool('tasks.history.get', { id: task.id });
-    if (result.status === 'ok') setRuns((result.data as any).runs); else setError(result.status === 'error' ? result.message : '讀不到紀錄');
-  }
+  const historyVersion = JSON.stringify([task.id, task.status, task.last_run, task.runs_kept]);
+  useEffect(() => {
+    if (!historyOpen) return;
+    const controller = new AbortController();
+    let current = true;
+    setHistoryLoading(true); setHistoryError('');
+    void callTool('tasks.history.get', { id: task.id }, controller.signal).then(result => {
+      if (!current) return;
+      setHistoryLoading(false);
+      if (result.status === 'ok') setRuns((result.data as any).runs);
+      else setHistoryError(result.status === 'error' ? result.message : '紀錄更新失敗，保留上次讀取的紀錄。');
+    });
+    return () => { current = false; controller.abort(); };
+  }, [historyOpen, historyVersion, task.id]);
   return (
     <div className={`reminder-card task-card is-${task.status}`}>
       <div className="reminder-head">
@@ -181,16 +203,18 @@ export function TaskCard({ task: initial }: { task: any }) {
             ? <button type="button" disabled={busy} onClick={e => void act('resume', e.currentTarget)}>恢復</button>
             : <button type="button" disabled={busy || task.status === 'running'} onClick={e => void act('pause', e.currentTarget)}>暫停</button>}
           <button type="button" className="ghost" disabled={busy || task.status === 'running'} onClick={e => void act('cancel', e.currentTarget)}>取消任務</button>
-          <button type="button" className="ghost" onClick={() => void history()}>{runs ? '收合紀錄' : '執行紀錄'}</button>
+          <button type="button" className="ghost" aria-expanded={historyOpen} onClick={() => setHistoryOpen(open => !open)}>{historyOpen ? '收合紀錄' : '執行紀錄'}</button>
         </div>
       )}
-      {finished && task.runs_kept > 0 && <div className="row reminder-actions"><button type="button" className="ghost" onClick={() => void history()}>{runs ? '收合紀錄' : '執行紀錄'}</button></div>}
-      {runs && (
+      {finished && task.runs_kept > 0 && <div className="row reminder-actions"><button type="button" className="ghost" aria-expanded={historyOpen} onClick={() => setHistoryOpen(open => !open)}>{historyOpen ? '收合紀錄' : '執行紀錄'}</button></div>}
+      {historyOpen && historyLoading && <p className="hint" role="status">紀錄更新中…</p>}
+      {historyOpen && runs && (
         <ul className="rows task-runs">
           {runs.map(r => <li key={r.id}><span className="muted">{r.local}</span><span>{RUN_LABEL[r.status] ?? r.status}{r.late_minutes ? ` · 晚 ${r.late_minutes} 分` : ''}</span><span className="muted">{r.error ?? r.steps.map((s: any) => s.summary).join('；')}</span></li>)}
           {!runs.length && <li className="muted">還沒有執行過</li>}
         </ul>
       )}
+      {historyOpen && historyError && <p className="hint tone-error">{historyError}</p>}
       {error && <p className="hint tone-error">{error}</p>}
     </div>
   );
@@ -293,6 +317,12 @@ export function ToolData({ tool, data }: { tool: string; data: any }): ReactNode
           {!data.accounts?.length && <p className="hint">Ledger 還沒有資產帳戶。</p>}
         </div>
       );
+    case 'goals.create':
+    case 'goals.update':
+    case 'goals.history.get':
+      return <GoalCard goal={data.goal} />;
+    case 'goals.list':
+      return <div className="view stack">{data.goals.map((g: any) => <GoalCard key={g.id} goal={g} />)}{!data.goals.length && <p className="hint">目前沒有進行中的目標。</p>}</div>;
     case 'tasks.create':
     case 'tasks.update':
       return <TaskCard task={data.task} />;

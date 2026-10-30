@@ -15,7 +15,7 @@ import type { PushMessage } from '@/push/service';
 import type { Hub } from './hub';
 import { OWNER_ID } from './session';
 
-export interface TickResult { reminders: number; briefing: boolean; evening?: boolean; pushed: number; water?: boolean; health?: boolean; tasks?: { ran: number; waiting: number; error?: string } }
+export interface TickResult { reminders: number; briefing: boolean; evening?: boolean; pushed: number; water?: boolean; health?: boolean; tasks?: { ran: number; waiting: number; error?: string }; goals?: { checked: number; deliveries: number; halted?: boolean; error?: string } }
 
 function taipeiHour(now: Date): number {
   return Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Taipei', hour: '2-digit', hour12: false }).format(now));
@@ -150,7 +150,7 @@ const CATCHUP_TICK_KEY = 'tick:catchup:last';
 const externalSource = (source: string) => source === 'github-actions' || source === 'cron-secret';
 
 /** A completed HTTP request is not a healthy tick if its task subsystem failed. */
-export function tickHealthy(result: TickResult): boolean { return !result.tasks?.error; }
+export function tickHealthy(result: TickResult): boolean { return !result.tasks?.error && !result.goals?.error; }
 
 export async function recordTick(hub: Hub, health: TickHealth) {
   const value = { ...health, ok: health.ok && (!health.result || tickHealthy(health.result)) };
@@ -348,5 +348,13 @@ export async function runTick(hub: Hub, now = new Date()): Promise<TickResult> {
     try { tasks = await hub.tasks.runDue(now); }
     catch (error) { tasks = { ran: 0, waiting: 0, error: error instanceof Error ? error.message.slice(0, 200) : 'task run failed' }; }
   }
-  return { reminders, briefing, evening, pushed, water, health, ...(tasks ? { tasks } : {}) };
+  let goals: TickResult['goals'];
+  if (hub.goals) {
+    try {
+      goals = (await hub.tasks?.halted())?.halted
+        ? { checked: 0, deliveries: 0, halted: true }
+        : await hub.goals.runDue(OWNER_ID, now);
+    } catch (error) { goals = { checked: 0, deliveries: 0, error: error instanceof Error ? error.message.slice(0, 200) : 'goal check failed' }; }
+  }
+  return { reminders, briefing, evening, pushed, water, health, ...(tasks ? { tasks } : {}), ...(goals ? { goals } : {}) };
 }

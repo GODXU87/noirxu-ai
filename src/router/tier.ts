@@ -24,6 +24,7 @@ export const TIER_LIMITS: Record<ModelTier, { maxOutputTokens: number; maxIterat
 };
 
 const DOMAINS: Array<[RegExp, string[]]> = [
+  [/(目標|进度|進度|下一步|追蹤|追踪|阻礙|完成.*結果)/, ['goals.']],
   [/(記帳|帳|花|支出|收入|預算|資產|淨值|存款|消費|錢|元|刷卡|分類|ledger)/i, ['ledger.', 'assistant.ledger']],
   [/(交易|下單紀錄|績效|勝率|損益|持倉|部位|journal|買進|賣出)/i, ['journal.']],
   [/(股|個股|大盤|產業|族群|訊號|radar|台積|\b\d{4}\b|watchlist|觀察)/i, ['radar.']],
@@ -45,8 +46,8 @@ export function selectTools(registry: ToolRegistry, text: string, tier: ModelTie
   const words = userWords(text);
   const prefixes = DOMAINS.filter(([re]) => re.test(words)).flatMap(([, p]) => p);
   if (!prefixes.length) return registry;
-  // Agenda is cheap and often needed alongside other domains (dates, follow-ups).
-  return registry.subset([...new Set([...prefixes, 'agenda.'])]);
+  // Agenda and goals stay available for short contextual edits (e.g. "期限改到明天").
+  return registry.subset([...new Set([...prefixes, 'agenda.', 'goals.'])]);
 }
 
 /** A real user turn (typed text), as opposed to tool results that share the user role. */

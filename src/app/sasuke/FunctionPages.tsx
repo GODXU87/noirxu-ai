@@ -10,6 +10,8 @@ import { callTool, TaskCard } from '../components/shared';
 import { monthBounds } from '@/lib/tool-labels';
 import { listConversations } from './conversations';
 import { HistoryDialog } from './SasukeNav';
+import { GoalsPanel } from '../components/Goals';
+import { useTaskList } from './useTaskList';
 
 // Function pages for the SASUKE interface. Each one manages one area in detail and hands
 // everyday work back to the conversation through "ask" links (/?c=new&ask=…), so the chat
@@ -38,7 +40,7 @@ function NotConnected({ name }: { name: string }) {
   );
 }
 
-export function TasksView() {
+export function TasksView({ goalId }: { goalId?: string } = {}) {
   return (
     <main className="stack fp">
       <Head title="任務中心" lead="你交代的事項與提醒。SASUKE 在對話中執行的每個工具步驟，會直接顯示在對話裡。" />
@@ -46,6 +48,7 @@ export function TasksView() {
         <Ask question="依重要程度幫我排今天和這週的事，指出時間衝突。" label="請 SASUKE 排優先順序" icon="check" />
         <Ask question="有哪些事已經過期了？" label="檢查過期事項" icon="bell" />
       </div>
+      <GoalsPanel initialGoalId={goalId} />
       <AutoTasks />
       <AgendaCard />
     </main>
@@ -54,18 +57,17 @@ export function TasksView() {
 
 /** Background tasks (recurring reminders, scheduled briefings, spending watches). */
 function AutoTasks() {
-  const [state, setState] = useState<{ tasks: any[]; halted?: boolean } | { error: string } | undefined>();
   const [all, setAll] = useState(false);
   const [busy, setBusy] = useState(false);
-  const load = () => callTool('tasks.list', { include_finished: all }).then(r => setState(r.status === 'ok' ? r.data as { tasks: any[]; halted?: boolean } : { error: r.status === 'error' && r.code === 'UNKNOWN_TOOL' ? '自動任務功能目前沒有開啟。' : '任務清單目前讀不到。' }));
-  useEffect(() => { void load(); }, [all]); // eslint-disable-line react-hooks/exhaustive-deps
-  const halted = Boolean(state && 'tasks' in state && state.halted);
+  const { data: state, updatedAt, refreshing, offline, error, refresh } = useTaskList(all);
+  const [actionError, setActionError] = useState('');
+  const halted = Boolean(state?.halted);
   async function toggleHalt() {
     if (!halted && !window.confirm('停止所有背景自動任務？任務與紀錄都會保留，之後可以恢復。')) return;
-    setBusy(true);
-    await callTool('tasks.halt', { halted: !halted });
+    setBusy(true); setActionError('');
+    const result = await callTool('tasks.halt', { halted: !halted });
     setBusy(false);
-    void load();
+    if (result.status !== 'ok') setActionError(result.status === 'error' ? result.message : '操作未完成。');
   }
   return (
     <section className="card">
@@ -73,12 +75,14 @@ function AutoTasks() {
         <h2>自動任務</h2>
         <div className="row" style={{ gap: 8 }}>
           <button type="button" className="ghost" onClick={() => setAll(a => !a)}>{all ? '只看進行中' : '含已結束'}</button>
-          {state && 'tasks' in state && <button type="button" className={halted ? 'primary' : 'ghost'} disabled={busy} onClick={() => void toggleHalt()}>{halted ? '恢復自動任務' : '緊急停止'}</button>}
+          <button type="button" className="ghost" disabled={refreshing || offline} onClick={refresh}>{refreshing ? '更新中…' : '重新整理'}</button>
+          {state && <button type="button" className={halted ? 'primary' : 'ghost'} disabled={busy} onClick={() => void toggleHalt()}>{halted ? '恢復自動任務' : '緊急停止'}</button>}
         </div>
       </div>
+      <p className="hint" role="status" aria-live="polite">{offline ? '目前離線；顯示上次讀取的資料。' : refreshing ? '正在更新任務…' : error ?? '此頁可見且連線時，每 20 秒檢查更新。'}{updatedAt && <> 最後更新 <time dateTime={updatedAt}>{new Date(updatedAt).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</time></>}</p>
+      {actionError && <p className="hint tone-error" role="alert">{actionError}</p>}
       {halted && <p className="banner danger">所有背景自動任務已停止。任務與紀錄都保留，按「恢復自動任務」從下一個排程繼續。</p>}
-      {!state ? <p className="hint">讀取中…</p>
-        : 'error' in state ? <p className="hint">{state.error}</p>
+      {!state ? <p className="hint">{offline ? '連線恢復後會重新讀取。' : error ? '尚未取得任務資料，可重新整理。' : '讀取中…'}</p>
         : state.tasks.length ? <div className="task-list">{state.tasks.map(t => <TaskCard key={t.id} task={t} />)}</div>
         : <p className="hint">還沒有自動任務。在對話裡說「每天早上 8 點提醒我喝水」或「每天晚上幫我整理明天的工作，重要的事再通知我」就會建立。</p>}
       <div className="fp-asks"><Ask question="如果這個月餐飲支出超過 5000 元就提醒我" label="建立支出監看" icon="chart" /></div>
