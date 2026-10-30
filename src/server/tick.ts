@@ -241,7 +241,7 @@ export async function runTick(hub: Hub, now = new Date()): Promise<TickResult> {
   const result = await deliverReminders(hub, await hub.agenda.dueReminders(now), now, today, (n: number) => { pushed += n; });
   reminders += result;
 
-  // Daily briefings: morning 08:00–11:00, evening 21:00–23:00 (Taipei). Each is built once per
+  // Daily briefings: morning 07:00–10:00, evening 21:00–23:00 (Taipei). Each is built once per
   // day and then retried with the same text until a device accepts it or the window closes.
   const hour = taipeiHour(now);
   const briefingsOn = hub.features?.briefings !== false;
@@ -256,7 +256,15 @@ export async function runTick(hub: Hub, now = new Date()): Promise<TickResult> {
   // With Garmin, tapping the briefing opens the full body-status analysis (answered locally, no model).
   // Tapping a briefing opens its full version in a new chat (answered locally, no model).
   const ask = (q: string) => ({ url: `/?c=new&ask=${encodeURIComponent(q)}` });
-  const briefing = await daily(`briefing:${OWNER_ID}:${today}`, 'briefing', 8, 11, async () => { const b = await morningBriefing(hub, OWNER_ID, now); return { title: b.title, body: b.body, ...ask('早報') }; });
+  // With Garmin, the morning briefing waits (until 07:45 at the latest) for last night's sleep
+  // to sync, so it does not go out saying the data is missing.
+  const minute = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Taipei', minute: '2-digit' }).format(now));
+  const waitForSleep = async () => {
+    if (!hub.garmin || hour !== 7 || minute >= 45 || (await hub.delivery.get(`briefing:${OWNER_ID}:${today}`))) return false;
+    const sleep = await hub.executor.invoke('garmin.sleep.summary', {}, { userId: OWNER_ID, now: () => now }).catch(() => null);
+    return !(sleep?.status === 'ok' && (sleep.data as { duration_s?: number | null }).duration_s);
+  };
+  const briefing = (await waitForSleep()) ? false : await daily(`briefing:${OWNER_ID}:${today}`, 'briefing', 7, 10, async () => { const b = await morningBriefing(hub, OWNER_ID, now); return { title: b.title, body: b.body, ...ask('早報') }; });
   const evening = await daily(`evening:${OWNER_ID}:${today}`, 'evening', 21, 23, async () => { const b = await eveningBriefing(hub, OWNER_ID, now); return { title: b.title, body: b.body, ...ask('晚報') }; });
   // Sunday 20:00–21:00: the weekly review, ahead of the evening briefing.
   const sunday = new Date(`${today}T12:00:00+08:00`).getUTCDay() === 0;
