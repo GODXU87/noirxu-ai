@@ -1,5 +1,4 @@
 import { createElement } from 'react';
-// @ts-expect-error react-dom has no type declarations installed in this project
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { GoalCard, GoalsPanel } from '@/app/components/Goals';
