@@ -273,7 +273,10 @@ export async function runTick(hub: Hub, now = new Date()): Promise<TickResult> {
       const earlier = waterSlots(prefs).filter(s => s < slot);
       const sent = (await Promise.all(earlier.map(s => hub.delivery.get(`water:${OWNER_ID}:${today}:${s}`)))).filter(r => r?.status === 'provider_accepted').length;
       // Always from current totals; once the user is back on pace, nothing more is sent.
-      const message = sent >= WATER_DAILY_MAX ? null : waterReminder(prefs, await hub.water.day(OWNER_ID, today), now);
+      // Never right next to a briefing (they would arrive together and bury each other).
+      const nearBriefing = briefing || evening || (await Promise.all([`briefing:${OWNER_ID}:${today}`, `evening:${OWNER_ID}:${today}`, `weekly:${OWNER_ID}:${today}`].map(k => hub.delivery.get(k))))
+        .some(r => r?.status === 'provider_accepted' && Math.abs(now.getTime() - Date.parse(r.updated_at)) < 45 * 60_000);
+      const message = sent >= WATER_DAILY_MAX || nearBriefing ? null : waterReminder(prefs, await hub.water.day(OWNER_ID, today), now);
       if (message) {
         const record = await count(key, 'water', OWNER_ID, { ...message, url: '/', tag: `water-${today}` }, new Date(taipeiInstant(today, slot).getTime() + 60 * 60_000));
         water = record.status === 'provider_accepted';
