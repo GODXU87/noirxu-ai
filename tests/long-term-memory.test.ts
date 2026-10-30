@@ -19,7 +19,7 @@ describe('long-term memory store', () => {
     const again = await mem.add('owner', { content: '週三羽球改到晚上8點', now: new Date('2026-10-30T00:00:00Z') });
     expect(again.updated).toBe(true);
     expect(await mem.list('owner')).toHaveLength(1);
-    await mem.update('owner', a.memory.id, { content: '週三羽球改到晚上 9 點' }, NOW);
+    await mem.update('owner', a.memory.id, { content: '週三羽球改到晚上 9 點' }, NOW, again.memory.revision);
     expect((await mem.list('owner'))[0].content).toBe('週三羽球改到晚上 9 點');
     expect(await mem.remove('owner', a.memory.id)).toBe(true);
     expect(await mem.list('owner')).toEqual([]);

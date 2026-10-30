@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { AgendaStore } from '@/agenda/store';
 import type { TokenVault } from '@/connections/vault';
 import type { MemoryRecord, MemorySource } from '@/router/memory';
+import { ToolError } from '@/hub/errors';
 
 // Long-term memory: things the user asked SASUKE to remember (preferences, routine, goals,
 // decisions, personal facts). Only what the user said or confirmed is kept — never the chat
@@ -12,7 +13,7 @@ export const MEMORY_CATEGORIES = { preference: '偏好', routine: '作息與課�
 export type MemoryCategory = keyof typeof MEMORY_CATEGORIES;
 export const MEMORY_LIMIT = 300;
 
-export interface StoredMemory extends MemoryRecord { category: MemoryCategory; created_at: string; source: 'user' | 'confirmed' }
+export interface StoredMemory extends MemoryRecord { category: MemoryCategory; created_at: string; source: 'user' | 'confirmed'; revision: number }
 
 const RULES: Array<[RegExp, MemoryCategory]> = [
   [/(過敏|不能吃|忌口|受傷|疼痛|膝蓋|腰|血壓|體重|身高|睡眠|心率)/, 'health'],
@@ -36,7 +37,9 @@ export class MemoryStore implements MemorySource {
   private async read(userId: string): Promise<{ sealed: string | null; items: StoredMemory[] }> {
     const k = this.key(userId);
     const sealed = await this.store.getSetting(k);
-    return { sealed, items: sealed ? JSON.parse(this.vault.open(sealed, k)) as StoredMemory[] : [] };
+    const items = sealed ? JSON.parse(this.vault.open(sealed, k)) as StoredMemory[] : [];
+    // Existing sealed entries predate revision checks; no migration or plaintext copy.
+    return { sealed, items: items.map(m => ({ ...m, revision: m.revision ?? 1 })) };
   }
 
   private async change<T>(userId: string, fn: (items: StoredMemory[]) => { items: StoredMemory[]; result: T }): Promise<T> {
@@ -61,25 +64,33 @@ export class MemoryStore implements MemorySource {
     return this.change<{ memory: StoredMemory; updated: boolean }>(userId, items => {
       const same = items.find(m => normalize(m.content) === normalize(content));
       if (same) {
-        const updated = { ...same, content, updated_at: now };
+        const updated = { ...same, content, updated_at: now, revision: same.revision + 1 };
         return { items: items.map(m => (m.id === same.id ? updated : m)), result: { memory: updated, updated: true } };
       }
       if (items.length >= MEMORY_LIMIT) throw new Error(`記憶已達 ${MEMORY_LIMIT} 筆上限，請先到「個人記憶」刪除不需要的`);
-      const memory: StoredMemory = { id: randomUUID(), content, category: input.category ?? categorize(content), source: input.source ?? 'user', tags: [], created_at: now, updated_at: now };
+      const memory: StoredMemory = { id: randomUUID(), content, category: input.category ?? categorize(content), source: input.source ?? 'user', tags: [], created_at: now, updated_at: now, revision: 1 };
       return { items: [...items, memory], result: { memory, updated: false } };
     });
   }
 
-  async update(userId: string, id: string, patch: { content?: string; category?: MemoryCategory }, now: Date): Promise<StoredMemory | null> {
+  async update(userId: string, id: string, patch: { content?: string; category?: MemoryCategory }, now: Date, expectedRevision: number): Promise<StoredMemory | null> {
     return this.change(userId, items => {
       const found = items.find(m => m.id === id);
       if (!found) return { items, result: null };
-      const updated: StoredMemory = { ...found, ...(patch.content ? { content: patch.content.trim().slice(0, 300) } : {}), ...(patch.category ? { category: patch.category } : {}), updated_at: now.toISOString() };
+      if (found.revision !== expectedRevision) throw new ToolError('CONFLICT', '這筆記憶已有較新的版本。草稿未儲存；請重新讀取並核對，再取消修改、重新更正。');
+      const content = patch.content === undefined ? found.content : patch.content.trim().slice(0, 300);
+      // Moving a fact to another category is not a new factual report. The router uses
+      // this date for stale-memory warnings, so only changed content refreshes it.
+      const updated: StoredMemory = { ...found, content, ...(patch.category ? { category: patch.category } : {}), updated_at: content === found.content ? found.updated_at : now.toISOString(), revision: found.revision + 1 };
       return { items: items.map(m => (m.id === id ? updated : m)), result: updated };
     });
   }
 
-  async remove(userId: string, id: string): Promise<boolean> {
-    return this.change(userId, items => ({ items: items.filter(m => m.id !== id), result: items.some(m => m.id === id) }));
+  async remove(userId: string, id: string, expectedRevision?: number): Promise<boolean> {
+    return this.change(userId, items => {
+      const found = items.find(m => m.id === id);
+      if (found && expectedRevision !== undefined && found.revision !== expectedRevision) throw new ToolError('CONFLICT', '這筆記憶已有較新的版本，尚未刪除。請重新讀取並核對後再刪除。');
+      return { items: items.filter(m => m.id !== id), result: Boolean(found) };
+    });
   }
 }

@@ -12,6 +12,7 @@ import { listConversations } from './conversations';
 import { HistoryDialog } from './SasukeNav';
 import { GoalsPanel } from '../components/Goals';
 import { useTaskList } from './useTaskList';
+import { LongTermMemory } from './LongTermMemory';
 
 // Function pages for the SASUKE interface. Each one manages one area in detail and hands
 // everyday work back to the conversation through "ask" links (/?c=new&ask=…), so the chat
@@ -224,63 +225,5 @@ export function MemoryView() {
       </section>
       {open && <HistoryDialog onClose={() => setOpen(false)} />}
     </main>
-  );
-}
-
-interface Memory { id: string; content: string; category: string; updated_at: string }
-
-function LongTermMemory() {
-  const [items, setItems] = useState<Memory[] | null>(null);
-  const [labels, setLabels] = useState<Record<string, string>>({});
-  const [text, setText] = useState('');
-  const [editing, setEditing] = useState<string | null>(null);
-  const [draft, setDraft] = useState('');
-  const [error, setError] = useState('');
-  const load = () => fetch('/api/memory').then(r => r.json()).then(b => { if (b.ok) { setItems(b.memories); setLabels(b.categories); } else setError(b.error?.message ?? '讀不到記憶'); }).catch(() => setError('讀不到記憶'));
-  useEffect(() => { void load(); }, []);
-  async function send(method: 'POST' | 'PATCH' | 'DELETE', body: unknown) {
-    setError('');
-    const res = await fetch('/api/memory', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()).catch(() => null);
-    if (!res?.ok) { setError(res?.error?.message ?? '操作失敗'); return false; }
-    await load();
-    return true;
-  }
-  const groups = Object.entries(labels).map(([key, label]) => ({ key, label, list: (items ?? []).filter(m => m.category === key) })).filter(g => g.list.length);
-  return (
-    <section className="card memory-card">
-      <p className="section-label">長期記憶{items ? <small>{items.length} 筆</small> : null}</p>
-      <form className="row memory-add" onSubmit={e => { e.preventDefault(); if (text.trim().length >= 2) void send('POST', { content: text }).then(ok => ok && setText('')); }}>
-        <input value={text} onChange={e => setText(e.target.value)} placeholder="例如：週三羽球改到晚上 8 點" maxLength={300} aria-label="要記住的事" />
-        <button className="primary" disabled={text.trim().length < 2}>記住</button>
-      </form>
-      <p className="hint">也可以直接在對話裡說「記住…」或「忘記…」。</p>
-      {items === null ? <p className="hint">讀取中…</p> : !items.length ? <p className="hint">還沒有記憶。</p> : groups.map(g => (
-        <div key={g.key} className="memory-group">
-          <p className="memory-group-label">{g.label}</p>
-          <ul>
-            {g.list.map(m => (
-              <li key={m.id}>
-                {editing === m.id ? (
-                  <form className="row" onSubmit={e => { e.preventDefault(); void send('PATCH', { id: m.id, content: draft }).then(ok => ok && setEditing(null)); }}>
-                    <input value={draft} onChange={e => setDraft(e.target.value)} maxLength={300} aria-label="修改記憶" autoFocus />
-                    <button className="primary">儲存</button>
-                    <button type="button" className="ghost" onClick={() => setEditing(null)}>取消</button>
-                  </form>
-                ) : (
-                  <>
-                    <span className="memory-text">{m.content}<small>{m.updated_at.slice(0, 10)}</small></span>
-                    <span className="memory-actions">
-                      <button type="button" className="ghost" onClick={() => { setEditing(m.id); setDraft(m.content); }}>修改</button>
-                      <button type="button" className="ghost" onClick={() => { if (window.confirm(`刪除這筆記憶？\n「${m.content}」`)) void send('DELETE', { id: m.id }); }}>刪除</button>
-                    </span>
-                  </>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ))}
-      {error && <p className="hint tone-error">{error}</p>}
-    </section>
   );
 }
