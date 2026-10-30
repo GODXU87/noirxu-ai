@@ -6,7 +6,9 @@ import { TasksView } from '../sasuke/FunctionPages';
 
 export const dynamic = 'force-dynamic';
 
-export default async function TasksPage() {
+export default async function TasksPage({ searchParams }: { searchParams: Promise<{ goal?: string }> }) {
+  const requestedGoal = (await searchParams).goal;
+  const goalId = typeof requestedGoal === 'string' && /^[0-9a-f-]{36}$/i.test(requestedGoal) ? requestedGoal : undefined;
   const userId = await currentUser();
   if (!userId) redirect('/login');
   const { problem } = await pageState(userId);
@@ -14,7 +16,7 @@ export default async function TasksPage() {
     <div className="shell">
       <Frame current="tasks" />
       {problem && <p className="banner danger">{problem}</p>}
-      <TasksView />
+      <TasksView goalId={goalId} />
     </div>
   );
 }

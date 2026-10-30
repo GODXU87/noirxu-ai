@@ -10,6 +10,7 @@ import { callTool, TaskCard } from '../components/shared';
 import { monthBounds } from '@/lib/tool-labels';
 import { listConversations } from './conversations';
 import { HistoryDialog } from './SasukeNav';
+import { GoalsPanel } from '../components/Goals';
 
 // Function pages for the SASUKE interface. Each one manages one area in detail and hands
 // everyday work back to the conversation through "ask" links (/?c=new&ask=…), so the chat
@@ -38,7 +39,7 @@ function NotConnected({ name }: { name: string }) {
   );
 }
 
-export function TasksView() {
+export function TasksView({ goalId }: { goalId?: string } = {}) {
   return (
     <main className="stack fp">
       <Head title="任務中心" lead="你交代的事項與提醒。SASUKE 在對話中執行的每個工具步驟，會直接顯示在對話裡。" />
@@ -46,6 +47,7 @@ export function TasksView() {
         <Ask question="依重要程度幫我排今天和這週的事，指出時間衝突。" label="請 SASUKE 排優先順序" icon="check" />
         <Ask question="有哪些事已經過期了？" label="檢查過期事項" icon="bell" />
       </div>
+      <GoalsPanel initialGoalId={goalId} />
       <AutoTasks />
       <AgendaCard />
     </main>

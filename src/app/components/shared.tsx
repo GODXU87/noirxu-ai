@@ -1,5 +1,7 @@
 'use client';
 
+import { GoalCard } from './Goals';
+
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { money, toolLabel, toolSystem } from '@/lib/tool-labels';
 import { flash } from './feedback';
@@ -293,6 +295,12 @@ export function ToolData({ tool, data }: { tool: string; data: any }): ReactNode
           {!data.accounts?.length && <p className="hint">Ledger 還沒有資產帳戶。</p>}
         </div>
       );
+    case 'goals.create':
+    case 'goals.update':
+    case 'goals.history.get':
+      return <GoalCard goal={data.goal} />;
+    case 'goals.list':
+      return <div className="view stack">{data.goals.map((g: any) => <GoalCard key={g.id} goal={g} />)}{!data.goals.length && <p className="hint">目前沒有進行中的目標。</p>}</div>;
     case 'tasks.create':
     case 'tasks.update':
       return <TaskCard task={data.task} />;

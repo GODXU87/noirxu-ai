@@ -32,7 +32,7 @@ export function taskView(task: Task) {
 const anyRecord = z.record(z.string(), z.unknown());
 
 /** Tools a task step may not call: tasks managing tasks, and anything that only makes sense in a live chat. */
-const FORBIDDEN_STEP = /^(tasks\.|assistant\.reply\.)/;
+const FORBIDDEN_STEP = /^(tasks\.|goals\.|assistant\.reply\.)/;
 
 export function taskTools(deps: { tasks: TaskService; hasTool: (name: string) => boolean }): ToolDefinition[] {
   return [

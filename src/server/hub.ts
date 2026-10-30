@@ -34,6 +34,8 @@ import { GarminClient } from '@/garmin/client';
 import { DEFAULT_PROFILE, HEALTH_PROFILE_KEY } from '@/garmin/insight';
 import { GarminConnectionStore, type GarminAdapter } from '@/garmin/adapter';
 import { TaskService } from '@/tasks/service';
+import { GoalService } from '@/goals/service';
+import { goalTools } from '@/tools/goals/tools';
 import { eveningBriefing, morningBriefing } from './tick';
 import { loadConfig, type AppConfig } from './config';
 
@@ -60,6 +62,8 @@ export interface Hub {
   water: WaterService;
   /** Background tasks (feature 'tasks'); null when the feature is off. */
   tasks: TaskService | null;
+  /** Durable outcome tracking; never executes source-system actions. */
+  goals: GoalService | null;
   /** Garmin Personal API client (feature 'garmin'); null when the feature is off. */
   garmin: GarminAdapter | null;
   isConnected: (userId: string, connection: ConnectionId) => Promise<boolean>;
@@ -149,6 +153,10 @@ function build(): Hub {
       return (await delivery.deliver({ key, kind: record.kind, userId: record.user_id, message: record.message, expiresAt: new Date(record.expires_at), now })).status;
     }
   }) : null;
+  const goals = features.tasks ? new GoalService({
+    store: agenda, vault, delivery,
+    notify: input => proactiveNotifier.notify({ ...input, kind: 'goal', priority: 'normal' })
+  }) : null;
   for (const tool of [
     ...ledgerTools({ connection: ledger, appUrl: config.ledger.appUrl }),
     ...ledgerAssetTools({ connection: ledger, appUrl: config.ledger.appUrl }),
@@ -159,6 +167,7 @@ function build(): Hub {
     ...(features.water ? healthTools(water) : []),
     ...assistantTools({ agenda, water: features.water ? water : undefined, features, isConnected: (userId, connection) => isConnected(userId, connection), invoke }),
     ...(tasks ? taskTools({ tasks, hasTool: name => Boolean(registry.get(name)) }) : []),
+    ...(goals ? goalTools(goals, async () => (await tasks!.halted()).halted) : []),
     ...memoryTools(memories),
     ...(garmin ? garminTools(garmin, {
       profile: async () => { try { return { ...DEFAULT_PROFILE, ...JSON.parse((await agenda.getSetting(HEALTH_PROFILE_KEY)) ?? '{}') }; } catch { return DEFAULT_PROFILE; } },
@@ -176,7 +185,7 @@ function build(): Hub {
   };
 
   executor = new Executor({ registry, store, isConnected });
-  hub = { config, features, storageMode, registry, executor, ledger, journal, radar, gmail, agenda, push, delivery, cost, memory: memories, memories, quality: features.quality ? new QualityLog(agenda, vault) : null, vault, water, tasks, garmin, isConnected };
+  hub = { config, features, storageMode, registry, executor, ledger, journal, radar, gmail, agenda, push, delivery, cost, memory: memories, memories, quality: features.quality ? new QualityLog(agenda, vault) : null, vault, water, tasks, goals, garmin, isConnected };
   return hub;
 }
 
