@@ -108,6 +108,76 @@ describe('notification delivery state machine', () => {
     expect((await delivery.inbox('owner'))[0].read).toBe(true);
   });
 
+  it('keeps opened evidence separate when the displayed receipt was lost', async () => {
+    const { delivery } = setup([accepted]);
+    await delivery.deliver(input(t0));
+    await delivery.markReceipt('owner', 'reminder:r1', 'opened', later(3));
+    expect(await delivery.get('reminder:r1')).toMatchObject({ accepted_at: t0.toISOString(), opened_at: later(3).toISOString() });
+    expect((await delivery.get('reminder:r1'))?.displayed_at).toBeUndefined();
+  });
+
+  it('does not acknowledge a receipt or mark read when its durable write fails', async () => {
+    const { delivery, store } = setup([accepted]);
+    await delivery.deliver(input(t0));
+    const cas = store.compareAndSetSetting.bind(store);
+    vi.spyOn(store, 'compareAndSetSetting').mockImplementation((key, old, next) => key.startsWith('notify:') ? Promise.resolve(false) : cas(key, old, next));
+    expect(await delivery.markReceipt('owner', 'reminder:r1', 'opened', later(3))).toBe(false);
+    expect((await delivery.get('reminder:r1'))?.opened_at).toBeUndefined();
+    expect((await delivery.inbox('owner'))[0].read).toBe(false);
+  });
+
+  it('preserves receipts arriving during send and persists acceptance before returning it', async () => {
+    const store = new MemoryAgendaStore();
+    const delivery = new DeliveryService(store, vault, async () => {
+      await delivery.markReceipt('owner', 'reminder:r1', 'displayed', later(1));
+      return accepted;
+    });
+    const result = await delivery.deliver(input(t0));
+    expect(result).toMatchObject({ status: 'provider_accepted', displayed_at: later(1).toISOString() });
+    expect(await delivery.get('reminder:r1')).toEqual(result);
+  });
+
+  it('does not report provider acceptance when the final durable write exhausts retries', async () => {
+    const store = new MemoryAgendaStore();
+    const cas = store.compareAndSetSetting.bind(store);
+    let rejectFinal = false;
+    vi.spyOn(store, 'compareAndSetSetting').mockImplementation((key, old, next) => rejectFinal && key.startsWith('notify:') ? Promise.resolve(false) : cas(key, old, next));
+    const delivery = new DeliveryService(store, vault, async () => { rejectFinal = true; return accepted; });
+    await expect(delivery.deliver(input(t0))).rejects.toThrow('notification delivery is busy');
+    expect((await delivery.get('reminder:r1'))?.status).toBe('sending');
+    expect((await delivery.get('reminder:r1'))?.accepted_at).toBeUndefined();
+  });
+
+  it('retains a no-device retry across restart and accepts only after backoff', async () => {
+    const { store, delivery } = setup([none]);
+    await delivery.deliver(input(t0));
+    const send = vi.fn(async () => accepted);
+    const restarted = new DeliveryService(store, vault, send);
+    expect((await restarted.deliver(input(later(2)))).status).toBe('retry_pending');
+    expect((await restarted.inbox('owner'))).toHaveLength(1);
+    expect((await restarted.deliver(input(later(6)))).status).toBe('provider_accepted');
+    await restarted.deliver(input(later(7)));
+    expect(send).toHaveBeenCalledTimes(1);
+    const record = await restarted.get('reminder:r1');
+    expect(record?.displayed_at).toBeUndefined();
+    expect(record?.opened_at).toBeUndefined();
+  });
+
+  it('retains retry and receipt evidence across service restarts without duplicate acceptance', async () => {
+    const { store, delivery } = setup([new Error('temporary outage')]);
+    expect((await delivery.deliver(input(t0))).status).toBe('retry_pending');
+    const send = vi.fn(async () => accepted);
+    const restarted = new DeliveryService(store, vault, send);
+    expect((await restarted.deliver(input(later(1)))).status).toBe('retry_pending');
+    expect((await restarted.deliver(input(later(6)))).status).toBe('provider_accepted');
+    await restarted.markReceipt('owner', 'reminder:r1', 'opened', later(7));
+    const again = new DeliveryService(store, vault, send);
+    await again.deliver(input(later(8)));
+    expect(send).toHaveBeenCalledTimes(1);
+    expect((await again.get('reminder:r1'))?.opened_at).toBe(later(7).toISOString());
+    expect((await again.get('reminder:r1'))?.displayed_at).toBeUndefined();
+  });
+
   it('marks inbox entries read', async () => {
     const { delivery } = setup([accepted]);
     await delivery.deliver(input(t0));

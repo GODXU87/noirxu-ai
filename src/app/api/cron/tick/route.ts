@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { verifyGithubScheduler } from '@/server/github-oidc';
 import { getHub } from '@/server/hub';
 import { databaseHealth } from '@/server/health';
-import { recordTick, runTick } from '@/server/tick';
+import { recordTick, runTick, tickHealthy } from '@/server/tick';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -24,8 +24,9 @@ export async function POST(request: Request) {
   const hub = getHub();
   try {
     const result = await runTick(hub);
-    await recordTick(hub, { at: new Date().toISOString(), source, ok: true, result }).catch(() => undefined);
-    return NextResponse.json({ ok: true, ...result }, { headers: { 'Cache-Control': 'no-store' } });
+    const ok = tickHealthy(result);
+    await recordTick(hub, { at: new Date().toISOString(), source, ok, result });
+    return NextResponse.json({ ok, ...result }, { status: ok ? 200 : 503, headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0, 200) : 'error';
     console.error('[noirxu-ai:tick]', message);

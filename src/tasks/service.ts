@@ -70,8 +70,10 @@ export class TaskService {
     for (let attempt = 0; attempt < 8; attempt += 1) {
       const sealed = await this.deps.store.getSetting(INDEX);
       const ids = sealed ? JSON.parse(this.deps.vault.open(sealed, INDEX)) as string[] : [];
+      if (ids.includes(id)) return;
       if (await this.deps.store.compareAndSetSetting(INDEX, sealed, this.deps.vault.seal(JSON.stringify([...ids, id]), INDEX))) return;
     }
+    throw new Error('task index is busy, try again');
   }
 
   async create(input: { userId: string; title: string; kind: Task['kind']; schedule: TaskSchedule; steps: TaskStep[]; condition?: TaskCondition; sourceText?: string; now: Date }): Promise<Task> {
@@ -83,8 +85,13 @@ export class TaskService {
       created_at: input.now.toISOString(), updated_at: input.now.toISOString(), source_text: input.sourceText, attempts: 0, runs: []
     };
     const k = key(task.id);
-    await this.deps.store.compareAndSetSetting(k, null, this.deps.vault.seal(JSON.stringify(task), k));
+    // Publish the index first: exhausted contention must never leave a runnable task
+    // that the scheduler cannot discover. A dangling index ID is harmless (get/list
+    // skip missing records); no task is acknowledged until both writes succeed.
     await this.addToIndex(task.id);
+    if (!await this.deps.store.compareAndSetSetting(k, null, this.deps.vault.seal(JSON.stringify(task), k))) {
+      throw new Error('task could not be saved, try again');
+    }
     return task;
   }
 
@@ -344,7 +351,7 @@ export class TaskService {
 }
 
 function deliveryLabel(status: string) {
-  return status === 'provider_accepted' ? '通知已送達推播服務'
+  return status === 'provider_accepted' ? '推播服務已接受通知（不代表裝置已顯示或開啟）'
     : status === 'failed' ? '通知送出失敗（已重試到上限），已留在通知收件匣'
     : status === 'expired' ? '通知逾時未送出，已留在通知收件匣'
     : '通知已排入，等裝置可接收時重試（已留在通知收件匣）';

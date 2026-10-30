@@ -70,6 +70,44 @@ describe('task parser (rules, no model)', () => {
   });
 });
 
+describe('task creation publication', () => {
+  const input = { userId: 'owner', title: '喝水', kind: 'recurring' as const,
+    schedule: { type: 'daily' as const, time: '08:00' }, steps: [{ type: 'notify' as const, title: '喝水' }], now: T(BEFORE) };
+
+  it('fails visibly after index CAS exhaustion without an unlisted task, then retries safely after restart', async () => {
+    const { tasks, agenda } = setup();
+    const original = agenda.compareAndSetSetting.bind(agenda);
+    let failures = 8;
+    vi.spyOn(agenda, 'compareAndSetSetting').mockImplementation(async (key, expected, next) =>
+      key === 'tasks:index' && failures-- > 0 ? false : original(key, expected, next));
+    await expect(tasks.create(input)).rejects.toThrow('task index is busy');
+    expect(await tasks.list('owner')).toEqual([]);
+    expect([...agenda.settings.keys()].filter(key => key.startsWith('task:'))).toEqual([]);
+    const restarted = new TaskService({ store: agenda, vault, executor: { invoke: vi.fn() }, proposals: { getProposal: vi.fn() }, notify: vi.fn(), briefing: vi.fn() });
+    const created = await restarted.create(input);
+    expect((await restarted.list('owner')).map(t => t.id)).toEqual([created.id]);
+  });
+
+  it('retries transient index contention and publishes a discoverable task exactly once', async () => {
+    const { tasks, agenda } = setup();
+    const original = agenda.compareAndSetSetting.bind(agenda);
+    let failures = 7;
+    vi.spyOn(agenda, 'compareAndSetSetting').mockImplementation(async (key, expected, next) =>
+      key === 'tasks:index' && failures-- > 0 ? false : original(key, expected, next));
+    const created = await tasks.create(input);
+    expect((await tasks.list('owner')).map(t => t.id)).toEqual([created.id]);
+  });
+
+  it('does not claim success when the task record could not be persisted', async () => {
+    const { tasks, agenda } = setup();
+    const original = agenda.compareAndSetSetting.bind(agenda);
+    vi.spyOn(agenda, 'compareAndSetSetting').mockImplementation(async (key, expected, next) =>
+      key.startsWith('task:') ? false : original(key, expected, next));
+    await expect(tasks.create(input)).rejects.toThrow('task could not be saved');
+    expect(await tasks.list('owner')).toEqual([]);
+  });
+});
+
 describe('task scheduler', () => {
   it('runs a recurring slot once even when scheduler runs overlap, then moves to the next day', async () => {
     const { tasks, executor, send, agenda } = setup();

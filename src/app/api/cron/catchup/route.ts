@@ -1,6 +1,6 @@
 import { getHub } from '@/server/hub';
 import { errorResponse, json, requireContext } from '@/server/http';
-import { lastTick, recordTick, runTick } from '@/server/tick';
+import { lastTick, recordTick, runTick, tickHealthy } from '@/server/tick';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -22,10 +22,20 @@ export async function POST(request: Request) {
     // (delivery is idempotent, so an extra run cannot send twice).
     const due = new URL(request.url).searchParams.get('due') === '1';
     const recent = last ? Date.now() - Date.parse(last.at) : Infinity;
-    if (recent < (due ? DUE_MIN_GAP_MS : STALE_MS)) return json({ ok: true, ran: false, last_at: last!.at });
-    const result = await runTick(hub);
-    await recordTick(hub, { at: new Date().toISOString(), source: 'app-catchup', ok: true, result });
-    return json({ ok: true, ran: true, ...result });
+    if (recent < (due ? DUE_MIN_GAP_MS : STALE_MS)) {
+      const ok = last!.ok && (!last!.result || tickHealthy(last!.result!));
+      return json({ ok, ran: false, last_at: last!.at }, ok ? 200 : 503);
+    }
+    let result;
+    try { result = await runTick(hub); }
+    catch (error) {
+      const message = error instanceof Error ? error.message.slice(0, 200) : 'tick failed';
+      await recordTick(hub, { at: new Date().toISOString(), source: 'app-catchup', ok: false, error: message }).catch(() => undefined);
+      throw error;
+    }
+    const ok = tickHealthy(result);
+    await recordTick(hub, { at: new Date().toISOString(), source: 'app-catchup', ok, result });
+    return json({ ok, ran: true, ...result }, ok ? 200 : 503);
   } catch (error) {
     return errorResponse(error);
   }

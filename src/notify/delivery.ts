@@ -111,7 +111,6 @@ export class DeliveryService {
     // Retries send the caller's current message (e.g. today's water total), not the first draft.
     const sending: DeliveryRecord = { ...record, message: input.message, status: 'sending', attempts: record.attempts + 1, lease_until: new Date(now.getTime() + LEASE_MS).toISOString(), updated_at: now.toISOString() };
     if (!(await this.transition(key, sealed, sending))) return (await this.get(key))!;
-    const sendingSealed = await this.store.getSetting(k);
 
     let report: SendReport | null = null;
     let error: string | undefined;
@@ -137,8 +136,17 @@ export class DeliveryService {
       };
     }
     next.updated_at = new Date().toISOString();
-    await this.transition(key, sendingSealed, next);
-    return next;
+    // Receipts can arrive before the provider request returns. Merge only receipt fields
+    // into this attempt's result; never overwrite a newer attempt or return unpersisted success.
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const currentSealed = await this.store.getSetting(k);
+      const current = this.open<DeliveryRecord>(currentSealed, k);
+      if (!current) throw new Error('notification delivery record missing');
+      if (current.status !== 'sending' || current.attempts !== sending.attempts || current.lease_until !== sending.lease_until) return current;
+      const merged = { ...next, displayed_at: current.displayed_at, opened_at: current.opened_at };
+      if (await this.transition(key, currentSealed, merged)) return merged;
+    }
+    throw new Error('notification delivery is busy, retry later');
   }
 
   /**
@@ -171,12 +179,13 @@ export class DeliveryService {
       const record = this.open<DeliveryRecord>(sealed, k);
       if (!record || record.user_id !== userId) return false;
       const field = event === 'displayed' ? 'displayed_at' : 'opened_at';
-      if (record[field]) break;
-      const next: DeliveryRecord = { ...record, [field]: now.toISOString(), ...(event === 'opened' && !record.displayed_at ? { displayed_at: now.toISOString() } : {}) };
-      if (await this.store.compareAndSetSetting(k, sealed, this.vault.seal(JSON.stringify(next), k))) break;
+      const next: DeliveryRecord = { ...record, [field]: now.toISOString() };
+      if (record[field] || await this.store.compareAndSetSetting(k, sealed, this.vault.seal(JSON.stringify(next), k))) {
+        if (event === 'opened') await this.markRead(userId, [key]);
+        return true;
+      }
     }
-    if (event === 'opened') await this.markRead(userId, [key]);
-    return true;
+    return false;
   }
 
   /** Files a notification in the inbox without pushing it (status 'held'). Idempotent. */

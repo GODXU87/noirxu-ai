@@ -15,7 +15,7 @@ import { pickProvider } from './config';
 import type { Hub } from './hub';
 import { historyProviderOf } from './providers/history';
 import { runOpenAITurn } from './providers/openai';
-import { eveningBriefing, lastTick, morningBriefing } from './tick';
+import { eveningBriefing, lastExternalTick, morningBriefing } from './tick';
 
 // One entry point for every chat message:
 //   1. local router (L0 rules / L1 data reads) — zero model calls, works without API keys;
@@ -86,7 +86,7 @@ async function chatTurn(hub: Hub, ctx: ToolContext, options: ChatOptions): Promi
       briefing: async which => (which === 'morning' ? morningBriefing(hub, ctx.userId, ctx.now()) : eveningBriefing(hub, ctx.userId, ctx.now())),
       weather: hub.features?.weather ? day => cachedWeather(day, taipeiDate(ctx.now())) : undefined,
       usQuotes: hub.features?.us_markets ? () => fetchUsQuotes({ apiKey: process.env.ALPHAVANTAGE_API_KEY?.trim() || undefined, store: hub.agenda, vault: hub.vault, now: ctx.now() }) : undefined,
-      schedulerAgeMinutes: async () => { const last = await lastTick(hub); return last ? Math.round((ctx.now().getTime() - Date.parse(last.at)) / 60_000) : null; }
+      schedulerAgeMinutes: async () => { const last = await lastExternalTick(hub); return last ? Math.round((ctx.now().getTime() - Date.parse(last.at)) / 60_000) : null; }
     });
     await hub.cost.recordLocal(intent.kind, ctx.now()).catch(() => null);
     // Every reply addresses Sir, including the short and error ones.

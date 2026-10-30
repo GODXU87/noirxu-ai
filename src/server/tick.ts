@@ -145,15 +145,36 @@ function taipeiInstant(date: string, hhmm: string) {
 
 export interface TickHealth { at: string; source: string; ok: boolean; result?: TickResult; error?: string }
 const TICK_KEY = 'tick:last';
+const EXTERNAL_TICK_KEY = 'tick:external:last';
+const CATCHUP_TICK_KEY = 'tick:catchup:last';
+const externalSource = (source: string) => source === 'github-actions' || source === 'cron-secret';
+
+/** A completed HTTP request is not a healthy tick if its task subsystem failed. */
+export function tickHealthy(result: TickResult): boolean { return !result.tasks?.error; }
 
 export async function recordTick(hub: Hub, health: TickHealth) {
-  await hub.agenda.putSetting(TICK_KEY, hub.vault.seal(JSON.stringify(health), TICK_KEY));
+  const value = { ...health, ok: health.ok && (!health.result || tickHealthy(health.result)) };
+  const channel = externalSource(health.source) ? EXTERNAL_TICK_KEY : health.source === 'app-catchup' ? CATCHUP_TICK_KEY : null;
+  // Persist independent evidence first; catchup must never overwrite external health.
+  if (channel) await hub.agenda.putSetting(channel, hub.vault.seal(JSON.stringify(value), channel));
+  await hub.agenda.putSetting(TICK_KEY, hub.vault.seal(JSON.stringify(value), TICK_KEY));
 }
 
 export async function lastTick(hub: Hub): Promise<TickHealth | null> {
   const sealed = await hub.agenda.getSetting(TICK_KEY);
   return sealed ? JSON.parse(hub.vault.open(sealed, TICK_KEY)) as TickHealth : null;
 }
+
+async function channelTick(hub: Hub, key: string, matches: (source: string) => boolean): Promise<TickHealth | null> {
+  const sealed = await hub.agenda.getSetting(key);
+  if (sealed) return JSON.parse(hub.vault.open(sealed, key)) as TickHealth;
+  // Upgrade safely: only legacy records from a verified external source count.
+  const legacy = await lastTick(hub);
+  return legacy && matches(legacy.source) ? legacy : null;
+}
+
+export const lastExternalTick = (hub: Hub) => channelTick(hub, EXTERNAL_TICK_KEY, externalSource);
+export const lastCatchupTick = (hub: Hub) => channelTick(hub, CATCHUP_TICK_KEY, source => source === 'app-catchup');
 
 export const LATE_PUSH_MS = 30 * 60_000;
 export const REMINDER_EXPIRE_MS = 12 * 60 * 60_000;

@@ -32,6 +32,8 @@ interface ServerStatus {
   server_has_this_device: boolean;
   devices: DeviceRow[];
   scheduler: { last: { at: string; source: string; ok: boolean; error?: string } | null; age_minutes: number | null; healthy: boolean };
+  catchup?: ServerStatus['scheduler'];
+  task_subsystem?: { healthy: boolean; error: string | null; last_at: string | null };
   history: HistoryRow[];
 }
 
@@ -167,7 +169,9 @@ export function Notifications() {
     ['這台裝置的訂閱', subscribed ? (keyMismatch ? '有，但金鑰與伺服器不一致' : '有') : '沒有', subscribed && !keyMismatch ? 'ok' : 'error'],
     ['伺服器端紀錄', !subscribed ? '—' : server?.server_has_this_device ? '相符' : '伺服器沒有這台裝置', !subscribed ? 'muted' : server?.server_has_this_device ? 'ok' : 'error'],
     ['最後成功送達推播服務', fmt(server?.devices.find(d => d.is_this)?.last_success_at), 'muted'],
-    ['排程最後執行', server?.scheduler.last ? `${fmt(server.scheduler.last.at)}（${server.scheduler.age_minutes} 分鐘前 · ${server.scheduler.last.source === 'github-actions' ? 'GitHub' : server.scheduler.last.source === 'app-catchup' ? '開啟 App 時補跑' : server.scheduler.last.source}）` : '尚無紀錄', server?.scheduler.healthy ? 'ok' : 'warn'],
+    ['外部排程最後執行', server?.scheduler.last ? `${fmt(server.scheduler.last.at)}（${server.scheduler.age_minutes} 分鐘前 · ${server.scheduler.last.source === 'github-actions' ? 'GitHub' : server.scheduler.last.source === 'app-catchup' ? '開啟 App 時補跑' : server.scheduler.last.source}）` : '尚無紀錄', server?.scheduler.healthy ? 'ok' : 'warn'],
+    ['App 補跑（不是背景排程）', server?.catchup?.last ? fmt(server.catchup.last.at) : '尚無紀錄', server?.catchup?.healthy ? 'ok' : 'warn'],
+    ['任務子系統', server?.task_subsystem?.healthy ? '最近執行正常' : server?.task_subsystem?.error ?? '尚無近期成功紀錄', server?.task_subsystem?.healthy ? 'ok' : 'warn'],
     ['最後一次發送', lastSend ? `${KIND_LABEL[lastSend.kind] ?? lastSend.kind} · ${STATUS_LABEL[lastSend.status] ?? lastSend.status} · ${fmt(lastSend.accepted_at ?? lastSend.created_at)}` : '尚無紀錄', lastSend?.status === 'provider_accepted' ? 'ok' : lastSend ? 'warn' : 'muted'],
     ['最近失敗原因', lastFailure?.last_error ?? '無', lastFailure ? 'error' : 'muted']
   ];
@@ -215,8 +219,8 @@ export function Notifications() {
           {server.history.length === 0 ? <p className="hint">還沒有通知紀錄。</p> : (
             <ul>{server.history.map(h => (
               <li key={h.key}>
-                <div><b>{h.title}</b><span className={`state-chip ${h.status === 'provider_accepted' ? 'ok' : h.status === 'failed' || h.status === 'expired' ? 'error' : 'pending'}`}>{h.opened_at ? '已點開' : h.displayed_at ? '裝置已顯示' : STATUS_LABEL[h.status] ?? h.status}</span></div>
-                <small>{KIND_LABEL[h.kind] ?? h.kind} · 建立 {fmt(h.created_at)} · 嘗試 {h.attempts} 次{h.next_retry_at ? ` · 下次重試 ${fmt(h.next_retry_at)}` : ''}{h.displayed_at ? ` · 裝置顯示 ${fmt(h.displayed_at)}` : h.status === 'provider_accepted' ? ' · 尚未收到裝置回報（不代表沒跳出）' : ''}</small>
+                <div><b>{h.title}</b><span className={`state-chip ${h.status === 'provider_accepted' ? 'ok' : h.status === 'failed' || h.status === 'expired' ? 'error' : 'pending'}`}>{h.opened_at ? '裝置回報已點開' : h.displayed_at ? '裝置回報已顯示' : STATUS_LABEL[h.status] ?? h.status}</span></div>
+                <small>{KIND_LABEL[h.kind] ?? h.kind} · 建立 {fmt(h.created_at)} · 嘗試 {h.attempts} 次{h.next_retry_at ? ` · 下次重試 ${fmt(h.next_retry_at)}` : ''}{h.accepted_at ? ` · 推播服務接受 ${fmt(h.accepted_at)}` : ''}{h.displayed_at ? ` · 顯示回報 ${fmt(h.displayed_at)}` : ' · 無顯示回報（不代表沒跳出）'}{h.opened_at ? ` · 點開回報 ${fmt(h.opened_at)}` : ''}</small>
                 {h.last_error && <small className="tone-error">{h.last_error}</small>}
               </li>
             ))}</ul>
