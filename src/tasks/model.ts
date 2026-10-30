@@ -64,6 +64,8 @@ export interface Task {
   last_error?: string;
   /** Condition already notified for this period (e.g. "2026-10"), so it fires once. */
   condition_fired_for?: string;
+  /** Pending delivery keys survive bounded run-history retention. */
+  pending_delivery_keys?: string[];
   runs: TaskRun[];
 }
 

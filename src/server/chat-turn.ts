@@ -112,23 +112,31 @@ async function chatTurn(hub: Hub, ctx: ToolContext, options: ChatOptions): Promi
   const memories = hub.memory ? memoryContext(searchMemories(await hub.memory.list(ctx.userId), options.text, 3, ctx.now())) : '';
 
   const light = tier === 'L2' && optimize;
-  const model = provider === 'openai'
+  let model = provider === 'openai'
     ? (light ? process.env.OPENAI_MODEL_LIGHT?.trim() || hub.config.openai.model : hub.config.openai.model)
     : (light ? process.env.NOIRXU_AI_MODEL_LIGHT?.trim() || hub.config.anthropicModel : hub.config.anthropicModel);
+  // Providers mutate this usage object as responses arrive. Retain it even when a
+  // later iteration throws, so paid work is recorded and never restarted on fallback.
+  let attemptedUsage: TurnUsage = { calls: 0, input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
+  const beforeCallFor = (selectedModel: string) => {
+    const check = hub.cost.perTaskCheck(selectedModel, admitted.config);
+    return (usage: TurnUsage) => { attemptedUsage = usage; return check(usage); };
+  };
   const turnLimits = optimize
-    ? { maxOutputTokens: limits.maxOutputTokens, maxIterations: limits.maxIterations, effort: light ? 'low' as const : 'medium' as const, beforeCall: hub.cost.perTaskCheck(model, admitted.config) }
-    : { beforeCall: hub.cost.perTaskCheck(model, admitted.config) };
+    ? { maxOutputTokens: limits.maxOutputTokens, maxIterations: limits.maxIterations, effort: light ? 'low' as const : 'medium' as const, beforeCall: beforeCallFor(model) }
+    : { beforeCall: beforeCallFor(model) };
   const hitsBefore = hub.executor.cacheHits;
   const common = { registry, executor: hub.executor, ctx, userText: options.text, style: options.style, onProgress: options.onProgress, limits: turnLimits, extraSystem: memories || undefined };
 
   try {
-    const openaiTurn = (m: string) => runOpenAITurn({ ...common, client: options.clients?.openai?.() ?? new OpenAI(), model: m, reasoningEffort: light ? null : hub.config.openai.reasoningEffort, history });
+    const openaiTurn = (m: string) => runOpenAITurn({ ...common, limits: { ...turnLimits, beforeCall: beforeCallFor(m) }, client: options.clients?.openai?.() ?? new OpenAI(), model: m, reasoningEffort: light ? null : hub.config.openai.reasoningEffort, history });
     const turn = provider === 'openai'
       // A light model this account cannot use falls back to the main model instead of failing.
       ? await openaiTurn(model).catch(error => {
-        if (light && model !== hub.config.openai.model && error instanceof OpenAI.APIError && (error.status === 404 || error.status === 400) && /model/i.test(error.message)) {
+        if (attemptedUsage.calls === 0 && light && model !== hub.config.openai.model && error instanceof OpenAI.APIError && (error.status === 404 || error.status === 400) && /model/i.test(error.message)) {
           console.warn('[noirxu-ai] light model rejected, using the main model', model, error.status);
-          return openaiTurn(hub.config.openai.model);
+          model = hub.config.openai.model;
+          return openaiTurn(model);
         }
         throw error;
       })
@@ -138,7 +146,7 @@ async function chatTurn(hub: Hub, ctx: ToolContext, options: ChatOptions): Promi
     const kept = trimHistory([...fullHistory.slice(0, dropped), ...turn.messages], KEEP_TURNS).history;
     return { ok: true, provider: turn.provider, messages: kept, reply: turn.reply, events: turn.events, route: { level: tier, source: 'ai', model }, usage: turn.usage, contextReset, stopReason: turn.stopReason };
   } catch (error) {
-    await hub.cost.recordTurn({ model, feature: `chat_${tier}`, usage: { calls: 0, input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }, failed: true, now: ctx.now() }).catch(() => null);
+    await hub.cost.recordTurn({ model, feature: `chat_${tier}`, usage: attemptedUsage, failed: true, now: ctx.now() }).catch(() => null);
     throw error;
   } finally {
     admitted.release();
