@@ -39,7 +39,10 @@ describe('A–C: relative and absolute reminder times (no model)', () => {
     expect(r.status).toBe('ok');
     expect(r.data).toMatchObject({ kind: 'reminder', scheduled: true, item: { title: '看電腦', due_date: '2026-10-23', due_time: '20:04' } });
     expect(r.data.reminders).toHaveLength(1);
-    expect(r.data.reminders[0]).toMatchObject({ at: '2026-10-23T12:04:00.000Z', local: '10/23 20:04', status: 'scheduled' });
+    expect(r.data.reminders[0]).toMatchObject({ at: '2026-10-23T12:04:00.000Z', status: 'scheduled' });
+    // ICU versions vary the date/time separator (e.g. U+2009 on Node 24).
+    // Normalize only Unicode space separators; keep every date/time digit exact.
+    expect(r.data.reminders[0].local.replace(/\p{Zs}/gu, ' ')).toBe('10/23 20:04');
     expect(agenda.reminders.has(r.data.reminders[0].id)).toBe(true);
   });
 
