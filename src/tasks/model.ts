@@ -37,7 +37,7 @@ export const stepSchema = z.discriminatedUnion('type', [
 ]);
 export type TaskStep = z.input<typeof stepSchema>;
 
-export interface StepResult { step: number; type: TaskStep['type']; tool?: string; status: 'ok' | 'error' | 'waiting_approval' | 'skipped'; summary: string; proposal_id?: string; delivery_key?: string; delivery_status?: string }
+export interface StepResult { step: number; type: TaskStep['type']; tool?: string; status: 'ok' | 'error' | 'waiting_approval' | 'skipped'; summary: string; proposal_id?: string; delivery_key?: string; delivery_status?: string; delivery_summary?: string }
 export interface TaskRun { id: string; slot: string; started_at: string; finished_at?: string; status: 'completed' | 'failed' | 'waiting_approval' | 'outcome_unknown' | 'skipped' | 'not_met'; steps: StepResult[]; error?: string; late_minutes?: number; tool_calls?: number; llm_tokens?: number }
 
 export interface Task {

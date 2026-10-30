@@ -35,6 +35,36 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
+describe('approval delivery feedback', () => {
+  it('loads a pending task approval preview and uses the existing explicit confirmation endpoint', async () => {
+    const fetcher = vi.fn(async (url: string) => url.includes('/confirm') ? ({ json: async () => ({ ok: true, result: { status: 'succeeded', tool: 'sample.create', proposalId: 'p1', data: {}, links: [] } }) }) as Response
+      : response({ approval: { status: 'confirmation_required', tool: 'sample.create', proposalId: 'p1', preview: { title: '待確認內容', fields: [{ label: '金額', value: '100' }] }, expiresAt: '2027-01-01T00:00:00Z' } }));
+    stubTaskFetch(fetcher);
+    await render(createElement(TaskCard, { task: task('waiting_approval') }));
+    expect(button('查看待確認操作')).toBeTruthy();
+    await act(async () => button('查看待確認操作').click());
+    expect(host.textContent).toContain('待確認內容');
+    expect(host.textContent).toContain('100');
+    expect(fetcher.mock.calls.some(([url]) => url.includes('/confirm'))).toBe(false);
+    await act(async () => button('確認執行').click());
+    expect(fetcher.mock.calls.filter(([url]) => url === '/api/proposals/p1/confirm')).toHaveLength(1);
+  });
+  it('discards an old approval card when the task moves to a second approval', async () => {
+    stubTaskFetch(vi.fn(async () => response({ approval: { status: 'confirmation_required', tool: 'sample.create', proposalId: 'p1', preview: { title: '舊確認', fields: [] }, expiresAt: '2027-01-01T00:00:00Z' } })));
+    await render(createElement(TaskCard, { task: { ...task('waiting_approval'), waiting_proposal: 'p1' } }));
+    await act(async () => button('查看待確認操作').click()); expect(host.textContent).toContain('舊確認');
+    await render(createElement(TaskCard, { task: { ...task('waiting_approval'), waiting_proposal: 'p2' } }));
+    expect(host.textContent).not.toContain('舊確認'); expect(button('查看待確認操作')).toBeTruthy();
+  });
+  it('shows notification state separately from the operation summary', async () => {
+    stubTaskFetch(vi.fn(async () => response({ runs: [{ id: 'r1', status: 'waiting_approval', local: '今天', steps: [{ summary: '新增支出', delivery_summary: '確認通知待送出；操作尚未執行' }] }] })));
+    await render(createElement(TaskCard, { task: task('waiting_approval') }));
+    await act(async () => button('執行紀錄').click());
+    expect(host.textContent).toContain('新增支出');
+    expect(host.textContent).toContain('確認通知待送出；操作尚未執行');
+  });
+});
+
 describe('task-center freshness', () => {
   it('shows new task results on visible polling without overlapping reads', async () => {
     let reads = 0;

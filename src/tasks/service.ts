@@ -16,11 +16,11 @@ import { LEASE_MS, MAX_RUNS_KEPT, MISSED_SLOT_MS, STEP_TIMEOUT_MS, nextRun, type
 export interface TaskDeps {
   store: AgendaStore;
   vault: TokenVault;
-  executor: Pick<Executor, 'invoke'>;
+  executor: Pick<Executor, 'invoke'> & Partial<Pick<Executor, 'reject'>>;
   proposals: Pick<HubStore, 'getProposal'>;
   /** Sends a notification through the delivery service (inbox + push, with retries). */
   /** proactive = SASUKE decided to send it (watch results), so the daily cap and quiet hours apply. */
-  notify: (input: { key: string; userId: string; message: PushMessage; now: Date; proactive?: boolean }) => Promise<{ status: string }>;
+  notify: (input: { key: string; userId: string; message: PushMessage; now: Date; proactive?: boolean; expiresAt?: Date }) => Promise<{ status: string }>;
   /** Morning / evening summary text, from the existing briefing builders. */
   briefing: (which: 'morning' | 'evening', userId: string, now: Date) => Promise<{ title: string; body: string; important?: boolean }>;
   /** Retries a notification that no device accepted yet; returns its current status, or null if unknown. */
@@ -45,6 +45,26 @@ export class TaskService {
 
   async get(id: string): Promise<Task | null> {
     return this.open(await this.deps.store.getSetting(key(id)), key(id));
+  }
+
+  async approval(userId: string, id: string, now: Date): Promise<Extract<InvokeResult, { status: 'confirmation_required' }> | null> {
+    const task = await this.get(id);
+    if (!task || task.user_id !== userId || task.status !== 'waiting_approval' || !task.waiting_proposal) return null;
+    const p = await this.deps.proposals.getProposal(task.waiting_proposal);
+    if (!p || p.userId !== userId || p.status !== 'pending' || !(Date.parse(p.expiresAt) > +now)) return null;
+    return { status: 'confirmation_required', tool: p.tool, proposalId: p.id, preview: p.preview, expiresAt: p.expiresAt };
+  }
+
+  private async revokeApproval(proposalId: string, userId: string, now: Date) {
+    const p = await this.deps.proposals.getProposal(proposalId);
+    if (!p || p.userId !== userId || p.status !== 'pending') return;
+    if (!this.deps.executor.reject) throw new Error('無法撤銷待確認操作，請稍後重試取消');
+    try { await this.deps.executor.reject(proposalId, { userId, now: () => now }); }
+    catch (error) {
+      const latest = await this.deps.proposals.getProposal(proposalId);
+      if (!latest || latest.status !== 'pending') return;
+      throw error;
+    }
   }
 
   /** Compare-and-set: applies `change` to the latest record; returns the new record or null if the task is gone. */
@@ -108,8 +128,9 @@ export class TaskService {
       if (task.status === 'cancelled' || task.status === 'completed') throw new Error('這個任務已經結束，無法再更改。');
       const stamp = { updated_at: now.toISOString() };
       if (action === 'pause') return { ...task, ...stamp, status: 'paused' };
-      if (action === 'cancel') return { ...task, ...stamp, status: 'cancelled', next_at: null, lease_until: undefined };
+      if (action === 'cancel') return { ...task, ...stamp, status: 'cancelled', next_at: null, lease_until: undefined, waiting_proposal: undefined };
       if (action === 'resume') {
+        if (task.waiting_proposal) return { ...task, ...stamp, status: 'waiting_approval' };
         const next = task.next_at && Date.parse(task.next_at) > now.getTime() ? new Date(task.next_at) : nextRun(task.schedule, now);
         return { ...task, ...stamp, status: next ? 'queued' : 'completed', next_at: next?.toISOString() ?? null };
       }
@@ -118,6 +139,9 @@ export class TaskService {
       return { ...task, ...stamp, schedule: action.schedule, status: task.status === 'paused' ? 'paused' : 'queued', next_at: next.toISOString() };
     });
     if (!updated || updated.user_id !== userId) throw new Error('找不到這個任務。');
+    if (action === 'cancel') {
+      for (const p of new Set(updated.runs.flatMap(r => r.steps.filter(s => s.status === 'waiting_approval').map(s => s.proposal_id).filter((id): id is string => !!id)))) await this.revokeApproval(p, userId, now);
+    }
     return updated;
   }
 
@@ -154,12 +178,14 @@ export class TaskService {
    * rotating nonterminal keys to the end; DeliveryService owns leases/backoff/expiry.
    */
   private async retryDeliveries(id: string, now: Date) {
+    await this.retryApprovalDelivery(id, now);
     const redeliver = this.deps.redeliver;
     if (!redeliver) return;
     const task = await this.get(id);
     if (!task) return;
     const keys = [...new Set([...(task.pending_delivery_keys ?? []), ...task.runs.flatMap(r => r.steps.filter(s => s.delivery_key && PENDING_DELIVERY.includes(s.delivery_status ?? '')).map(s => s.delivery_key!))])];
-    const batch = keys.slice(0, 100);
+    // Approval prompts have their own proposal-aware path; never retry obsolete prompts.
+    const batch = keys.filter(key => !key.startsWith('task-approval:')).slice(0, 100);
     if (!batch.length) return;
     const updates = new Map<string, string>();
     for (const key of batch) {
@@ -178,6 +204,53 @@ export class TaskService {
       for (const [key, status] of updates) if (!PENDING_DELIVERY.includes(status)) terminal.add(key);
       const pending = current.filter(key => !terminal.has(key));
       return { ...t, runs, pending_delivery_keys: [...pending.filter(key => !batch.includes(key)), ...pending.filter(key => batch.includes(key))] };
+    });
+  }
+
+  /** Reconstruct a missing delivery from durable approval state after a crash.
+   * DeliveryService owns send leases/backoff; this path never invokes or confirms a tool.
+   */
+  private async retryApprovalDelivery(id: string, now: Date) {
+    const task = await this.get(id);
+    if (!task) return;
+    if (task.status === 'cancelled') {
+      for (const p of new Set(task.runs.flatMap(r => r.steps.filter(s => s.status === 'waiting_approval').map(s => s.proposal_id).filter((id): id is string => !!id)))) await this.revokeApproval(p, task.user_id, now);
+    }
+    const current = task.status === 'waiting_approval' ? task.waiting_proposal : undefined;
+    const step = task.runs[0]?.steps.find(s => s.proposal_id === current && s.status === 'waiting_approval');
+    // Remove obsolete keys, but preserve paused approval state so resume can retry it.
+    await this.update(id, t => {
+      const retained = (t.status === 'waiting_approval' || t.status === 'paused') ? t.waiting_proposal : undefined;
+      const runs = t.runs.map(r => ({ ...r, steps: r.steps.map(s => s.proposal_id && s.proposal_id !== retained && s.delivery_key && PENDING_DELIVERY.includes(s.delivery_status ?? '')
+        ? { ...s, delivery_status: 'obsolete', delivery_summary: '確認已結束，不再推送此通知' } : s) }));
+      const pending = (t.pending_delivery_keys ?? []).filter(k => !k.startsWith('task-approval:') || k === `task-approval:${retained}`);
+      return JSON.stringify(runs) === JSON.stringify(t.runs) && pending.length === (t.pending_delivery_keys ?? []).length ? null : { ...t, runs, pending_delivery_keys: pending };
+    });
+    if (!current || !step || (step.delivery_status && !PENDING_DELIVERY.includes(step.delivery_status))) return;
+    const proposal = await this.deps.proposals.getProposal(current);
+    if (!proposal || proposal.userId !== task.user_id || proposal.status !== 'pending' || !Number.isFinite(Date.parse(proposal.expiresAt)) || Date.parse(proposal.expiresAt) <= now.getTime()) return;
+    const deliveryKey = `task-approval:${current}`;
+    // Also upgrades waiting tasks created by earlier versions, without creating a new proposal.
+    await this.update(id, t => t.status !== 'waiting_approval' || t.waiting_proposal !== current || t.runs[0]?.steps.some(s => s.proposal_id === current && s.delivery_key) ? null : {
+      ...t, pending_delivery_keys: [...new Set([...(t.pending_delivery_keys ?? []), deliveryKey])],
+      runs: t.runs.map(r => ({ ...r, steps: r.steps.map(s => s.proposal_id === current && !s.delivery_key ? { ...s, delivery_key: deliveryKey, delivery_status: 'pending', delivery_summary: '確認通知待送出；操作尚未執行' } : s) }))
+    });
+    const latest = await this.get(id);
+    if (latest?.status !== 'waiting_approval' || latest.waiting_proposal !== current) return;
+    const finalProposal = await this.deps.proposals.getProposal(current);
+    if (!finalProposal || finalProposal.userId !== task.user_id || finalProposal.status !== 'pending' || !(Date.parse(finalProposal.expiresAt) > +now)) return;
+    let status: string;
+    try {
+      const result = await this.deps.notify({ key: deliveryKey, userId: task.user_id,
+        message: { title: 'Sir，任務有待查看的確認紀錄', body: '請開啟任務中心查看最新狀態；尚未完成的操作才需要確認', url: '/tasks', tag: `task-${task.id}` },
+        now, expiresAt: new Date(proposal.expiresAt) });
+      status = result.status;
+    } catch { return; } // Keep the durable pending key. A notification outage is not a task failure.
+    await this.update(id, t => {
+      const active = t.status === 'waiting_approval' && t.waiting_proposal === current;
+      return { ...t, runs: t.runs.map(r => ({ ...r, steps: r.steps.map(s => s.delivery_key === deliveryKey && PENDING_DELIVERY.includes(s.delivery_status ?? '')
+        ? { ...s, delivery_status: active ? status : 'obsolete', delivery_summary: active ? deliveryLabel(status) : '確認已結束，不再推送此通知' } : s) })),
+        pending_delivery_keys: (t.pending_delivery_keys ?? []).filter(k => k !== deliveryKey || (active && PENDING_DELIVERY.includes(status))) };
     });
   }
 
@@ -248,14 +321,20 @@ export class TaskService {
       const readOnly = READ_SUFFIX.test(step.tool);
       run.tool_calls = (run.tool_calls ?? 0) + 1;
       let result: InvokeResult = await this.invokeWithTimeout(step.tool, step.input ?? {}, ctx, readOnly);
+      if (result.status === 'confirmation_required' && (await this.get(task.id))?.status === 'cancelled') {
+        // Keep the ID even if revocation storage is unavailable; cancelled-task recovery retries it.
+        run.steps.push({ step: index, type: 'tool', tool: step.tool, status: 'waiting_approval', summary: '任務已取消，正在撤銷待確認操作', proposal_id: result.proposalId });
+        await this.revokeApproval(result.proposalId, task.user_id, now);
+        run.status = 'failed'; run.error = '任務已取消，待確認操作已撤銷'; return;
+      }
       if (await continuationStopped()) return;
       // Read-only steps get one quick retry; writes are never repeated automatically.
       if (result.status === 'error' && readOnly && result.code !== 'NOT_CONNECTED' && result.code !== 'INVALID_INPUT') { run.tool_calls += 1; result = await this.invokeWithTimeout(step.tool, step.input ?? {}, ctx, readOnly); }
       if (await continuationStopped()) return;
       if (result.status === 'confirmation_required') {
-        run.steps.push({ step: index, type: 'tool', tool: step.tool, status: 'waiting_approval', summary: result.preview.title, proposal_id: result.proposalId });
+        run.steps.push({ step: index, type: 'tool', tool: step.tool, status: 'waiting_approval', summary: result.preview.title, proposal_id: result.proposalId, delivery_key: `task-approval:${result.proposalId}`, delivery_status: 'pending', delivery_summary: '確認通知待送出；操作尚未執行' });
         run.status = 'waiting_approval';
-        await this.deps.notify({ key: `task-approval:${result.proposalId}`, userId: task.user_id, message: { title: 'Sir，這件事要你確認', body: `${task.title}：${result.preview.title}`, url: '/tasks', tag: `task-${task.id}` }, now });
+        // Persist the waiting run first. The scheduler's delivery pass sends it afterwards.
         return;
       }
       if (result.status === 'error') {
@@ -319,11 +398,11 @@ export class TaskService {
       return true;
     }
     const outcome = proposal.status === 'succeeded' ? 'completed' : proposal.status === 'rejected' ? 'cancelled' : proposal.status === 'outcome_unknown' ? 'outcome_unknown' : 'failed';
-    await this.resolveApproval(task, outcome, outcome === 'cancelled' ? '你取消了這個操作' : outcome === 'failed' ? '操作執行失敗' : undefined, now);
+    await this.resolveApproval(task, outcome, outcome === 'cancelled' ? '你取消了這個操作' : outcome === 'failed' || outcome === 'outcome_unknown' ? proposal.error?.message ?? '操作執行失敗' : undefined, now, proposal.result);
     return false;
   }
 
-  private async resolveApproval(task: Task, outcome: 'completed' | 'cancelled' | 'failed' | 'outcome_unknown', error: string | undefined, now: Date) {
+  private async resolveApproval(task: Task, outcome: 'completed' | 'cancelled' | 'failed' | 'outcome_unknown', error: string | undefined, now: Date, result?: unknown) {
     const claim = randomUUID();
     const claimed = await this.update(task.id, t => {
       if (t.status !== 'waiting_approval' || t.waiting_proposal !== task.waiting_proposal) return null;
@@ -334,7 +413,7 @@ export class TaskService {
     const latest = claimed.runs[0];
     const approved = latest.steps.find(s => s.proposal_id === claimed.waiting_proposal && s.status === 'waiting_approval')!;
     const run: TaskRun = { ...latest, status: outcome === 'cancelled' ? 'failed' : outcome, error,
-      steps: latest.steps.map(s => s === approved ? { ...s, status: outcome === 'completed' ? 'ok' : 'error', summary: error ?? (outcome === 'completed' ? '已確認並執行' : '執行結果不明') } : s) };
+      steps: latest.steps.map(s => s === approved ? { ...s, status: outcome === 'completed' ? 'ok' : 'error', summary: error ?? (outcome === 'completed' ? summarize(result) : '執行結果不明') } : s) };
     if (outcome === 'completed') {
       try { await this.executeSteps(claimed, run, now, approved.step + 1); }
       catch (e) { run.status = 'failed'; run.error = e instanceof Error ? e.message.slice(0, 200) : '執行失敗'; }

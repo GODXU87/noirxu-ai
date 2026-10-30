@@ -137,9 +137,9 @@ function build(): Hub {
   let hub: Hub | null = null;
   const invoke: Executor['invoke'] = (name, input, ctx) => executor!.invoke(name, input, ctx);
   const tasks = features.tasks ? new TaskService({
-    store: agenda, vault, executor: { invoke }, proposals: { getProposal: id => store.getProposal(id) },
-    notify: async ({ key, userId, message, now, proactive }) => {
-      const expiresAt = new Date(now.getTime() + 12 * 60 * 60_000);
+    store: agenda, vault, executor: { invoke, reject: (id, ctx) => executor!.reject(id, ctx) }, proposals: { getProposal: id => store.getProposal(id) },
+    notify: async ({ key, userId, message, now, proactive, expiresAt: requestedExpiry }) => {
+      const expiresAt = requestedExpiry ?? new Date(now.getTime() + 12 * 60 * 60_000);
       return proactive ? proactiveNotifier.notify({ key, kind: 'task', userId, message, now, expiresAt, priority: 'normal' }) : delivery.deliver({ key, kind: 'task', userId, message, now, expiresAt });
     },
     briefing: async (which, userId, now) => {

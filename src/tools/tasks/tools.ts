@@ -25,7 +25,7 @@ export function taskView(task: Task) {
     schedule: task.schedule, schedule_label: describeSchedule(task.schedule), next_at: task.next_at, next_local: local(task.next_at),
     condition: task.condition ?? null, steps: task.steps,
     last_run: last ? { status: last.status, at: last.finished_at ?? last.started_at, local: local(last.finished_at ?? last.started_at), error: last.error ?? null, steps: last.steps } : null,
-    runs_kept: task.runs.length, last_error: task.last_error ?? null
+    waiting_proposal: task.waiting_proposal ?? null, runs_kept: task.runs.length, last_error: task.last_error ?? null
   };
 }
 
@@ -36,6 +36,11 @@ const FORBIDDEN_STEP = /^(tasks\.|goals\.|assistant\.reply\.)/;
 
 export function taskTools(deps: { tasks: TaskService; hasTool: (name: string) => boolean }): ToolDefinition[] {
   return [
+    defineTool({
+      name: 'tasks.approval.get', description: '讀取自己的任務目前待確認操作預覽，不執行操作。', connection: 'internal', kind: 'read',
+      input: z.object({ id: z.string() }).strict(), output: anyRecord,
+      async run(value, ctx) { return { data: { approval: await deps.tasks.approval(ctx.userId, value.id, ctx.now()) } }; }
+    }),
     defineTool({
       name: 'tasks.create',
       description: '建立 SASUKE 自動任務（伺服器背景執行，不需要開著 App）：週期提醒（每天/每週/每月/每隔 N 小時）、定時早報或晚報、條件監看（例如本月支出超過某金額就通知）、或多步驟背景工作。可以只傳 text（使用者原話，用固定規則解析），或傳結構化的 schedule/steps。單次提醒請用 agenda.items.create。步驟若用到寫入或寄信的工具，每次執行仍會建立待確認操作，等使用者確認，不會自動寫入。',

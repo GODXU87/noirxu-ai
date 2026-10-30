@@ -262,7 +262,7 @@ describe('task scheduler', () => {
     expect((await tasks.get(task.id))!.waiting_proposal).toBeUndefined();
     expect(send).toHaveBeenCalledTimes(phase === 'invoke' ? 1 : 2);
     expect(secondProposal).toBeTruthy();
-    await executor.confirm(secondProposal!, ctxAt('2026-10-23T00:02:00Z'));
+    await expect(executor.confirm(secondProposal!, ctxAt('2026-10-23T00:02:00Z'))).rejects.toThrow('已取消');
     await tasks.runDue(T('2026-10-23T00:03:00Z'));
     expect((await tasks.get(task.id))!.status).toBe('cancelled');
     expect(send).toHaveBeenCalledTimes(phase === 'invoke' ? 1 : 2);

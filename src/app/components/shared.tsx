@@ -149,6 +149,33 @@ function ReminderCard({ data }: { data: any }) {
 const TASK_TONE: Record<string, string> = { queued: 'ok', running: 'pending', waiting_approval: 'pending', completed: 'ok', failed: 'error', cancelled: '', outcome_unknown: 'pending', paused: '' };
 const RUN_LABEL: Record<string, string> = { completed: '完成', failed: '失敗', waiting_approval: '等你確認', outcome_unknown: '結果不明', skipped: '略過', not_met: '條件未達成' };
 
+function TaskApproval({ id }: { id: string }) {
+  const [open, setOpen] = useState(false);
+  const [approval, setApproval] = useState<Extract<InvokeResult, { status: 'confirmation_required' }> | null>(null);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const controller = new AbortController(); let active = true;
+    setLoading(true); setError(''); setApproval(null);
+    void callTool('tasks.approval.get', { id }, controller.signal).then(result => {
+      if (!active) return;
+      setLoading(false);
+      if (result.status !== 'ok') { setError(result.status === 'error' ? result.message : '無法讀取確認內容'); return; }
+      const value = (result.data as { approval: Extract<InvokeResult, { status: 'confirmation_required' }> | null }).approval;
+      setApproval(value);
+      if (!value) setError('目前沒有可確認的操作，可能已處理或逾期；請更新任務狀態');
+    });
+    return () => { active = false; controller.abort(); };
+  }, [id, open]);
+  return <div>
+    <button type="button" className="ghost" onClick={() => setOpen(v => !v)}>{open ? '收合待確認操作' : '查看待確認操作'}</button>
+    {open && loading && <p role="status">確認內容讀取中…</p>}
+    {open && error && <p className="hint tone-error">{error}</p>}
+    {open && approval && <ProposalCard key={approval.proposalId} result={approval} onDone={() => window.dispatchEvent(new Event('noirxu-tasks-changed'))} />}
+  </div>;
+}
+
 /** A background task in the chat or the task center: schedule, next run, last result, pause / resume / cancel. */
 export function TaskCard({ task: initial }: { task: any }) {
   const [task, setTask] = useState(initial);
@@ -207,10 +234,11 @@ export function TaskCard({ task: initial }: { task: any }) {
         </div>
       )}
       {finished && task.runs_kept > 0 && <div className="row reminder-actions"><button type="button" className="ghost" aria-expanded={historyOpen} onClick={() => setHistoryOpen(open => !open)}>{historyOpen ? '收合紀錄' : '執行紀錄'}</button></div>}
+      {task.status === 'waiting_approval' && <TaskApproval key={task.waiting_proposal ?? task.id} id={task.id} />}
       {historyOpen && historyLoading && <p className="hint" role="status">紀錄更新中…</p>}
       {historyOpen && runs && (
         <ul className="rows task-runs">
-          {runs.map(r => <li key={r.id}><span className="muted">{r.local}</span><span>{RUN_LABEL[r.status] ?? r.status}{r.late_minutes ? ` · 晚 ${r.late_minutes} 分` : ''}</span><span className="muted">{r.error ?? r.steps.map((s: any) => s.summary).join('；')}</span></li>)}
+          {runs.map(r => <li key={r.id}><span className="muted">{r.local}</span><span>{RUN_LABEL[r.status] ?? r.status}{r.late_minutes ? ` · 晚 ${r.late_minutes} 分` : ''}</span><span className="muted">{r.error ?? r.steps.map((s: any) => [s.summary, s.delivery_summary].filter(Boolean).join(' · ')).join('；')}</span></li>)}
           {!runs.length && <li className="muted">還沒有執行過</li>}
         </ul>
       )}
