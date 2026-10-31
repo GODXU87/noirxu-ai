@@ -291,3 +291,13 @@
 .ui-sasuke.hud .workbench .owner-action-tabs button { background: none; box-shadow: none; }
 .ui-sasuke.hud .workbench .owner-action-tabs button[aria-pressed="true"] { background: none; color: var(--text); box-shadow: none; }
 .ui-sasuke.hud .workbench :is(input,textarea,select) { background-color: rgba(190,218,212,.035); border-color: var(--line-strong); }
+
+/* Home is intentionally quiet; conversation/tool/approval surfaces retain their skin. */
+.ui-sasuke.hud .sk-home .sk-home-name { display: block; }
+.ui-sasuke.hud .sk-home .sk-hello { text-shadow: none; }
+.ui-sasuke.hud .sk-home :is(.home-reading,.home-glance,.sk-notices li) { border: 0; border-radius: 0; background: none; box-shadow: none; }
+.ui-sasuke.hud .sk-home :is(.home-reading,.home-glance,.sk-notices li)::after { display: none; }
+.ui-sasuke.hud .sk-home button:not(.sk-send):not(.primary) { background: transparent; box-shadow: none; border: 0; }
+.ui-sasuke.hud .sk-home button:not(.sk-send):not(.primary):hover:not(:disabled) { background: transparent; box-shadow: none; color: var(--text); }
+.ui-sasuke.hud .sk-home .composer form.sk-composer { background: transparent; border: 0; border-top: 1px solid var(--line-strong); border-bottom: 1px solid var(--line-strong); border-radius: 0; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.ui-sasuke.hud .sk-home .composer form.sk-composer:focus-within { border-color: var(--accent); box-shadow: none; }

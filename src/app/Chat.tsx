@@ -6,7 +6,7 @@ import type { FeatureFlags } from '@/lib/features';
 import { MicButton, SpeakButton, STOP_WORDS, useSpeech, useVoiceInput, useVoiceSettings } from './components/Voice';
 import { money } from '@/lib/tool-labels';
 import { BrandMark, Icon, type IconName } from './components/Icon';
-import { TodayGlance, useToday } from './components/TodayGlance';
+import { TodayGlance, useToday, homeNotifications } from './components/TodayGlance';
 import { AssistantCard, WaterMeter } from './components/assistant';
 import { importLegacySession, loadConversation, newConversationId, resumeActive, saveConversation, touchActive } from './sasuke/conversations';
 import { useRouter } from 'next/navigation';
@@ -51,8 +51,7 @@ const CHIPS: Array<{ label: string; text: string; run: boolean; icon: IconName; 
 /** The few tools on the home screen; everything else is one message away. */
 const QUICK: Array<{ label: string; text: string; run: boolean; icon: IconName; feature?: keyof FeatureFlags }> = [
   { label: '今日早報', text: '/早報', run: true, icon: 'calendar', feature: 'briefings' },
-  { label: '記一筆帳', text: '/記帳 ', run: false, icon: 'wallet', feature: 'commands' },
-  { label: '記錄喝水', text: '/喝水 ', run: false, icon: 'drop', feature: 'water' }
+  { label: '記一筆帳', text: '/記帳 ', run: false, icon: 'wallet', feature: 'commands' }
 ];
 
 const WORKING: Partial<Record<CommandName, string>> = {
@@ -127,7 +126,7 @@ function useBrief(enabled: boolean) {
 
 /** Unread in-app notifications (reminders that fired), newest first. */
 function useInbox(enabled: boolean) {
-  const [items, setItems] = useState<Array<{ key: string; title: string }>>([]);
+  const [items, setItems] = useState<Array<{ key: string; kind?: string; title: string }>>([]);
   useEffect(() => {
     if (!enabled) return;
     void fetch('/api/inbox').then(r => r.json()).then(body => { if (body?.ok) setItems(body.items.filter((i: { read: boolean }) => !i.read)); }).catch(() => undefined);
@@ -146,18 +145,6 @@ function turns(items: Item[]) {
     }
   });
   return out;
-}
-
-/** "SASUKE · ONLINE · 15:20" under the mark (shown by the HUD theme). The clock runs in the browser only. */
-function HudStatus() {
-  const [clock, setClock] = useState('');
-  useEffect(() => {
-    const tick = () => setClock(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Taipei', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date()));
-    tick();
-    const id = window.setInterval(tick, 30_000);
-    return () => window.clearInterval(id);
-  }, []);
-  return <p className="hud-status" aria-hidden="true"><i /><span><b>SASUKE</b></span><span>ONLINE</span>{clock && <span>TPE {clock}</span>}</p>;
 }
 
 function Rating({ rated, onRate }: { rated?: 'up' | 'down'; onRate: (rating: 'up' | 'down') => void }) {
@@ -258,8 +245,8 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   // Shown only when something real needs attention: overdue items or unread notifications.
   const notices = [
     ...(brief && !brief.failed && brief.overdue > 0 ? [{ key: 'overdue', tone: 'prio-urgent', text: `${brief.overdue} 件事已過期`, ask: '有哪些事已經過期了？' }] : []),
-    ...(today.data.agenda?.overdue > 0 ? [{ key: 'overdue', tone: 'prio-urgent', text: `${today.data.agenda.overdue} 件事已過期`, ask: '有哪些事已經過期了？' }] : []),
-    ...inbox.slice(0, 2).map(i => ({ key: i.key, tone: 'prio-high', text: i.title, ask: `關於這則提醒：「${i.title}」，現在狀況如何？` }))
+    ...(today.data.agenda?.overdue > 0 ? [{ key: 'overdue', tone: 'prio-urgent', text: `${today.data.agenda?.overdue} 件事已過期`, ask: '有哪些事已經過期了？' }] : []),
+    ...homeNotifications(inbox).map(i => ({ key: i.key, tone: 'prio-high', text: i.title, ask: `關於這則提醒：「${i.title}」，現在狀況如何？` }))
   ];
   const [water, setWater] = useState<any>(null);
   useEffect(() => {
@@ -613,9 +600,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
         {storageError && <p className="banner storage-warning" role="alert">{storageError}</p>}
         {empty && sasuke && (
           <section className="sk-home">
-            <span className="sk-home-mark"><SasukeMark size={44} state={agentState} /></span>
-            <p className="sk-home-name">SASUKE</p>
-            <HudStatus />
+            <p className="sk-home-name">SASUKE · 個人助理</p>
             <h1 className="sk-hello">{greeting()}，Sir。</h1>
             <p className="sk-ask">{askLine()}</p>
             {notices.length > 0 && (
@@ -623,7 +608,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
                 {notices.map(n => <li key={n.key}><span className={`sk-dot ${n.tone}`} /><button type="button" className="sk-notice" onClick={() => pick(n.ask, true)}>{n.text}</button></li>)}
               </ul>
             )}
-            <TodayGlance data={today.data} loading={today.loading} ask={text => pick(text, true)} />
+            <TodayGlance data={today.data} loading={today.loading} refresh={today.refresh} ask={text => pick(text, true)} />
             {composer}
             <nav className="sk-quick" aria-label="常用">
               {QUICK.filter(c => !c.feature || features[c.feature]).map(c => <button key={c.label} type="button" onClick={() => pick(c.text, c.run)}><Icon name={c.icon} size={14} />{c.label}</button>)}

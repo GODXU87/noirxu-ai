@@ -52,8 +52,8 @@ export async function GET(request: Request) {
       const when = hourIn(now) >= 17 ? 'evening' : 'morning';
       const result = await hub.executor.invoke('garmin.health.insight', { when, hydration: false }, ctx);
       if (result.status !== 'ok') return json({ ok: true, part, error: result.status === 'error' ? { code: result.code, message: result.message } : { code: 'UNKNOWN', message: '讀不到 Garmin 資料' } });
-      const d = result.data as { headline: string; push_line?: string; signals?: Array<{ key: string; tone: string; text: string }>; narrative?: string[] };
-      return json({ ok: true, part, when, headline: d.headline, line: d.push_line ?? null, signals: d.signals ?? [], narrative: d.narrative ?? [] });
+      const d = result.data as { date?: string; gaps?: string[]; headline: string; push_line?: string; signals?: Array<{ key: string; tone: string; text: string }>; narrative?: string[] };
+      return json({ ok: true, part, when, date: d.date ?? null, gaps: d.gaps ?? [], headline: d.headline, line: d.push_line ?? null, signals: d.signals ?? [], narrative: d.narrative ?? [] });
     }
 
     if (!hub.features.water) return json({ ok: true, part, off: true });

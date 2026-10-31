@@ -1,113 +1,62 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
-import { Icon, type IconName } from './Icon';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
-// "Today at a glance" on the SASUKE home: weather, body (Garmin), the agenda and water, each
-// loaded on its own so a slow source never holds up the rest. The last answer is kept for
-// this tab and shown at once on the next visit, then refreshed.
-
-type Part = 'agenda' | 'weather' | 'body' | 'water';
-const PARTS: Part[] = ['weather', 'body', 'agenda', 'water'];
-const CACHE_KEY = 'sasuke:today:v1';
-const FRESH_MS = 3 * 60_000;
-
-interface Cached { at: number; data: Partial<Record<Part, any>> }
-function readCache(): Cached | null {
-  try { return JSON.parse(sessionStorage.getItem(CACHE_KEY) ?? 'null'); } catch { return null; }
-}
-function writeCache(c: Cached) {
-  try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(c)); } catch { /* private mode */ }
+type Part = 'agenda' | 'weather' | 'body';
+const PARTS: Part[] = ['weather', 'body', 'agenda'];
+type Reading = Record<string, any>;
+export function homeNotifications<T extends {kind?:string;title:string}>(items:T[]):T[] {
+  // Home presentation only: never mutates or marks the original inbox read.
+  return items.filter(i=>i.kind!=='water'&&!/喝水|飲水|补水|補水|hydration/i.test(i.title)).slice(0,2);
 }
 
-export function useToday(enabled: boolean) {
-  const [data, setData] = useState<Partial<Record<Part, any>>>({});
-  const [loading, setLoading] = useState<Set<Part>>(new Set(PARTS));
-  useEffect(() => {
-    if (!enabled) return;
-    const cached = readCache();
-    if (cached) setData(cached.data);
-    if (cached && Date.now() - cached.at < FRESH_MS) { setLoading(new Set()); return; }
-    if (cached) setLoading(new Set());
-    const merged: Partial<Record<Part, any>> = { ...(cached?.data ?? {}) };
-    let alive = true;
-    for (const part of PARTS) {
-      fetch(`/api/today?part=${part}`, { cache: 'no-store' })
-        .then(r => r.json())
-        .then(body => { if (body?.ok) merged[part] = body; else if (!merged[part]) merged[part] = { error: { message: body?.error?.message ?? '暫時讀不到' } }; })
-        .catch(() => { if (!merged[part]) merged[part] = { error: { message: '連線中斷' } }; })
-        .finally(() => {
-          if (!alive) return;
-          setData({ ...merged });
-          setLoading(prev => { const next = new Set(prev); next.delete(part); return next; });
-          writeCache({ at: Date.now(), data: merged });
-        });
+/** Current-mount reads only. No browser cache of health data, no provider writes. */
+export function useToday(enabled:boolean) {
+  const [data,setData]=useState<Partial<Record<Part,Reading>>>({});
+  const [loading,setLoading]=useState<Set<Part>>(new Set(PARTS));
+  const controller=useRef<AbortController|null>(null);
+  const refresh=useCallback(()=>{
+    if(!enabled)return;
+    controller.current?.abort();const c=new AbortController();controller.current=c;
+    setLoading(new Set(PARTS));
+    for(const part of PARTS){
+      const timeout=setTimeout(()=>c.abort(),15000);
+      void fetch(`/api/today?part=${part}`,{cache:'no-store',signal:c.signal})
+        .then(async r=>{const b=await r.json();if(!r.ok||!b?.ok)throw Error(b?.error?.message??'暫時讀不到');return b;})
+        .then(b=>{if(controller.current===c&&!c.signal.aborted)setData(d=>({...d,[part]:{...b,...(!b.error?{read_at:new Date().toISOString()}:{} )}}));})
+        .catch(e=>{if(controller.current===c)setData(d=>({...d,[part]:{error:{message:c.signal.aborted?'讀取逾時，請重新讀取。':e instanceof Error?e.message:'連線中斷'}}}));})
+        .finally(()=>{clearTimeout(timeout);if(controller.current===c)setLoading(s=>{const n=new Set(s);n.delete(part);return n;});});
     }
-    return () => { alive = false; };
-  }, [enabled]);
-  return { data, loading };
+  },[enabled]);
+  useEffect(()=>{refresh();return()=>{controller.current?.abort();controller.current=null;};},[refresh]);
+  return {data,loading,refresh};
+}
+const stamp=(value:string)=>new Date(value).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false});
+function ReadingState({value,loading}:{value?:Reading;loading:boolean}){
+  return <>{loading&&<span className="tg-sub" role="status">讀取中…{value&&!value.error?'（仍顯示上次讀取）':''}</span>}{value?.error&&<span className="tg-sub tone-error" role="status">{value.error.message??'暫時讀不到'}</span>}{!loading&&!value&&<span className="tg-sub">尚未取得資料</span>}{value?.read_at&&!value.error&&<span className="tg-meta">讀取 {stamp(value.read_at)} · 台灣時間</span>}</>;
 }
 
-function Tile({ icon, label, loading, onClick, href, children }: { icon: IconName; label: string; loading: boolean; onClick?: () => void; href?: string; children: React.ReactNode }) {
-  const body = (
-    <>
-      <span className="tg-label"><Icon name={icon} size={14} />{label}</span>
-      {loading ? <span className="tg-skel" aria-hidden="true"><i /><i /></span> : children}
-    </>
-  );
-  if (href) return <Link href={href} className="tg-tile">{body}</Link>;
-  return <button type="button" className="tg-tile" onClick={onClick} disabled={loading}>{body}</button>;
-}
-
-export function TodayGlance({ data, loading, ask }: { data: Partial<Record<Part, any>>; loading: Set<Part>; ask: (text: string) => void }) {
-  const w = data.weather;
-  const b = data.body;
-  const a = data.agenda;
-  const water = data.water?.water;
-  const show = (p: Part) => loading.has(p) || (data[p] && !data[p].off);
-  const tiles = [
-    show('weather') && (
-      <Tile key="w" icon="sun" label={w?.tomorrow ? '明天天氣' : '天氣'} loading={loading.has('weather') && !w} onClick={() => ask(w?.tomorrow ? '明天天氣如何？' : '今天天氣如何？')}>
-        {w?.weather ? (
-          <>
-            <b className="tg-big">{w.weather.temp_min !== null && w.weather.temp_max !== null ? `${Math.round(w.weather.temp_min)}–${Math.round(w.weather.temp_max)}°` : '—'}</b>
-            <span className="tg-sub">{w.weather.summary}{w.weather.rain_chance !== null ? ` · 降雨 ${Math.round(w.weather.rain_chance)}%` : ''}</span>
-          </>
-        ) : <span className="tg-sub muted">{w?.error?.message ?? '暫時讀不到'}</span>}
-      </Tile>
-    ),
-    show('body') && (
-      <Tile key="b" icon="heart" label="身體" loading={loading.has('body') && !b} onClick={() => ask('我身體狀況如何')}>
-        {b?.line || b?.headline ? (
-          <>
-            <span className="tg-text">{b.line ?? b.headline}</span>
-            {b.signals?.[0] && <span className={`tg-sub tone-${b.signals[0].tone}`}>{b.signals[0].text}</span>}
-          </>
-        ) : <span className="tg-sub muted">{b?.error?.code === 'NOT_CONNECTED' ? 'Garmin 尚未連接' : b?.error?.message ?? '暫時讀不到'}</span>}
-      </Tile>
-    ),
-    show('agenda') && (
-      <Tile key="a" icon="calendar" label="今天" loading={loading.has('agenda') && !a} href="/tasks">
-        {a && !a.error ? (
-          <>
-            <b className="tg-big">{a.today}<small> 件</small>{a.overdue > 0 && <em className="tg-warn"> · 逾期 {a.overdue}</em>}</b>
-            <span className="tg-sub">{a.next?.[0] ? `${a.next[0].title}${a.next[0].due_label ? ` · ${a.next[0].due_label}` : ''}` : '沒有待辦'}</span>
-          </>
-        ) : <span className="tg-sub muted">{a?.error?.message ?? '暫時讀不到'}</span>}
-      </Tile>
-    ),
-    show('water') && (
-      <Tile key="h" icon="drop" label="喝水" loading={loading.has('water') && !water} href="/life">
-        {water ? (
-          <>
-            <b className="tg-big">{Math.round((water.total_ml ?? 0) / 100) / 10}<small> / {Math.round((water.goal_ml ?? 2000) / 100) / 10} L</small></b>
-            <span className="tg-meter" aria-hidden="true"><i style={{ width: `${Math.min(100, Math.round(((water.total_ml ?? 0) / (water.goal_ml || 2000)) * 100))}%` }} /></span>
-          </>
-        ) : <span className="tg-sub muted">暫時讀不到</span>}
-      </Tile>
-    )
-  ].filter(Boolean);
-  if (!tiles.length) return null;
-  return <div className="tg" aria-label="今天一覽">{tiles}</div>;
+export function TodayGlance({data,loading,ask,refresh}:{data:Partial<Record<Part|'water',Reading>>;loading:Set<Part>;ask:(text:string)=>void;refresh?:()=>void}){
+  const w=data.weather,b=data.body,a=data.agenda;
+  const show=(p:Part)=>!data[p]?.off;
+  const weather=w?.weather;
+  const bodyLine=b?.line?.trim()||b?.headline?.trim();
+  return <section className="home-glance" aria-label="今天一覽">
+    <div className="home-readings">
+      {show('weather')&&<article className="home-reading">
+        <h2>{w?.tomorrow?'明天天氣':'天氣'}</h2>
+        {!w?.error&&weather&&<><p className="home-reading-value">{Number.isFinite(weather.temp_min)&&Number.isFinite(weather.temp_max)?`${Math.round(weather.temp_min)}–${Math.round(weather.temp_max)}°`:'溫度未提供'}<span>{weather.summary}</span></p><p className="tg-sub">{Number.isFinite(weather.rain_chance)?`降雨 ${Math.round(weather.rain_chance)}%`:'降雨資料未提供'}</p><p className="tg-meta">{weather.place||'地點未提供'} · {weather.date||'日期未提供'} · {weather.source||'來源未提供'}</p>{weather.fetched_at&&<p className="tg-meta">來源取得 {stamp(weather.fetched_at)}</p>}{weather.stale&&<p className="tg-sub tone-warn">目前為保留的舊預報；來源更新失敗，請稍後再讀取。</p>}</>}
+        <ReadingState value={w} loading={loading.has('weather')}/>
+        <button type="button" className="home-text-action" onClick={()=>ask(w?.tomorrow?'明天天氣如何？':'今天天氣如何？')}>詢問天氣詳情</button>
+      </article>}
+      {show('body')&&<article className="home-reading">
+        <h2>身體近況</h2>
+        {!b?.error&&b&&<><p className="home-reading-value">{bodyLine||'資料不足，暫不判斷身體狀況。'}</p><p className="tg-meta">Garmin · {b.date||'資料日期未提供'} · 固定規則摘要，非醫療診斷</p>{b.signals?.[0]&&<p className="tg-sub">{b.signals[0].text}</p>}{b.gaps?.length>0&&<p className="tg-sub">尚缺：{b.gaps.join('、')}</p>}</>}
+        <ReadingState value={b} loading={loading.has('body')}/>
+        <button type="button" className="home-text-action" onClick={()=>ask('我身體狀況如何')}>查看身體依據</button>
+      </article>}
+    </div>
+    <div className="home-dayline"><Link href="/tasks">今日到期{a&&!a.error&&Number.isFinite(a.today)?` ${a.today} 件`:''}{(a?.overdue??0)>0&&!a?.error?` · 逾期 ${a?.overdue} 件`:''}</Link><ReadingState value={a} loading={loading.has('agenda')}/>{refresh&&<button className="home-text-action" type="button" disabled={loading.size>0} onClick={refresh}>{loading.size?'更新中…':'重新讀取'}</button>}</div>
+  </section>;
 }

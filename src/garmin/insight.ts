@@ -129,7 +129,8 @@ export function eveningInsight(input: { date: string; daily: GarminDaily | null;
   const gaps: string[] = [];
   const signals: Signal[] = [];
   const d = input.daily;
-  if (d) {
+  const hasDailyObservation = Boolean(d && [d.steps,d.moderate_minutes,d.vigorous_minutes,d.stress_avg,d.body_battery_latest].some(v => typeof v === 'number' && Number.isFinite(v)));
+  if (d && hasDailyObservation) {
     const parts: string[] = [];
     if (d.steps !== null) parts.push(`步數 ${d.steps.toLocaleString('en-US')}${d.step_goal ? `（目標 ${d.step_goal.toLocaleString('en-US')}，${Math.round((d.steps / d.step_goal) * 100)}%）` : ''}`);
     if (d.moderate_minutes !== null || d.vigorous_minutes !== null) parts.push(`強度分鐘 中 ${d.moderate_minutes ?? 0}／高 ${d.vigorous_minutes ?? 0}`);
@@ -156,7 +157,7 @@ export function eveningInsight(input: { date: string; daily: GarminDaily | null;
   const drank = input.waterTodayMl ?? d?.hydration_ml ?? null;
   lines.push(`補水：今天建議約 ${hydration.toLocaleString('en-US')} ml${minutes ? `（含運動 ${minutes} 分）` : ''}${drank !== null ? `，目前記錄 ${Math.round(drank).toLocaleString('en-US')} ml${drank < hydration ? `，睡前可再補 ${Math.min(500, round50(hydration - drank)).toLocaleString('en-US')} ml，不要一次灌完` : ''}` : ''}。`);
 
-  const headline = tired ? '今天消耗不小，今晚好好恢復。' : input.activities.length ? '今天練得紮實，收尾做好就好。' : '今天比較輕鬆，維持節奏。';
+  const headline = !hasDailyObservation && !input.activities.length ? '今天活動資料不足，暫不判斷身體狀況。' : tired ? '今天消耗不小，今晚好好恢復。' : input.activities.length ? '今天練得紮實，收尾做好就好。' : '今天比較輕鬆，維持節奏。';
   const push = [d?.steps != null ? `${d.steps.toLocaleString('en-US')} 步` : null, minutes ? `運動 ${minutes} 分` : null, d?.body_battery_latest != null ? `BB ${d.body_battery_latest}` : null].filter(Boolean).join(' · ');
   const water = input.includeWater !== false;
   const narrative = eveningNarrative({ d, activities: input.activities, minutes, tired, bedtime: bedtime ?? null, nextSession, tomorrowDay: WEEKDAY[tomorrow.getUTCDay()], hydration, drank: water ? drank : null });

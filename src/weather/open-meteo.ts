@@ -6,6 +6,7 @@ import { ToolError } from '@/hub/errors';
 
 export interface WeatherToday {
   date: string; place: string; summary: string; code: number | null;
+  fetched_at?: string; stale?: boolean;
   temp_max: number | null; temp_min: number | null; rain_chance: number | null; rain_mm: number | null; uv_max: number | null;
   advice: string[]; source: 'Open-Meteo';
 }
@@ -85,14 +86,18 @@ const CACHE_MS = 15 * 60_000;
 
 /** fetchWeather with a short cache; a stale forecast for the same date is used if the service is down. */
 export async function cachedWeather(day: 0 | 1, today: string, place = placeFromEnv(), fetcher: typeof fetch = fetch): Promise<WeatherToday> {
+  const wanted = new Date(`${today}T12:00:00Z`);
+  wanted.setUTCDate(wanted.getUTCDate() + day);
+  const requestedDate = wanted.toISOString().slice(0,10);
   const hit = cache.get(day);
-  if (hit && Date.now() - hit.at < CACHE_MS && hit.data.date >= today) return hit.data;
+  if (hit && Date.now() - hit.at < CACHE_MS && hit.data.date === requestedDate) return hit.data;
   try {
-    const data = await fetchWeather(place, fetcher, day);
+    const data = { ...await fetchWeather(place, fetcher, day), fetched_at: new Date().toISOString(), stale: false };
+    if (data.date !== requestedDate) throw new ToolError('INVALID_OUTPUT', '天氣來源日期與要求日期不符，未使用這份預報。');
     cache.set(day, { at: Date.now(), data });
     return data;
   } catch (error) {
-    if (hit && hit.data.date >= today) return hit.data;
+    if (hit && hit.data.date === requestedDate) return { ...hit.data, stale: true };
     throw error;
   }
 }
