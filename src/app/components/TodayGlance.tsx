@@ -12,15 +12,16 @@ export function homeNotifications<T extends {kind?:string;title:string}>(items:T
 }
 
 /** Current-mount reads only. No browser cache of health data, no provider writes. */
-export function useToday(enabled:boolean) {
+export function useToday(enabled:boolean,includeAgenda=true) {
   const [data,setData]=useState<Partial<Record<Part,Reading>>>({});
   const [loading,setLoading]=useState<Set<Part>>(new Set(PARTS));
   const controller=useRef<AbortController|null>(null);
   const refresh=useCallback(()=>{
     if(!enabled)return;
     controller.current?.abort();const c=new AbortController();controller.current=c;
-    setLoading(new Set(PARTS));
-    for(const part of PARTS){
+    const parts=includeAgenda?PARTS:PARTS.filter(p=>p!=='agenda');
+    setLoading(new Set(parts));
+    for(const part of parts){
       const timeout=setTimeout(()=>c.abort(),15000);
       void fetch(`/api/today?part=${part}`,{cache:'no-store',signal:c.signal})
         .then(async r=>{const b=await r.json();if(!r.ok||!b?.ok)throw Error(b?.error?.message??'暫時讀不到');return b;})
@@ -28,7 +29,7 @@ export function useToday(enabled:boolean) {
         .catch(e=>{if(controller.current===c)setData(d=>({...d,[part]:{error:{message:c.signal.aborted?'讀取逾時，請重新讀取。':e instanceof Error?e.message:'連線中斷'}}}));})
         .finally(()=>{clearTimeout(timeout);if(controller.current===c)setLoading(s=>{const n=new Set(s);n.delete(part);return n;});});
     }
-  },[enabled]);
+  },[enabled,includeAgenda]);
   useEffect(()=>{refresh();return()=>{controller.current?.abort();controller.current=null;};},[refresh]);
   return {data,loading,refresh};
 }
@@ -37,7 +38,7 @@ function ReadingState({value,loading}:{value?:Reading;loading:boolean}){
   return <>{loading&&<span className="tg-sub" role="status">讀取中…{value&&!value.error?'（仍顯示上次讀取）':''}</span>}{value?.error&&<span className="tg-sub tone-error" role="status">{value.error.message??'暫時讀不到'}</span>}{!loading&&!value&&<span className="tg-sub">尚未取得資料</span>}{value?.read_at&&!value.error&&<span className="tg-meta">讀取 {stamp(value.read_at)} · 台灣時間</span>}</>;
 }
 
-export function TodayGlance({data,loading,ask,refresh}:{data:Partial<Record<Part|'water',Reading>>;loading:Set<Part>;ask:(text:string)=>void;refresh?:()=>void}){
+export function TodayGlance({data,loading,ask,refresh,showAgenda=true}:{data:Partial<Record<Part|'water',Reading>>;loading:Set<Part>;ask:(text:string)=>void;refresh?:()=>void;showAgenda?:boolean}){
   const w=data.weather,b=data.body,a=data.agenda;
   const show=(p:Part)=>!data[p]?.off;
   const weather=w?.weather;
@@ -57,6 +58,6 @@ export function TodayGlance({data,loading,ask,refresh}:{data:Partial<Record<Part
         <button type="button" className="home-text-action" onClick={()=>ask('我身體狀況如何')}>查看身體依據</button>
       </article>}
     </div>
-    <div className="home-dayline"><Link href="/tasks">今日到期{a&&!a.error&&Number.isFinite(a.today)?` ${a.today} 件`:''}{(a?.overdue??0)>0&&!a?.error?` · 逾期 ${a?.overdue} 件`:''}</Link><ReadingState value={a} loading={loading.has('agenda')}/>{refresh&&<button className="home-text-action" type="button" disabled={loading.size>0} onClick={refresh}>{loading.size?'更新中…':'重新讀取'}</button>}</div>
+    <div className="home-dayline">{showAgenda&&<><Link href="/tasks">今日到期{a&&!a.error&&Number.isFinite(a.today)?` ${a.today} 件`:''}{(a?.overdue??0)>0&&!a?.error?` · 逾期 ${a?.overdue} 件`:''}</Link><ReadingState value={a} loading={loading.has('agenda')}/></>}{refresh&&<button className="home-text-action" type="button" disabled={loading.size>0} onClick={refresh}>{loading.size?'更新中…':'重新讀取'}</button>}</div>
   </section>;
 }

@@ -1107,3 +1107,28 @@ button[data-state="error"] { border-color: var(--danger) !important; animation: 
 /* Actual composer controls also meet the home touch target, overriding legacy compact sizes. */
 .ui-sasuke .sk-home .composer :is(.sk-agent,.sk-send) { min-height: 44px; }
 .ui-sasuke .sk-home .composer .sk-send { min-width: 44px; width: 44px; height: 44px; }
+
+/* Conversation-first home: one entry, optional context, no arrival animation. */
+.ui-sasuke .feed.home { min-height: min(680px,calc(100dvh - 96px)); padding-bottom: max(24px,env(safe-area-inset-bottom)); justify-content: center; }
+.ui-sasuke .sk-home { max-width: 720px; animation: none; }
+.ui-sasuke .sk-home .sk-home-name { margin-bottom: 10px; }
+.ui-sasuke .sk-home .sk-ask { margin-bottom: 28px; }
+.home-context { width: 100%; margin-top: 16px; }
+.home-context > summary { min-height: 44px; display: flex; gap: 16px; align-items: center; justify-content: space-between; cursor: pointer; color: var(--text-soft); font-size: 13px; list-style: none; }
+.home-context > summary::-webkit-details-marker { display: none; }
+.home-context[open] > summary { color: var(--text); }
+.home-context[open] > summary > span { transform: rotate(45deg); }
+.home-context .home-glance { margin-top: 20px; }
+.ui-sasuke .sk-home :is(button,summary) { touch-action: manipulation; transition: color .12s ease,opacity .12s ease; }
+.ui-sasuke .sk-home :is(button,summary):active:not(:disabled) { opacity: .65; }
+.ui-sasuke .sk-home summary:hover { color: var(--text); }
+.ui-sasuke .sk-home summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.ui-sasuke .composer button:disabled { cursor: not-allowed; opacity: .4; }
+.ui-sasuke .composer textarea { scroll-margin-block: 100px; }
+@media(max-width:600px){ .ui-sasuke .feed.home { min-height: 0; padding-top: 24px; } .ui-sasuke .sk-home .sk-ask { margin-bottom: 20px; } }
+@media(prefers-reduced-motion:reduce){ .ui-sasuke .sk-home *, .ui-sasuke .composer * { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
+.home-context > summary::before { content: none; }
+@media(max-width:600px){ .ui-sasuke .feed.home { justify-content: flex-start; } }
+.home-context[open] > summary::before { content: none; }
+.ui-sasuke .composer :is(.sk-agent,.sk-send) { min-height: 44px; }
+.ui-sasuke .composer .sk-send { min-width: 44px; width: 44px; height: 44px; }

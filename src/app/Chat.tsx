@@ -6,10 +6,11 @@ import type { FeatureFlags } from '@/lib/features';
 import { MicButton, SpeakButton, STOP_WORDS, useSpeech, useVoiceInput, useVoiceSettings } from './components/Voice';
 import { money } from '@/lib/tool-labels';
 import { BrandMark, Icon, type IconName } from './components/Icon';
-import { TodayGlance, useToday, homeNotifications } from './components/TodayGlance';
+import { TodayGlance, useToday } from './components/TodayGlance';
 import { AssistantCard, WaterMeter } from './components/assistant';
 import { importLegacySession, loadConversation, newConversationId, resumeActive, saveConversation, touchActive } from './sasuke/conversations';
 import { useRouter } from 'next/navigation';
+import { activeDraft, readDraft, saveDraft, draftPending } from './sasuke/drafts';
 import { announceAgentState, newConversationHref, SasukeMark, type AgentState } from './sasuke/SasukeNav';
 import { callTool, ProposalCard, RichText, ToolCard, type InvokeResult } from './components/shared';
 
@@ -49,10 +50,7 @@ const CHIPS: Array<{ label: string; text: string; run: boolean; icon: IconName; 
 ];
 
 /** The few tools on the home screen; everything else is one message away. */
-const QUICK: Array<{ label: string; text: string; run: boolean; icon: IconName; feature?: keyof FeatureFlags }> = [
-  { label: '今日早報', text: '/早報', run: true, icon: 'calendar', feature: 'briefings' },
-  { label: '記一筆帳', text: '/記帳 ', run: false, icon: 'wallet', feature: 'commands' }
-];
+
 
 const WORKING: Partial<Record<CommandName, string>> = {
   morning: '正在整理早報', evening: '正在整理晚報', weekly: '正在整理本週回顧', quality: '正在整理自我檢查', water: '更新喝水紀錄', ledger: '正在整理記帳草稿', triage: '正在分析文字', help: '讀取指令'
@@ -124,16 +122,6 @@ function useBrief(enabled: boolean) {
   return brief;
 }
 
-/** Unread in-app notifications (reminders that fired), newest first. */
-function useInbox(enabled: boolean) {
-  const [items, setItems] = useState<Array<{ key: string; kind?: string; title: string }>>([]);
-  useEffect(() => {
-    if (!enabled) return;
-    void fetch('/api/inbox').then(r => r.json()).then(body => { if (body?.ok) setItems(body.items.filter((i: { read: boolean }) => !i.read)); }).catch(() => undefined);
-  }, [enabled]);
-  return items;
-}
-
 /** Splits the feed into turns: each user message followed by everything the assistant produced. */
 function turns(items: Item[]) {
   const out: Array<{ user?: Extract<Item, { kind: 'user' }>; userIndex: number; replies: Array<{ item: Item; index: number }> }> = [];
@@ -164,11 +152,20 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   const router = useRouter();
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [storageError, setStorageError] = useState<string | null>(null);
+  const [draftError,setDraftError]=useState(false);
   const [items, setItems] = useState<Item[]>([]);
   const [history, setHistory] = useState<unknown[]>([]);
   const [notes, setNotes] = useState<string[]>([]);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
+  const sending = useRef(false);
+  const pendingDraft = useRef('');
+  const mounted = useRef(true);
+  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
+  const [uncertainDraft,setUncertainDraft]=useState(false);
+  const failed = useRef(false);
+  const [contextOpen, setContextOpen] = useState(false);
+  const [paletteDismissed, setPaletteDismissed] = useState(false);
   /** Reply text as it streams in; replaced by the finished reply when the turn ends. */
   const [live, setLive] = useState('');
   const [style, setStyle] = useState<ReplyStyle>('professional');
@@ -240,14 +237,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   const empty = items.length === 0;
   // The SASUKE home uses the light per-source glance; the full briefing only on the classic home.
   const brief = useBrief(empty && features.briefings && !sasuke);
-  const today = useToday(empty && sasuke);
-  const inbox = useInbox(empty && sasuke);
-  // Shown only when something real needs attention: overdue items or unread notifications.
-  const notices = [
-    ...(brief && !brief.failed && brief.overdue > 0 ? [{ key: 'overdue', tone: 'prio-urgent', text: `${brief.overdue} 件事已過期`, ask: '有哪些事已經過期了？' }] : []),
-    ...(today.data.agenda?.overdue > 0 ? [{ key: 'overdue', tone: 'prio-urgent', text: `${today.data.agenda?.overdue} 件事已過期`, ask: '有哪些事已經過期了？' }] : []),
-    ...homeNotifications(inbox).map(i => ({ key: i.key, tone: 'prio-high', text: i.title, ask: `關於這則提醒：「${i.title}」，現在狀況如何？` }))
-  ];
+  const today = useToday(empty && sasuke && contextOpen, false);
   const [water, setWater] = useState<any>(null);
   useEffect(() => {
     if (!empty || !features.water || sasuke) return;
@@ -262,9 +252,11 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
       const outcome = importLegacySession();
       if (outcome.status === 'failed') setStorageError(`原版對話匯入失敗（${outcome.reason}），下次開啟會自動再試。原版資料沒有被刪除。`);
       const requested = new URLSearchParams(window.location.search).get('c');
-      const id = requested && requested !== 'new' ? requested : (requested !== 'new' && resumeActive()) || newConversationId();
+      const id = requested && requested !== 'new' ? requested : (requested !== 'new' && (activeDraft() || resumeActive())) || newConversationId();
       if (requested === 'new') window.history.replaceState(window.history.state, '', '/');
       setConversationId(id);
+      setText(readDraft(id));
+      setUncertainDraft(draftPending(id));
       saved = loadConversation(id) as Saved | null;
     } else {
       saved = load();
@@ -288,6 +280,10 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
     try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ items, history, notes })); } catch { /* storage unavailable */ }
   }, [items, history, notes, sasuke, conversationId]);
 
+  useEffect(() => {
+    if (sasuke && conversationId) setDraftError(!saveDraft(conversationId,text || pendingDraft.current,Boolean(pendingDraft.current) || uncertainDraft));
+  }, [sasuke,conversationId,text,uncertainDraft]);
+
   // Keep the header water chip in step with water logged from the chat.
   useEffect(() => {
     const last = [...items].reverse().find(i => i.kind === 'tool' && i.result.status === 'ok' && i.result.tool.startsWith('health.water.'));
@@ -302,13 +298,13 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   }, [text]);
 
   const palette = useMemo(() => {
-    if (!features.commands || !/^[/／][^\s]*$/.test(text)) return [];
+    if (paletteDismissed || !features.commands || !/^[/／][^\s]*$/.test(text)) return [];
     const word = text.slice(1);
     return PALETTE.filter(p => features[p.feature] && p.command.slice(1).startsWith(word));
-  }, [text, features]);
+  }, [text, features, paletteDismissed]);
   useEffect(() => setPaletteIndex(0), [palette.length]);
 
-  const scroll = () => setTimeout(() => feedEnd.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+  const scroll = () => setTimeout(() => feedEnd.current?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }), 50);
 
   function chooseStyle(next: ReplyStyle) {
     setStyle(next);
@@ -317,19 +313,34 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
 
   async function send(message: string) {
     message = message.trim();
-    if (!message || busy) return;
+    if (!message || sending.current) return;
+    sending.current = true; failed.current = false; pendingDraft.current=message;
+    setUncertainDraft(false);
+    setBusy('正在送出');
     if (voice.listening) voice.stop();
     setText('');
     setItems(prev => [...prev, { kind: 'user', text: message }]); scroll();
-    // Shortcut commands are parsed by fixed rules on the server, not by the AI model.
-    const command = features.commands ? parseCommand(message) : null;
-    if (command) {
-      setBusy(WORKING[command.name] ?? '處理中');
-      const forward = await runCommand(message);
-      if (forward === null) { setBusy(null); scroll(); voiceReply('Sir，已經為您整理好了，請看畫面上的卡片。'); return; }
-      message = forward;
+    try {
+      const command = features.commands ? parseCommand(message) : null;
+      if (command) {
+        setBusy(WORKING[command.name] ?? '處理中');
+        const forward = await runCommand(message);
+        if (forward === null) { if (!failed.current) voiceReply('Sir，已經為您整理好了，請看畫面上的結果。'); return; }
+        message = forward;
+      }
+      await chat(message);
+    } finally {
+      sending.current = false; pendingDraft.current='';
+      if(mounted.current && sasuke && conversationId) setDraftError(!saveDraft(conversationId,textRef.current,failed.current));
+      setBusy(null); scroll();
+      if (failed.current) { voiceTurn.current = false; conversationOn.current = false; }
     }
-    await chat(message);
+  }
+
+  function preserveFailedDraft(message: string) {
+    failed.current = true;
+    setUncertainDraft(true);
+    setText(current => current || message);
   }
 
   /** Returns text to hand to the AI chat (only /回覆), or null when the command was handled. */
@@ -337,7 +348,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
     try {
       const response = await fetch('/api/command', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: message }) });
       const body = await response.json();
-      if (!body.ok) { setItems(prev => [...prev, { kind: 'error', text: body.error?.message ?? '指令執行失敗' }]); return null; }
+      if (!body.ok) { preserveFailedDraft(message); setItems(prev => [...prev, { kind: 'error', text: body.error?.message ?? '指令執行失敗', retry: message }]); return null; }
       if (body.forward) return body.forward as string;
       if (body.command === null) return message;
       if (body.result) setItems(prev => [...prev, { kind: 'tool', result: body.result }]);
@@ -345,7 +356,8 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
       if (body.notice) setItems(prev => [...prev, { kind: 'notice', text: body.notice }]);
       if (body.help) setItems(prev => [...prev, { kind: 'help', items: body.help }]);
     } catch {
-      setItems(prev => [...prev, { kind: 'error', text: '網路錯誤，指令沒有送出。' }]);
+      preserveFailedDraft(message);
+      setItems(prev => [...prev, { kind: 'error', text: '連線中斷，無法確認指令結果。請先核對紀錄，避免重複操作。', retry: message }]);
     }
     return null;
   }
@@ -385,7 +397,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
       } else {
         body = await response.json();
       }
-      if (!body.ok) { setItems(prev => [...prev, { kind: 'error', text: body.error?.message ?? '發生錯誤', retry: body.error?.code === 'MODEL_UNAVAILABLE' ? message : undefined }]); return; }
+      if (!body.ok) { preserveFailedDraft(message); setItems(prev => [...prev, { kind: 'error', text: body.error?.message ?? '發生錯誤', retry: message }]); return; }
       setNotes([]);
       setHistory(body.messages);
       if (body.events?.some((e: { tool: string }) => e.tool.startsWith('agenda.'))) window.dispatchEvent(new Event('noirxu-reminders-changed'));
@@ -398,9 +410,10 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
       lastRoute.current = routeTag(body.route);
       voiceReply(body.reply ?? '');
     } catch {
+      preserveFailedDraft(message);
       setItems(prev => [...prev, shown.size
-        ? { kind: 'error', text: '連線中斷：上方已顯示的工具結果是真的已執行的部分，AI 的回覆沒有收到。' }
-        : { kind: 'error', text: '網路錯誤，訊息沒有送出。', retry: message }]);
+        ? { kind: 'error', text: '連線中斷：上方工具結果已執行，後續結果無法確認。請先核對紀錄，避免重複操作。', retry: message }
+        : { kind: 'error', text: '連線中斷，無法確認處理結果。請先核對紀錄，避免重複操作。', retry: message }]);
     } finally {
       // A voice turn that ended in an error also ends the conversation.
       if (voiceTurn.current) { voiceTurn.current = false; conversationOn.current = false; }
@@ -420,8 +433,9 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   }
 
   function retry(index: number, message: string) {
-    setItems(prev => prev.filter((_, i) => i !== index));
-    void chat(message);
+    // Recovery is editing only, never an implicit re-execution of an uncertain write.
+    setText(current => current || message);
+    input.current?.focus();
   }
 
   // SASUKE's real state for its mark: working, waiting for a confirmation, or a failure.
@@ -477,7 +491,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
         if (e.key === 'Enter' && text.trim() === choice.command) { e.preventDefault(); void send(text); return; }
         e.preventDefault(); pick(choice.fill, choice.run && e.key === 'Enter'); return;
       }
-      if (e.key === 'Escape') { setText(''); return; }
+      if (e.key === 'Escape') { e.preventDefault(); setPaletteDismissed(true); return; }
     }
     if (e.key !== 'Enter' || e.shiftKey) { armed.current = 0; return; }
     // Enter while an input method is composing (also Safari's keyCode 229 case) only confirms the text.
@@ -532,7 +546,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
     }
     if (item.kind === 'error' && item.retry) {
       const message = item.retry;
-      return <div key={index} className="msg error">{item.text}<button type="button" className="retry" disabled={Boolean(busy)} onClick={() => retry(index, message)}>重試</button></div>;
+      return <div key={index} className="msg error">{item.text}<button type="button" className="retry" disabled={Boolean(busy) || Boolean(text && text !== message)} title={text && text !== message ? '保留目前草稿；先處理目前輸入再恢復這則訊息' : undefined} onClick={() => retry(index, message)}>放回輸入框</button></div>;
     }
     return <div key={index} className={`msg ${item.kind}`}>{item.text}</div>;
   }
@@ -557,7 +571,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
         {sasuke ? (
           <form className="sk-composer" onSubmit={event => { event.preventDefault(); void send(text); }}>
             {voice.error && <p className="sk-voice-error" role="alert">{voice.error}<button type="button" onClick={voice.clearError} aria-label="關閉">×</button></p>}
-            <textarea ref={input} value={text} onChange={e => setText(e.target.value)} rows={1} aria-label="訊息" onKeyDown={onKeyDown} onCompositionEnd={() => { composedAt.current = Date.now(); }} onInput={() => { armed.current = 0; setEnterHint(false); }} placeholder={placeholder} />
+            <textarea ref={input} value={text} onChange={e => { setText(e.target.value); setPaletteDismissed(false); }} rows={1} aria-label="訊息" onKeyDown={onKeyDown} onCompositionEnd={() => { composedAt.current = Date.now(); }} onInput={() => { armed.current = 0; setEnterHint(false); }} placeholder={placeholder} />
             <div className="sk-tools">
               <div className="sk-agent-menu" ref={menuBox}>
                 <button type="button" className="sk-agent" onClick={() => setMenu(m => !m)} aria-expanded={menu} aria-haspopup="dialog" data-tip="模型與回覆風格">
@@ -586,7 +600,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
         ) : (
           <form onSubmit={event => { event.preventDefault(); void send(text); }}>
             {!empty && <button type="button" className="icon-button" onClick={newConversation} aria-label="開新對話" title="開新對話"><Icon name="plus" size={18} /></button>}
-            <textarea ref={input} value={text} onChange={e => setText(e.target.value)} rows={1} aria-label="訊息" onKeyDown={onKeyDown} onCompositionEnd={() => { composedAt.current = Date.now(); }} onInput={() => { armed.current = 0; setEnterHint(false); }} placeholder={placeholder} />
+            <textarea ref={input} value={text} onChange={e => { setText(e.target.value); setPaletteDismissed(false); }} rows={1} aria-label="訊息" onKeyDown={onKeyDown} onCompositionEnd={() => { composedAt.current = Date.now(); }} onInput={() => { armed.current = 0; setEnterHint(false); }} placeholder={placeholder} />
             <button className="primary" type="submit" disabled={Boolean(busy) || !text.trim()} aria-label="送出"><Icon name="send" size={18} /></button>
           </form>
         )}
@@ -597,22 +611,19 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   return (
     <>
       <main className={empty ? 'feed home' : 'feed'}>
+        {uncertainDraft && <p className="banner storage-warning" role="status">上次處理結果尚未確認，請先核對紀錄再決定是否重新送出。草稿仍保留。</p>}
+        {draftError && <p className="banner storage-warning" role="alert">草稿目前無法保存在此分頁，離開前請先自行保留文字。</p>}
         {storageError && <p className="banner storage-warning" role="alert">{storageError}</p>}
         {empty && sasuke && (
           <section className="sk-home">
             <p className="sk-home-name">SASUKE · 個人助理</p>
             <h1 className="sk-hello">{greeting()}，Sir。</h1>
             <p className="sk-ask">{askLine()}</p>
-            {notices.length > 0 && (
-              <ul className="sk-notices" aria-label="重要通知">
-                {notices.map(n => <li key={n.key}><span className={`sk-dot ${n.tone}`} /><button type="button" className="sk-notice" onClick={() => pick(n.ask, true)}>{n.text}</button></li>)}
-              </ul>
-            )}
-            <TodayGlance data={today.data} loading={today.loading} refresh={today.refresh} ask={text => pick(text, true)} />
             {composer}
-            <nav className="sk-quick" aria-label="常用">
-              {QUICK.filter(c => !c.feature || features[c.feature]).map(c => <button key={c.label} type="button" onClick={() => pick(c.text, c.run)}><Icon name={c.icon} size={14} />{c.label}</button>)}
-            </nav>
+            <details className="home-context" onToggle={event => setContextOpen(event.currentTarget.open)}>
+              <summary>天氣與身體<span aria-hidden="true">＋</span></summary>
+              {contextOpen && <TodayGlance data={today.data} loading={today.loading} refresh={today.refresh} showAgenda={false} ask={text => pick(text, true)} />}
+            </details>
           </section>
         )}
         {empty && !sasuke && (
