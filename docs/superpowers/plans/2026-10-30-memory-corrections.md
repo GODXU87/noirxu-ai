@@ -27,7 +27,7 @@
 - [x] Run focused checks; expected all pass.
 
 ### Task 2: Provenance and correction UI
-**Files:** `src/app/sasuke/LongTermMemory.tsx`, `src/app/sasuke/FunctionPages.tsx`, `src/app/globals.css`, `tests/memory-ui.test.ts`. Isolated non-release browser wrapper: `/workspace/scratch/e25f9fc32bff/noirxu-memory-qa`.
+**Files:** `src/app/sasuke/LongTermMemory.tsx`, `src/app/sasuke/FunctionPages.tsx`, `src/app/globals.css`, `tests/memory-ui.test.ts`. Isolated non-release browser wrapper: `<isolated-memory-qa-directory>`.
 **Interfaces:** panel reads the current `/api/memory` response; PATCH/DELETE submit the original viewed revision. No other APIs.
 - [x] Write UI tests for source/date, category, cancel/invalid edits, repeated submit, conflict snapshot preservation and failure recovery; run to observe failures.
 - [x] Extract and implement panel with explicit provenance, editable category, pending guard, conflict reload and latest-value display.
