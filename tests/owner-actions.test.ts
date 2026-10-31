@@ -24,3 +24,22 @@ it('surfaces unresolved failures and unknown outcomes from the latest recurring 
  const items=ownerActions({tasks:[task('queued',{id:'unknown',runs:[{status:'outcome_unknown',steps:[]}]}),task('queued',{id:'connection',runs:[{status:'failed',steps:[{error_code:'NOT_CONNECTED'}]}]}),task('cancelled',{id:'cancelled',runs:[{status:'outcome_unknown',steps:[]}]})],goals:[],acceptances:[]},now);
  expect(items.find(i=>i.id==='task:unknown')?.state).toBe('action');expect(items.find(i=>i.id==='task:unknown')?.priority).toBe(0);expect(items.find(i=>i.id==='task:connection')?.href).toBe('/connections');expect(items.find(i=>i.id==='task:cancelled')?.state).toBe('resolved');
 });
+it.each(['cancelled','completed','paused'])('does not demand reconnection for inactive %s tasks with stale connection failures',status=>{
+ for(const code of ['NOT_CONNECTED','NOT_CONFIGURED','UNAUTHORIZED']){
+  const stale=task(status,{runs:[{status:'failed',steps:[{error_code:code}]}]});
+  const items=ownerActions({tasks:[stale,stale],goals:[],acceptances:[]},now);
+  expect(items).toHaveLength(1);
+  expect(items[0].state).toBe(status==='paused'?'waiting':'resolved');
+  expect(items[0].href).toBe('/tasks?task=t1#task-t1');
+  expect(items[0].reason).toContain(status==='paused'?'暫停':'結束');
+  expect(items[0].next_step).not.toContain('連線');
+ }
+});
+it('re-derives a cancelled item without retaining the previous active reconnect demand',()=>{
+ const runs=[{status:'failed',steps:[{error_code:'NOT_CONNECTED'}]}];
+ const derive=(status:string)=>ownerActions({tasks:[task(status,{runs})],goals:[],acceptances:[]},now)[0];
+ expect(derive('failed')).toMatchObject({state:'action',href:'/connections'});
+ expect(derive('cancelled')).toMatchObject({state:'resolved',href:'/tasks?task=t1#task-t1'});
+ expect(derive('paused')).toMatchObject({state:'waiting',href:'/tasks?task=t1#task-t1'});
+ expect(derive('failed')).toMatchObject({state:'action',href:'/connections'});
+});

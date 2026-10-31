@@ -8,8 +8,9 @@ const date = (at:Date) => new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei
 export function ownerActions(sources:ActionSources,now:Date):OwnerAction[] {
  const rows:OwnerAction[]=[];const today=date(now);
  for(const t of sources.tasks){
-  const codes=t.runs[0]?.steps.map(s=>s.error_code)??[];const connection=codes.some(c=>['NOT_CONNECTED','NOT_CONFIGURED','UNAUTHORIZED'].includes(c??''));
-  const attention=!['completed','cancelled','paused'].includes(t.status);const unknown=attention&&(t.status==='outcome_unknown'||t.runs[0]?.status==='outcome_unknown');const failed=attention&&(t.status==='failed'||t.runs[0]?.status==='failed');const approval=t.status==='waiting_approval';
+  const attention=!['completed','cancelled','paused'].includes(t.status);
+  const codes=t.runs[0]?.steps.map(s=>s.error_code)??[];const connection=attention&&codes.some(c=>['NOT_CONNECTED','NOT_CONFIGURED','UNAUTHORIZED'].includes(c??''));
+  const unknown=attention&&(t.status==='outcome_unknown'||t.runs[0]?.status==='outcome_unknown');const failed=attention&&(t.status==='failed'||t.runs[0]?.status==='failed');const approval=t.status==='waiting_approval';
   const resolved=['completed','cancelled'].includes(t.status);
   rows.push({id:`task:${t.id}`,title:t.title,source:'task',state:resolved?'resolved':unknown||failed||approval?'action':'waiting',priority:unknown?0:approval?1:failed?2:5,due_at:t.next_at,
    reason:unknown?'外部操作結果不明，不能自動重跑。':approval?'有待你明確確認的操作；通知不是批准。':connection?'任務因來源連線或授權問題未完成。':failed?'任務失敗；請先核對已完成的步驟。':resolved?'原任務已結束；不是由收件匣代為標示完成。':t.status==='paused'?'任務已暫停。':'等待原任務排程或執行結果，現在不需你批准。',
