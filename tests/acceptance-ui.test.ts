@@ -44,3 +44,19 @@ it('focuses a requested acceptance only after its async source is loaded',async(
  await act(async()=>root.render(createElement(AcceptancePanel,{initialId:'a1'})));expect(host.querySelector('#acceptance-a1')).toBeNull();
  await act(async()=>resolve(response({ok:true,items:[a]})));expect(document.activeElement?.id).toBe('acceptance-a1');
 });
+it('shows actual refresh progress without inventing an empty queue',async()=>{
+ let done!:(r:Response)=>void;vi.stubGlobal('fetch',vi.fn(()=>new Promise<Response>(resolve=>{done=resolve;})));
+ await render(OwnerActionsPanel);
+ expect(host.querySelector('[role="status"]')?.textContent).toContain('讀取待辦');
+ expect(button('更新中').disabled).toBe(true);
+ expect(host.textContent).not.toContain('目前沒有需要你立即處理');
+ await act(async()=>done(response({ok:true,items:[],errors:[],as_of:'2026-10-31T00:00:00Z'})));
+ expect(button('重新整理待辦').disabled).toBe(false);
+});
+it('names each action source beside its title while retaining the native destination',async()=>{
+ vi.stubGlobal('fetch',vi.fn(async()=>response({ok:true,items:[{id:'task:t1',title:'Synthetic work',source:'task',state:'action',reason:'Unknown result',next_step:'Check original',href:'/tasks?task=t1#task-t1',due_at:null}],errors:[],as_of:'2026-10-31T00:00:00Z'})));
+ await render(OwnerActionsPanel);
+ expect(host.querySelector('.owner-action-source')?.textContent).toBe('自動任務');
+ expect(host.querySelector('a')?.getAttribute('href')).toBe('/tasks?task=t1#task-t1');
+ expect(host.querySelector('[aria-pressed="true"]')?.textContent).toContain('需要處理');
+});

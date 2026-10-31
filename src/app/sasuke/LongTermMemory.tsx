@@ -82,7 +82,7 @@ export function LongTermMemory() {
   const groups = Object.entries(labels).map(([key, label]) => ({ key, label, list: (items ?? []).filter(m => m.category === key) })).filter(g => g.list.length);
   return (
     <section className="card memory-card" aria-label="長期記憶">
-      <p className="section-label">長期記憶{items ? <small>{items.length} 筆</small> : null}<button type="button" className="ghost" disabled={busy || loading} onClick={() => void load()}>重新讀取</button></p>
+      <p className="section-label">長期記憶{items ? <small>{items.length} 筆</small> : null}<button type="button" className="ghost" disabled={busy || loading} onClick={() => void load()}>{loading ? '讀取中…' : '重新讀取'}</button></p>
       <form className="row memory-add" onSubmit={e => { e.preventDefault(); if (items !== null && text.trim().length >= 2) void send('POST', { content: text }).then(ok => { if (ok) setText(''); }); }}>
         <input value={text} onChange={e => setText(e.target.value)} placeholder="例如：回答先列重點" maxLength={300} aria-label="要記住的事" disabled={busy} />
         <button className="primary" disabled={items === null || busy || loading || text.trim().length < 2}>記住</button>
@@ -99,7 +99,7 @@ export function LongTermMemory() {
         <div className="row"><button className="primary" disabled={busy || loading || unavailable || editing.content.trim().length < 2}>儲存更正</button><button type="button" className="ghost" disabled={busy} onClick={() => { setEditing(null); setError(''); }}>取消</button></div>
       </form>}
       {error && <p className="hint tone-error" role="alert">{error}</p>}
-      {items === null ? <p className="hint">{loading ? '讀取中…' : '尚未載入記憶，請重新讀取。'}</p> : !items.length ? <p className="hint">還沒有記憶。</p> : groups.map(g => (
+      {items === null ? <p className="hint" role="status">{loading ? '讀取中…' : '尚未載入記憶，請重新讀取。'}</p> : !items.length ? <p className="hint">還沒有記憶。</p> : groups.map(g => (
         <div key={g.key} className="memory-group">
           <p className="memory-group-label">{g.label}</p>
           <ul>{g.list.map(m => <li key={m.id}>

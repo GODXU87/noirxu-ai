@@ -44,8 +44,8 @@ function NotConnected({ name }: { name: string }) {
 
 export function TasksView({ goalId, taskId, acceptanceId }: { goalId?: string; taskId?: string; acceptanceId?: string }) {
   return (
-    <main className="stack fp">
-      <Head title="任務中心" lead="你交代的事項與提醒。SASUKE 在對話中執行的每個工具步驟，會直接顯示在對話裡。" />
+    <main className="stack fp workbench">
+      <Head title="任務中心" lead="先看需要你決定的事，再追蹤結果與下一步。對話中的工具步驟仍保留在原對話。" />
       <div className="fp-asks">
         <Ask question="依重要程度幫我排今天和這週的事，指出時間衝突。" label="請 SASUKE 排優先順序" icon="check" />
         <Ask question="有哪些事已經過期了？" label="檢查過期事項" icon="bell" />
@@ -221,7 +221,7 @@ export function MemoryView() {
   const [open, setOpen] = useState(false);
   useEffect(() => { setCount(listConversations().length); }, []);
   return (
-    <main className="stack fp">
+    <main className="stack fp workbench">
       <Head title="個人記憶" lead="SASUKE 記住的偏好、作息、目標與重要決定。只記你要它記的事，不會自動保存聊天內容；帳務、交易與行情一律以即時資料為準。" />
       <LongTermMemory />
       <section className="card">

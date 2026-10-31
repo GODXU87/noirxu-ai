@@ -995,3 +995,78 @@ button[data-state="error"] { border-color: var(--danger) !important; animation: 
 .task-card { scroll-margin-top: 80px; }
 
 .acceptance-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+
+/* Editorial workbench: content hierarchy instead of nested card boundaries.
+   Scoped to tasks and memory; controls retain their native behavior. */
+.workbench { --muted: #9aa7a3; max-width: 960px; gap: 38px; padding-bottom: 24px; }
+.workbench .page-head { padding-bottom: 0; }
+.workbench .page-head h1 { font-size: clamp(30px, 4vw, 44px); line-height: 1.18; font-weight: 600; letter-spacing: -.035em; }
+.workbench .page-head .hint { font-size: 15px; line-height: 1.85; margin-top: 16px; max-width: 46em; }
+.workbench > .card, .workbench > .panel { padding: 28px 0 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: none; box-shadow: none; gap: 18px; }
+.workbench .card h2 { font-size: 21px; font-weight: 580; letter-spacing: -.025em; }
+.workbench .hint { line-height: 1.75; }
+.workbench button, .workbench summary, .workbench .fp-ask { min-height: 44px; }
+.workbench button:not(.primary):not(.danger), .workbench .fp-ask { border-color: transparent; background: transparent; color: var(--text-soft); }
+.workbench button:not(.primary):not(.danger):hover:not(:disabled), .workbench .fp-ask:hover { color: var(--text); background: rgba(190,218,212,.06); }
+.workbench .fp-ask { padding: 8px 0; margin-right: 20px; border-radius: 0; }
+.workbench button.primary { border-radius: 8px; padding-inline: 18px; }
+.workbench :is(button,a,input,textarea,select,summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.workbench :is(input,textarea,select) { min-height: 46px; font-size: 16px; background-color: rgba(190,218,212,.035); border-color: var(--line-strong); }
+.workbench .owner-action-tabs { gap: 20px; border-bottom: 1px solid var(--line); }
+.workbench .owner-action-tabs button { padding: 10px 0 14px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--muted); font-size: 14px; }
+.workbench .owner-action-tabs button[aria-pressed="true"] { background: none; color: var(--text); border-bottom-color: var(--accent); font-weight: 650; }
+.workbench .owner-action-list { margin: 0; gap: 0; }
+.workbench .owner-action-list li { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 24px; padding: 24px 0; }
+.workbench .owner-action-list li:first-child { border-top: 0; padding-top: 8px; }
+.workbench .owner-action-source { display: block; color: var(--accent); font-size: 11px; letter-spacing: .09em; margin-bottom: 7px; }
+.workbench .owner-action-list h3 { font-size: 18px; font-weight: 580; line-height: 1.55; margin-bottom: 8px; }
+.workbench .owner-action-copy > p { color: var(--text-soft); line-height: 1.8; }
+.workbench .owner-action-copy .owner-action-next { color: var(--text); margin: 10px 0 6px; }
+.workbench .owner-action-open { gap: 8px; min-height: 44px; font-size: 13px; white-space: nowrap; text-underline-offset: 5px; }
+.workbench .owner-action-open:hover { text-decoration: underline; }
+.workbench .acceptance-record { padding: 28px 0; margin-top: 4px; }
+.workbench .acceptance-record h3 { font-size: 19px; font-weight: 580; }
+.workbench .acceptance-record > p { margin-top: 10px; line-height: 1.8; }
+.workbench .acceptance-stages { gap: 0; margin: 24px 0; }
+.workbench .acceptance-stages > div { border: 0; border-left: 1px solid var(--line-strong); border-radius: 0; padding: 0 0 24px 20px; position: relative; }
+.workbench .acceptance-stages > div:last-child { padding-bottom: 0; }
+.workbench .acceptance-stages > div::before { content: ''; position: absolute; left: -3px; top: 7px; width: 5px; height: 5px; background: var(--muted); border-radius: 50%; }
+.workbench .acceptance-stages strong { font-weight: 580; }
+.workbench .acceptance-stages p { color: var(--text-soft); line-height: 1.8; margin-top: 6px; }
+.workbench .acceptance-link small { font-size: 12px; }
+.workbench .acceptance-panel form, .workbench .memory-editor { padding: 24px; background: rgba(190,218,212,.025); border: 0; border-left: 2px solid var(--line-strong); border-radius: 0; }
+.workbench .task-card { border: 0; border-radius: 0; background: none; padding: 24px 0; }
+.workbench .task-list .task-card + .task-card { padding-top: 24px; }
+.workbench .task-result { margin-top: 20px; padding: 0 0 0 18px; border: 0; border-left: 2px solid var(--line-strong); border-radius: 0; }
+.workbench .task-result-heading { line-height: 1.8; }
+.workbench .task-result-next { font-size: 14px; }
+.workbench .task-result-links a { padding: 8px 0; border: 0; border-radius: 0; gap: 2px 16px; }
+.workbench .task-result-links a:hover > span:first-child { text-decoration: underline; text-underline-offset: 4px; }
+.workbench .task-result-url { font-size: 12px; }
+.workbench .memory-group { margin-top: 16px; }
+.workbench .memory-group-label { color: var(--accent); letter-spacing: .05em; margin-bottom: 10px; }
+.workbench .memory-group li { padding: 20px 0; align-items: flex-start; gap: 20px; }
+.workbench .memory-text { font-size: 16px; line-height: 1.8; gap: 6px; }
+.workbench .memory-text small { font-size: 12px; }
+.workbench .memory-actions button { min-height: 44px; padding: 8px 12px; }
+.workbench summary { display: list-item; align-content: center; color: var(--text-soft); cursor: pointer; padding: 10px 0; }
+.workbench [role="alert"] { border-left: 2px solid var(--danger); padding: 8px 12px; color: var(--danger); line-height: 1.75; }
+@media (max-width: 600px) {
+ .workbench { gap: 28px; }
+ .workbench > .card, .workbench > .panel { padding-top: 24px; }
+ .workbench .card h2 { font-size: 20px; flex-basis: 100%; }
+ .workbench .owner-action-tabs { gap: 16px; }
+ .workbench .owner-action-tabs button { font-size: 12.5px; }
+ .workbench .owner-action-list li { grid-template-columns: minmax(0,1fr); gap: 6px; }
+ .workbench .owner-action-open { justify-self: start; }
+ .workbench .memory-group li { flex-wrap: wrap; gap: 8px; }
+ .workbench .memory-text { flex-basis: 100%; }
+ .workbench .memory-actions { margin-left: -12px; }
+ .workbench .acceptance-panel form, .workbench .memory-editor { padding: 18px 12px; }
+ .workbench .memory-add { flex-wrap: wrap; }
+ .workbench .memory-add input { flex-basis: 100%; }
+}
+@media (prefers-reduced-motion: reduce) { .workbench *, .workbench *::before { transition: none !important; animation: none !important; } }
+.workbench .reminder-head { flex-wrap: wrap; align-items: baseline; }
+.workbench .reminder-head b { white-space: normal; overflow-wrap: anywhere; font-size: 17px; line-height: 1.6; }
+.workbench .reminder-actions { flex-wrap: wrap; }

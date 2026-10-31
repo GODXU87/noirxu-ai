@@ -62,7 +62,7 @@ export function AcceptancePanel({initialId}:{initialId?:string}){
  async function create(e:React.FormEvent<HTMLFormElement>){e.preventDefault();if(locked.current||!e.currentTarget.checkValidity())return;locked.current=true;setBusy(true);setProblem('');
   try{requestId.current||=crypto.randomUUID();pendingCreate.current??={action:'create',input:{request_id:requestId.current,project,title,sha,criteria,due_at:due?taipeiLocalToIso(due):null}};await command(pendingCreate.current);pendingCreate.current=null;setUncertain(false);setOpen(false);setTitle('');setSha('');setCriteria('');setDue('');requestId.current='';changed();}
   catch(e){const known=!pendingCreate.current||[400,401,403].includes((e as {status?:number}).status??0);if(known){pendingCreate.current=null;requestId.current='';}setUncertain(!known);setProblem(e instanceof Error?e.message:'建立未確認；請先重新整理。');}finally{locked.current=false;setBusy(false);}}
- return <section className="card acceptance-panel"><div className="row acceptance-buttons"><h2>網站任務驗收</h2><button type="button" className="ghost" disabled={loading} onClick={()=>void refresh()}>重新整理驗收</button><button type="button" className="primary" disabled={busy} onClick={()=>setOpen(v=>!v)}>新增驗收</button></div>
+ return <section className="card acceptance-panel"><div className="row acceptance-buttons"><h2>網站任務驗收</h2><button type="button" className="ghost" disabled={loading} onClick={()=>void refresh()}>{loading?'更新中…':'重新整理驗收'}</button><button type="button" className="primary" disabled={busy} onClick={()=>setOpen(v=>!v)}>新增驗收</button></div>
   <p className="hint">分開看 commit、部署與功能證據；人工通過不是工具已執行，也不會取代原本的確認程序。</p>
   {error&&<p role="alert">{error}</p>}{problem&&<p role="alert">{problem}</p>}
   {open&&<form className="stack" onSubmit={create}>
@@ -81,12 +81,12 @@ export function AcceptancePanel({initialId}:{initialId?:string}){
 }
 export function OwnerActionsPanel(){
  const {data,error,loading,refresh}=useRecords<{items:OwnerAction[];errors:string[];as_of:string;truncated?:boolean}>('/api/owner-actions');const [tab,setTab]=useState<OwnerAction['state']>('action');
- const visible=data?.items.filter(i=>i.state===tab)??[];return <section className="card owner-actions"><div className="row acceptance-buttons"><h2>今天需要你處理</h2><button className="ghost" type="button" disabled={loading} onClick={()=>void refresh()}>重新整理待辦</button></div>
+ const visible=data?.items.filter(i=>i.state===tab)??[];return <section className="card owner-actions"><div className="row acceptance-buttons"><h2>今天需要你處理</h2><button className="ghost" type="button" disabled={loading} onClick={()=>void refresh()}>{loading?'更新中…':'重新整理待辦'}</button></div>
   <p className="hint">依原始任務與目標去重，不重發通知。完成或取消要回原處理流程，這裡沒有代批准的完成勾選。</p>
-  <div className="row acceptance-buttons" role="group" aria-label="待辦狀態">{(['action','waiting','resolved'] as const).map(state=><button type="button" className={tab===state?'primary':'ghost'} aria-pressed={tab===state} key={state} onClick={()=>setTab(state)}>{({action:'需要處理',waiting:'等待中',resolved:'已解決／結束'})[state]}（{data?.items.filter(i=>i.state===state).length??0}）</button>)}</div>
+  <div className="row acceptance-buttons owner-action-tabs" role="group" aria-label="待辦狀態">{(['action','waiting','resolved'] as const).map(state=><button type="button" className={tab===state?'primary':'ghost'} aria-pressed={tab===state} key={state} onClick={()=>setTab(state)}>{({action:'需要處理',waiting:'等待中',resolved:'已解決／結束'})[state]}（{data?.items.filter(i=>i.state===state).length??0}）</button>)}</div>
   {error&&<p role="alert">{error} 可能仍顯示上次資料。</p>}{data?.errors.map(e=><p role="alert" key={e}>{e}</p>)}
   {data?.as_of&&<p className="hint">最後讀取 {local(data.as_of)}（台灣時間）；頁面可見時每 20 秒重新讀取原始狀態。</p>}
-  {!data?<p role="status">{error?'尚未取得待辦。':'讀取待辦…'}</p>:visible.length?<ul className="owner-action-list">{visible.map(i=><li key={i.id}><h3>{i.title}</h3><p>{i.reason}</p><p>下一步：{i.next_step}</p>{i.due_at&&<p className="hint">期限／下次排程：{local(i.due_at)}</p>}<a className="ghost" href={i.href}>前往原處理流程</a></li>)}</ul>:<p className="hint">{data.errors.length?'已讀取來源中沒有這類項目；仍有來源讀取失敗。':tab==='action'?'目前沒有需要你立即處理的項目。':tab==='waiting'?'目前沒有等待中的項目。':'目前沒有已結束的項目。'}</p>}
+  {!data?<p role="status">{error?'尚未取得待辦。':'讀取待辦…'}</p>:visible.length?<ul className="owner-action-list">{visible.map(i=><li key={i.id}><div className="owner-action-copy"><span className="owner-action-source">{({task:'自動任務',goal:'追蹤目標',acceptance:'網站驗收'})[i.source]}</span><h3>{i.title}</h3><p>{i.reason}</p><p className="owner-action-next">下一步：{i.next_step}</p>{i.due_at&&<p className="hint">期限／下次排程：{local(i.due_at)}</p>}</div><a className="owner-action-open" href={i.href}>前往原處理流程 <span aria-hidden="true">↗</span></a></li>)}</ul>:<p className="hint">{data.errors.length?'已讀取來源中沒有這類項目；仍有來源讀取失敗。':tab==='action'?'目前沒有需要你立即處理的項目。':tab==='waiting'?'目前沒有等待中的項目。':'目前沒有已結束的項目。'}</p>}
   {data?.truncated&&<p className="hint">目前顯示前 200 項；請到原任務中心查看完整清單。</p>}
  </section>;
 }

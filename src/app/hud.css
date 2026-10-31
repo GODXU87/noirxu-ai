@@ -279,3 +279,15 @@
 .ui-sasuke.hud .rich-note { background: rgba(255, 201, 102, .06); }
 .ui-sasuke.hud .rich strong { color: #ffffff; text-shadow: 0 0 12px rgba(95, 224, 242, .35); }
 .ui-sasuke.hud .msg-speak { background: transparent; box-shadow: none; }
+
+/* Inner workbench deliberately steps out of the HUD card treatment.
+   Chat, approval previews, navigation and other pages keep their existing skin. */
+.ui-sasuke.hud .workbench > :is(.card,.panel) { background: none; border: 0; border-top: 1px solid var(--line); border-radius: 0; box-shadow: none; }
+.ui-sasuke.hud .workbench > :is(.card,.panel)::after { display: none; }
+.ui-sasuke.hud .workbench button:not(.primary):not(.danger),
+.ui-sasuke.hud .workbench .fp-ask { background: transparent; box-shadow: none; }
+.ui-sasuke.hud .workbench button:not(.primary):not(.danger):hover:not(:disabled),
+.ui-sasuke.hud .workbench .fp-ask:hover { background: rgba(190,218,212,.06); box-shadow: none; }
+.ui-sasuke.hud .workbench .owner-action-tabs button { background: none; box-shadow: none; }
+.ui-sasuke.hud .workbench .owner-action-tabs button[aria-pressed="true"] { background: none; color: var(--text); box-shadow: none; }
+.ui-sasuke.hud .workbench :is(input,textarea,select) { background-color: rgba(190,218,212,.035); border-color: var(--line-strong); }
