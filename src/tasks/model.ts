@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import type { SourceLink } from '@/hub/types';
+import type { ToolErrorCode } from '@/hub/errors';
 
 // SASUKE tasks: one-off reminders, background jobs, recurring automations and conditional
 // watches, run by the server scheduler (never by an open browser). Steps reuse the
@@ -37,7 +39,7 @@ export const stepSchema = z.discriminatedUnion('type', [
 ]);
 export type TaskStep = z.input<typeof stepSchema>;
 
-export interface StepResult { step: number; type: TaskStep['type']; tool?: string; status: 'ok' | 'error' | 'waiting_approval' | 'skipped'; summary: string; proposal_id?: string; delivery_key?: string; delivery_status?: string; delivery_summary?: string }
+export interface StepResult { step: number; type: TaskStep['type']; tool?: string; status: 'ok' | 'error' | 'waiting_approval' | 'skipped'; summary: string; links?: SourceLink[]; error_code?: ToolErrorCode; proposal_id?: string; delivery_key?: string; delivery_status?: string; delivery_summary?: string }
 export interface TaskRun { id: string; slot: string; started_at: string; finished_at?: string; status: 'completed' | 'failed' | 'waiting_approval' | 'outcome_unknown' | 'skipped' | 'not_met'; steps: StepResult[]; error?: string; late_minutes?: number; tool_calls?: number; llm_tokens?: number }
 
 export interface Task {

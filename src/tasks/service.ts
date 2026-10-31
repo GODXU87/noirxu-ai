@@ -3,6 +3,9 @@ import type { AgendaStore } from '@/agenda/store';
 import type { TokenVault } from '@/connections/vault';
 import type { Executor } from '@/hub/executor';
 import type { HubStore } from '@/hub/store';
+import { safeTaskLinks } from './evidence';
+import type { ToolErrorCode } from '@/hub/errors';
+import type { SourceLink } from '@/hub/types';
 import type { InvokeResult } from '@/hub/types';
 import { taipeiDate } from '@/lib/dates';
 import type { PushMessage } from '@/push/service';
@@ -338,12 +341,12 @@ export class TaskService {
         return;
       }
       if (result.status === 'error') {
-        run.steps.push({ step: index, type: 'tool', tool: step.tool, status: 'error', summary: result.message });
+        run.steps.push({ step: index, type: 'tool', tool: step.tool, status: 'error', summary: result.message, error_code: result.code });
         run.status = result.code === 'OUTCOME_UNKNOWN' ? 'outcome_unknown' : 'failed';
         run.error = result.message;
         return;
       }
-      run.steps.push({ step: index, type: 'tool', tool: step.tool, status: 'ok', summary: summarize(result.data) });
+      run.steps.push({ step: index, type: 'tool', tool: step.tool, status: 'ok', summary: summarize(result.data), links: safeTaskLinks(result.links) });
     }
   }
 
@@ -393,16 +396,16 @@ export class TaskService {
     const proposal = await this.deps.proposals.getProposal(task.waiting_proposal);
     if (!proposal || proposal.status === 'pending' || proposal.status === 'executing') {
       if (proposal && proposal.status === 'pending' && Date.parse(proposal.expiresAt) < now.getTime()) {
-        await this.resolveApproval(task, 'failed', '確認已逾期，沒有執行', now);
+        await this.resolveApproval(task, 'failed', '確認已逾期，沒有執行', now, undefined, [], 'PROPOSAL_EXPIRED');
       }
       return true;
     }
     const outcome = proposal.status === 'succeeded' ? 'completed' : proposal.status === 'rejected' ? 'cancelled' : proposal.status === 'outcome_unknown' ? 'outcome_unknown' : 'failed';
-    await this.resolveApproval(task, outcome, outcome === 'cancelled' ? '你取消了這個操作' : outcome === 'failed' || outcome === 'outcome_unknown' ? proposal.error?.message ?? '操作執行失敗' : undefined, now, proposal.result);
+    await this.resolveApproval(task, outcome, outcome === 'cancelled' ? '你取消了這個操作' : outcome === 'failed' || outcome === 'outcome_unknown' ? proposal.error?.message ?? '操作執行失敗' : undefined, now, proposal.result, proposal.links, proposal.error?.code);
     return false;
   }
 
-  private async resolveApproval(task: Task, outcome: 'completed' | 'cancelled' | 'failed' | 'outcome_unknown', error: string | undefined, now: Date, result?: unknown) {
+  private async resolveApproval(task: Task, outcome: 'completed' | 'cancelled' | 'failed' | 'outcome_unknown', error: string | undefined, now: Date, result?: unknown, links?: SourceLink[], errorCode?: ToolErrorCode) {
     const claim = randomUUID();
     const claimed = await this.update(task.id, t => {
       if (t.status !== 'waiting_approval' || t.waiting_proposal !== task.waiting_proposal) return null;
@@ -413,7 +416,7 @@ export class TaskService {
     const latest = claimed.runs[0];
     const approved = latest.steps.find(s => s.proposal_id === claimed.waiting_proposal && s.status === 'waiting_approval')!;
     const run: TaskRun = { ...latest, status: outcome === 'cancelled' ? 'failed' : outcome, error,
-      steps: latest.steps.map(s => s === approved ? { ...s, status: outcome === 'completed' ? 'ok' : 'error', summary: error ?? (outcome === 'completed' ? summarize(result) : '執行結果不明') } : s) };
+      steps: latest.steps.map(s => s === approved ? { ...s, status: outcome === 'completed' ? 'ok' : 'error', links: safeTaskLinks(links), error_code: errorCode, summary: error ?? (outcome === 'completed' ? summarize(result) : '執行結果不明') } : s) };
     if (outcome === 'completed') {
       try { await this.executeSteps(claimed, run, now, approved.step + 1); }
       catch (e) { run.status = 'failed'; run.error = e instanceof Error ? e.message.slice(0, 200) : '執行失敗'; }

@@ -1,6 +1,7 @@
 'use client';
 
 import { GoalCard } from './Goals';
+import { TaskResult } from './TaskResult';
 
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { money, toolLabel, toolSystem } from '@/lib/tool-labels';
@@ -223,7 +224,7 @@ export function TaskCard({ task: initial }: { task: any }) {
       </div>
       <p className="task-meta">{task.kind_label} · {task.schedule_label}{task.condition ? ` · 條件：${task.condition.category ?? '本月'}支出 > ${Number(task.condition.amount).toLocaleString('en-US')}` : ''}</p>
       {!finished && task.next_local && <p className="task-next">{task.status === 'paused' ? '已暫停，恢復後下次' : '下次執行'} <b>{task.next_local}</b></p>}
-      {task.last_run && <p className="hint">最近一次 {task.last_run.local}：{RUN_LABEL[task.last_run.status] ?? task.last_run.status}{task.last_run.error ? `（${task.last_run.error}）` : ''}</p>}
+      {task.last_run && <TaskResult run={task.last_run} latest />}
       {!finished && (
         <div className="row reminder-actions">
           {task.status === 'paused'
@@ -238,7 +239,7 @@ export function TaskCard({ task: initial }: { task: any }) {
       {historyOpen && historyLoading && <p className="hint" role="status">紀錄更新中…</p>}
       {historyOpen && runs && (
         <ul className="rows task-runs">
-          {runs.map(r => <li key={r.id}><span className="muted">{r.local}</span><span>{RUN_LABEL[r.status] ?? r.status}{r.late_minutes ? ` · 晚 ${r.late_minutes} 分` : ''}</span><span className="muted">{r.error ?? r.steps.map((s: any) => [s.summary, s.delivery_summary].filter(Boolean).join(' · ')).join('；')}</span></li>)}
+          {runs.map(r => <li key={r.id}><TaskResult run={r} /></li>)}
           {!runs.length && <li className="muted">還沒有執行過</li>}
         </ul>
       )}

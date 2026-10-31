@@ -959,3 +959,18 @@ button[data-state="error"] { border-color: var(--danger) !important; animation: 
 .sk-toasts .sk-toast { position: static; transform: none; width: 100%; }
 .sk-toasts .sk-toast { animation-name: toast-drop; }
 @keyframes toast-drop { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+
+/* Readable task evidence, including long source URLs on small screens. */
+.task-result { min-width: 0; margin-top: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; }
+.task-result-heading { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; font-size: 13px; }
+.task-result-next { font-size: 13px; line-height: 1.65; margin: 10px 0; }
+.task-result-steps { margin: 10px 0 0; padding: 0; list-style: none; }
+.task-result-steps > li { display: block; min-width: 0; padding: 10px 0; border-top: 1px solid var(--line); }
+.task-result-step p { margin: 5px 0; overflow-wrap: anywhere; font-size: 13px; }
+.task-result-links { display: grid; gap: 6px; min-width: 0; }
+.task-result-links a { min-height: 44px; display: grid; grid-template-columns: minmax(0,1fr) auto; align-content: center; padding: 8px; border: 1px solid var(--line); border-radius: 8px; overflow-wrap: anywhere; }
+.task-result-links a > span:first-child { font-weight: 600; }
+.task-result-url { grid-column: 1; font-size: 11px; opacity: .7; }
+.task-result-links a > span:last-child { grid-column: 2; grid-row: 1 / 3; align-self: center; }
+.task-runs > li { display: block; min-width: 0; }
+.task-result p, .task-result-heading { overflow-wrap: anywhere; }
