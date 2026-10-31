@@ -13,15 +13,17 @@ import { healthTools } from '@/tools/health/tools';
 
 export const vault = new TokenVault('test-passphrase-0123456789abcdef0123456789');
 
-/** October 2026 Ledger numbers used by the tests (de-identified). */
+/** Fully synthetic fixture, designed from scratch; not derived from any person's accounts.
+ * Four invented expenses on four distinct days total 6000 (food 3600 + shopping 2400), plus two
+ * invented incomes total 15000. Calendar dates only align with scheduler tests.
+ */
 export const LEDGER_OCTOBER = {
   month: '2026-10', currency: 'TWD',
-  summary: { income: 47367, expense: 3943, netFlow: 43424, transactionCount: 12, expenseCount: 11, averageDailyExpense: 171 },
-  expense_by_category: [{ id: 'food', name: '餐飲', amount: 2100, percentage: 53.3 }, { id: 'shop', name: '購物', amount: 1016, percentage: 25.8 }],
-  comparison: { previousMonth: '2026-09', income: { current: 47367, previous: 47367, change: 0 }, expense: { current: 3943, previous: 54494, change: -0.93 }, netFlow: { current: 43424, previous: -7127, change: null } },
+  summary: { income: 15000, expense: 6000, netFlow: 9000, transactionCount: 6, expenseCount: 4, averageDailyExpense: 1500 },
+  expense_by_category: [{ id: 'food', name: '餐飲', amount: 3600, percentage: 60 }, { id: 'shop', name: '購物', amount: 2400, percentage: 40 }],
+  comparison: { previousMonth: '2026-09', income: { current: 15000, previous: 12000, change: 25 }, expense: { current: 6000, previous: 7500, change: -20 }, netFlow: { current: 9000, previous: 4500, change: 100 } },
   largest_expense: null
 };
-
 /** Hub with real agenda, water, executor and cost guard; Ledger and RADAR are canned read tools. */
 export function chatHub(options: { ledgerConnected?: boolean; memories?: MemoryRecord[] | null } = {}) {
   const agenda = new MemoryAgendaStore();

@@ -15,7 +15,7 @@ function setup() {
   registry.register(defineTool({
     name: 'ledger.analytics.get', description: '本月收支', connection: 'internal', kind: 'read',
     input: z.object({ month: z.string() }).strict(), output: z.unknown(),
-    async run() { return { data: { currency: 'TWD', summary: { expense: 3943 } } }; }
+    async run() { return { data: { currency: 'TWD', summary: { expense: 6000 } } }; }
   }));
   registry.register(defineTool({
     name: 'gmail.message.send', description: '寄信', connection: 'internal', kind: 'send',
@@ -51,12 +51,12 @@ describe('OpenAI provider', () => {
         { type: 'reasoning', id: 'rs_1', summary: [], encrypted_content: 'enc' },
         { type: 'function_call', call_id: 'call_1', name: 'ledger__analytics__get', arguments: '{"month":"2026-10"}' }
       ] },
-      { status: 'completed', usage: usage(1200, 80, 900), output_text: '十月目前支出 TWD 3,943。', output: [
-        { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: '十月目前支出 TWD 3,943。', annotations: [] }] }
+      { status: 'completed', usage: usage(1200, 80, 900), output_text: '十月目前支出 TWD 6,000。', output: [
+        { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: '十月目前支出 TWD 6,000。', annotations: [] }] }
       ] }
     ]);
     const turn = await runOpenAITurn({ client, model: 'gpt-5.5', registry, executor, ctx, history: [], userText: '這個月花多少？' });
-    expect(turn).toMatchObject({ provider: 'openai', reply: '十月目前支出 TWD 3,943。', stopReason: 'end_turn' });
+    expect(turn).toMatchObject({ provider: 'openai', reply: '十月目前支出 TWD 6,000。', stopReason: 'end_turn' });
     expect(turn.usage).toEqual({ calls: 2, input_tokens: 2200, output_tokens: 130, cache_read_input_tokens: 900, cache_creation_input_tokens: 0 });
     expect(turn.events[0]).toMatchObject({ tool: 'ledger.analytics.get', result: { status: 'ok' } });
     // Request shape: same SASUKE prompt, stateless with encrypted reasoning passed back.

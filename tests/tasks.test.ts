@@ -333,9 +333,9 @@ describe('task scheduler', () => {
     expect(expenseRun).not.toHaveBeenCalled();
   });
 
-  it('a spending watch notifies once per month, only when the real Ledger total crosses it', async () => {
+  it('a spending watch notifies once per month, only when the synthetic Ledger total crosses it', async () => {
     const { tasks, executor, send, analytics } = setup();
-    // October test data: total expense 3,943, of which 餐飲 2,100.
+    // Fully synthetic October test data: total expense 6,000, of which 餐飲 3,600.
     await executor.invoke('tasks.create', { text: '如果這個月支出超過3000就提醒我' }, ctxAt(BEFORE));
     await executor.invoke('tasks.create', { text: '如果這個月餐飲支出超過5000就提醒我' }, ctxAt(BEFORE));
     await tasks.runDue(T('2026-10-23T05:00:00Z'));

@@ -97,7 +97,7 @@ describe('voice helpers (browser speech only)', () => {
   });
 
   it('reads back plain, short text', () => {
-    expect(speakable('**本月**支出 [TWD 3,943](https://x.y)。')).toBe('本月支出 TWD 3,943。');
+    expect(speakable('**本月**支出 [TWD 6,000](https://x.y)。')).toBe('本月支出 TWD 6,000。');
     const long = speakable(`${'今天有很多事情要處理。'.repeat(40)}`);
     expect(long.endsWith('詳細內容在畫面上。')).toBe(true);
     expect(long.length).toBeLessThan(240);

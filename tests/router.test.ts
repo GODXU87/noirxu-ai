@@ -55,8 +55,8 @@ describe('zero model calls on the local path', () => {
     expect(a.ok && a.reply).toContain('交月報');
 
     const l = await handleChat(hub, ctxAt(NOW), { ...base, text: '這個月花了多少？', clients });
-    expect(l.ok && l.reply).toContain('TWD 3,943');
-    expect(l.ok && l.reply).toContain('餐飲 2,100');
+    expect(l.ok && l.reply).toContain('TWD 6,000');
+    expect(l.ok && l.reply).toContain('餐飲 3,600');
 
     expect(requests).toHaveLength(0);
     expect((await hub.cost.usage(new Date(NOW))).local.count).toBe(3);

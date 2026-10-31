@@ -39,9 +39,9 @@ export const PERSONA_CASES: Array<EvalCase & { good: string; bad: Array<{ reply:
   },
   {
     id: 'finance-month', domain: 'finance', user: '這個月花了多少錢？',
-    events: [{ tool: 'ledger.analytics.get', status: 'ok', data: { currency: 'TWD', summary: { expense: 3943, income: 0 }, expense_by_category: [{ name: '餐飲', amount: 2100 }] } }],
+    events: [{ tool: 'ledger.analytics.get', status: 'ok', data: { currency: 'TWD', summary: { expense: 6000, income: 0 }, expense_by_category: [{ name: '餐飲', amount: 3600 }] } }],
     maxChars: 160,
-    good: '十月目前支出 TWD 3,943，餐飲 2,100 佔了一半多。收入還沒有入帳紀錄。',
+    good: '十月目前支出 TWD 6,000，餐飲 3,600 佔了一半多。收入還沒有入帳紀錄。',
     bad: [{ reply: '這個月你大約花了 4,500 元，主要在餐飲。', rule: 'no-invented-numbers' }]
   },
   {

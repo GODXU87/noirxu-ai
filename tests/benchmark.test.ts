@@ -7,7 +7,7 @@ const { handleChat } = await import('@/server/chat-turn');
 
 // Baseline (before this change: every message goes to the model with all tools and the full
 // history) versus optimized (local router, tiers, tool subset, trimmed history), on the same
-// de-identified tasks. The model is a recording fake, so calls and prompt sizes are exact;
+// fully synthetic tasks. The model is a recording fake, so calls and prompt sizes are exact;
 // input tokens are estimated from the prompt text (CJK ≈ 1 token per character, other text
 // ≈ 4 characters per token). Real cost needs a live run with the provider's prices.
 
@@ -15,7 +15,7 @@ const NOW = '2026-10-23T07:00:00Z';
 const TASKS: Array<{ text: string; expect?: string; needsTool?: string }> = [
   { text: '目前喝了多少水？', expect: '900 / 2,000 ml' },
   { text: '今天有哪些待辦', expect: '交月報' },
-  { text: '這個月花了多少？', expect: 'TWD 3,943' },
+  { text: '這個月花了多少？', expect: 'TWD 6,000' },
   { text: '你記得我的體重嗎', expect: '74 公斤' },
   { text: '今天幾號', expect: '10 月 23 日' },
   { text: '125*8+30', expect: '1,030' },
@@ -83,7 +83,7 @@ describe('cost benchmark: baseline vs optimized', () => {
       const perTask = TASKS.map((t, i) => `| ${t.text} | ${before[i].calls} / ${before[i].input.toLocaleString('en-US')} | ${after[i].calls} / ${after[i].input.toLocaleString('en-US')} | ${after[i].correct === null ? (after[i].success ? '交給模型（工具正確）' : '失敗') : after[i].correct ? '正確' : '錯誤'} | ${after[i].calls ? '—' : `${after[i].ms.toFixed(1)} ms`} |`).join('\n');
       writeFileSync(process.env.NOIRXU_BENCH_OUT, `# SASUKE cost benchmark (offline)
 
-Same 12 de-identified tasks, same 60-message prior conversation, same tools.
+Same 12 fully synthetic tasks, same 60-message prior conversation, same tools.
 **Baseline** = behaviour before this change (every message to the model, all tools, full history).
 **Optimized** = local router + tiers + relevant tools + trimmed history.
 
