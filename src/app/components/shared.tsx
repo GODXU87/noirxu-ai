@@ -216,7 +216,7 @@ export function TaskCard({ task: initial }: { task: any }) {
     return () => { current = false; controller.abort(); };
   }, [historyOpen, historyVersion, task.id]);
   return (
-    <div className={`reminder-card task-card is-${task.status}`}>
+    <div id={`task-${task.id}`} tabIndex={-1} className={`reminder-card task-card is-${task.status}`}>
       <div className="reminder-head">
         <Icon name={task.kind === 'conditional' ? 'chart' : 'bell'} size={16} />
         <b>{task.title}</b>

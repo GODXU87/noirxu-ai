@@ -40,6 +40,7 @@ describe('combined goal tracking and task freshness', () => {
     const requests: string[] = [];
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       requests.push(url);
+      if (['/api/acceptance','/api/owner-actions'].includes(url)) return {ok:true,json:async()=>({ok:true,items:[],errors:[]})} as Response;
       if (url.endsWith('/goals.list')) { goalReads++; return response({ goals: [currentGoal], total: 1 }); }
       if (url.endsWith('/tasks.list')) return response({ tasks: [task(++taskReads > 1)], halted: false });
       throw new Error(`Unexpected request: ${url}`);
@@ -52,13 +53,14 @@ describe('combined goal tracking and task freshness', () => {
     expect(host.textContent).not.toContain('整理最新教案'); expect(taskReads).toBe(2); expect(goalReads).toBe(1);
     await event('noirxu-goals-changed');
     expect(host.textContent).toContain('整理最新教案'); expect(taskReads).toBe(2); expect(goalReads).toBe(2);
-    expect(requests.every(url => /\/(goals|tasks)\.list$/.test(url))).toBe(true);
+    expect(requests.every(url => /\/(goals|tasks)\.list$/.test(url) || ['/api/acceptance','/api/owner-actions'].includes(url))).toBe(true);
   });
 
   // Catches replacing an open editor's original revision with a refreshed server snapshot.
   it('retains the original edit revision across goal refresh and task polling, then unlocks a conflict', async () => {
     let currentGoal = initialGoal; let taskReads = 0; const updates: unknown[] = [];
     vi.stubGlobal('fetch', vi.fn(async (url: string, options: RequestInit) => {
+      if (['/api/acceptance','/api/owner-actions'].includes(url)) return {ok:true,json:async()=>({ok:true,items:[],errors:[]})} as Response;
       if (url.endsWith('/goals.list')) return response({ goals: [currentGoal], total: 1 });
       if (url.endsWith('/tasks.list')) return response({ tasks: [task(++taskReads > 1)], halted: false });
       if (url.endsWith('/goals.update')) {

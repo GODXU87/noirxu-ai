@@ -22,7 +22,7 @@ function button(text: string) {
 }
 // Keep the real GoalsPanel mounted; only task requests consume task fixtures.
 function stubTaskFetch(fetcher: (...args: any[]) => any) {
-  vi.stubGlobal('fetch', (url: string, options: RequestInit) => url.endsWith('/goals.list')
+  vi.stubGlobal('fetch', (url: string, options: RequestInit) => ['/api/acceptance','/api/owner-actions'].includes(url) ? Promise.resolve({ok:true,json:async()=>({ok:true,items:[],errors:[]})} as Response) : url.endsWith('/goals.list')
     ? Promise.resolve(response({ goals: [], total: 0 })) : fetcher(url, options));
 }
 
@@ -185,4 +185,8 @@ describe('task-card snapshots', () => {
     } finally { window.removeEventListener('noirxu-tasks-changed', changed); }
   });
 
+});
+it('reveals and focuses a finished task requested by deep link after loading',async()=>{
+ const fetcher=vi.fn(async(_url:string,options:RequestInit)=>{expect(JSON.parse(String(options.body))).toMatchObject({include_finished:true});return response({tasks:[task('completed')]});});stubTaskFetch(fetcher);
+ await render(createElement(TasksView,{taskId:'t1'}));expect(document.activeElement?.id).toBe('task-t1');expect(host.textContent).toContain('已完成');
 });

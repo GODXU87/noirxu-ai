@@ -974,3 +974,24 @@ button[data-state="error"] { border-color: var(--danger) !important; animation: 
 .task-result-links a > span:last-child { grid-column: 2; grid-row: 1 / 3; align-self: center; }
 .task-runs > li { display: block; min-width: 0; }
 .task-result p, .task-result-heading { overflow-wrap: anywhere; }
+
+/* Acceptance evidence and owner-action queue */
+.acceptance-buttons { flex-wrap: wrap; gap: 10px; }
+.acceptance-buttons h2 { margin-right: auto; }
+.acceptance-panel input, .acceptance-panel textarea, .acceptance-panel select { width: 100%; min-width: 0; }
+.acceptance-panel label { display: grid; gap: 6px; }
+.acceptance-panel textarea { min-height: 90px; }
+.acceptance-panel button, .owner-actions button, .owner-actions a { min-height: 44px; }
+.acceptance-record { border-top: 1px solid var(--line, #333); padding: 18px 0; margin-top: 16px; scroll-margin-top: 80px; }
+.acceptance-record header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.acceptance-record p, .acceptance-record code, .acceptance-link, .owner-action-list li { overflow-wrap: anywhere; min-width: 0; }
+.acceptance-stages { display: grid; gap: 10px; margin: 14px 0; }
+.acceptance-stages > div { padding: 12px; border: 1px solid var(--line, #333); border-radius: 10px; }
+.acceptance-link { display: grid; gap: 4px; padding: 8px 0; min-height: 44px; }
+.acceptance-link small { opacity: .7; }
+.owner-action-list { list-style: none; padding: 0; display: grid; gap: 12px; }
+.owner-action-list li { border-top: 1px solid var(--line, #333); padding: 12px 0; }
+.owner-action-list a { display: inline-flex; align-items: center; }
+.task-card { scroll-margin-top: 80px; }
+
+.acceptance-fields { border: 0; padding: 0; margin: 0; min-width: 0; }

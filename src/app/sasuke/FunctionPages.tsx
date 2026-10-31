@@ -13,6 +13,7 @@ import { HistoryDialog } from './SasukeNav';
 import { GoalsPanel } from '../components/Goals';
 import { useTaskList } from './useTaskList';
 import { LongTermMemory } from './LongTermMemory';
+import { AcceptancePanel, OwnerActionsPanel } from '../components/Acceptance';
 
 // Function pages for the SASUKE interface. Each one manages one area in detail and hands
 // everyday work back to the conversation through "ask" links (/?c=new&ask=…), so the chat
@@ -41,7 +42,7 @@ function NotConnected({ name }: { name: string }) {
   );
 }
 
-export function TasksView({ goalId }: { goalId?: string } = {}) {
+export function TasksView({ goalId, taskId, acceptanceId }: { goalId?: string; taskId?: string; acceptanceId?: string }) {
   return (
     <main className="stack fp">
       <Head title="任務中心" lead="你交代的事項與提醒。SASUKE 在對話中執行的每個工具步驟，會直接顯示在對話裡。" />
@@ -49,19 +50,23 @@ export function TasksView({ goalId }: { goalId?: string } = {}) {
         <Ask question="依重要程度幫我排今天和這週的事，指出時間衝突。" label="請 SASUKE 排優先順序" icon="check" />
         <Ask question="有哪些事已經過期了？" label="檢查過期事項" icon="bell" />
       </div>
+      <OwnerActionsPanel />
+      <AcceptancePanel initialId={acceptanceId} />
       <GoalsPanel initialGoalId={goalId} />
-      <AutoTasks />
+      <AutoTasks taskId={taskId} />
       <AgendaCard />
     </main>
   );
 }
 
 /** Background tasks (recurring reminders, scheduled briefings, spending watches). */
-function AutoTasks() {
-  const [all, setAll] = useState(false);
+function AutoTasks({ taskId }: { taskId?: string }) {
+  const [all, setAll] = useState(Boolean(taskId));
   const [busy, setBusy] = useState(false);
   const { data: state, updatedAt, refreshing, offline, error, refresh } = useTaskList(all);
   const [actionError, setActionError] = useState('');
+  useEffect(() => { if (taskId) setAll(true); }, [taskId]);
+  useEffect(() => { if (!taskId || !state?.tasks.some(t => t.id === taskId)) return; const el = document.getElementById(`task-${taskId}`); el?.scrollIntoView?.({ block: 'start' }); el?.focus({ preventScroll: true }); }, [taskId, Boolean(state?.tasks.some(t => t.id === taskId))]);
   const halted = Boolean(state?.halted);
   async function toggleHalt() {
     if (!halted && !window.confirm('停止所有背景自動任務？任務與紀錄都會保留，之後可以恢復。')) return;
@@ -82,6 +87,7 @@ function AutoTasks() {
       </div>
       <p className="hint" role="status" aria-live="polite">{offline ? '目前離線；顯示上次讀取的資料。' : refreshing ? '正在更新任務…' : error ?? '此頁可見且連線時，每 20 秒檢查更新。'}{updatedAt && <> 最後更新 <time dateTime={updatedAt}>{new Date(updatedAt).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</time></>}</p>
       {actionError && <p className="hint tone-error" role="alert">{actionError}</p>}
+      {taskId && state && !refreshing && !state.tasks.some(t => t.id === taskId) && <p role="status">此任務不在目前清單；請確認已選「含已結束」或任務仍存在。</p>}
       {halted && <p className="banner danger">所有背景自動任務已停止。任務與紀錄都保留，按「恢復自動任務」從下一個排程繼續。</p>}
       {!state ? <p className="hint">{offline ? '連線恢復後會重新讀取。' : error ? '尚未取得任務資料，可重新整理。' : '讀取中…'}</p>
         : state.tasks.length ? <div className="task-list">{state.tasks.map(t => <TaskCard key={t.id} task={t} />)}</div>
