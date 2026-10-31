@@ -190,13 +190,54 @@ export function SasukeNav() {
   const agentState = useAgentState();
   const [collapsed, setCollapsed] = useState(false);
   const [drawer, setDrawer] = useState(false);
+  const drawerId = useId();
+  const drawerPanel = useRef<HTMLElement>(null);
+  const drawerOpener = useRef<HTMLButtonElement>(null);
   const [history, setHistory] = useState(false);
   const router = useRouter();
   const closeHistory = useCallback(() => setHistory(false), []);
 
   useEffect(() => { setCollapsed(document.documentElement.classList.contains('sidebar-collapsed')); }, []);
   useEffect(() => { document.documentElement.classList.toggle('sidebar-collapsed', collapsed); }, [collapsed]);
-  useEffect(() => { document.body.classList.toggle('drawer-open', drawer); }, [drawer]);
+  useEffect(() => { setDrawer(false); }, [pathname]);
+  useEffect(() => {
+    document.body.classList.toggle('drawer-open', drawer);
+    return () => document.body.classList.remove('drawer-open');
+  }, [drawer]);
+  useEffect(() => {
+    if (!drawer) return;
+    const panel = drawerPanel.current;
+    const opener = drawerOpener.current;
+    if (!panel) return;
+    const controls = () => [...panel.querySelectorAll<HTMLElement>('a[href],button,input,select,textarea,[tabindex]')].filter(element => {
+      if (element.tabIndex < 0 || element.matches(':disabled')) return false;
+      for (let node: HTMLElement | null = element; node; node = node.parentElement) {
+        const style = getComputedStyle(node);
+        if (node.hidden || node.hasAttribute('inert') || style.display === 'none' || style.visibility === 'hidden') return false;
+        if (node === panel) break;
+      }
+      return true;
+    });
+    const focusFirst = () => (controls()[0] ?? panel).focus({ preventScroll: true });
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setDrawer(false); return; }
+      if (event.key !== 'Tab') return;
+      const list = controls();
+      const first = list[0] ?? panel, last = list.at(-1) ?? panel;
+      if (!panel.contains(document.activeElement) || (!event.shiftKey && document.activeElement === last) || (event.shiftKey && document.activeElement === first) || !list.length) {
+        event.preventDefault(); (event.shiftKey ? last : first).focus({ preventScroll: true });
+      }
+    };
+    const onFocus = (event: FocusEvent) => { if (!panel.contains(event.target as Node)) focusFirst(); };
+    focusFirst();
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('focusin', onFocus);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('focusin', onFocus);
+      if (opener?.isConnected) opener.focus({ preventScroll: true });
+    };
+  }, [drawer]);
 
   function toggle() {
     setCollapsed(c => { try { localStorage.setItem(COLLAPSE_KEY, c ? '0' : '1'); } catch { /* storage unavailable */ } return !c; });
@@ -233,7 +274,7 @@ export function SasukeNav() {
     <>
       <aside className="sk-sidebar" aria-label="SASUKE 導覽">{panel}</aside>
       <header className="sk-top">
-        <button type="button" className="sk-icon" onClick={() => setDrawer(true)} aria-label="開啟選單"><Icon name="menu" size={20} /></button>
+        <button ref={drawerOpener} type="button" className="sk-icon" onClick={() => setDrawer(true)} aria-label="開啟選單" aria-expanded={drawer} aria-controls={drawerId}><Icon name="menu" size={20} /></button>
         <Link href="/" className="sk-top-title"><SasukeMark size={22} state={agentState} /><b>SASUKE</b></Link>
       </header>
       <div className="sk-water-slot">
@@ -247,9 +288,9 @@ export function SasukeNav() {
       </div>
       {history && <HistoryDialog onClose={closeHistory} />}
       {drawer && <div className="sk-scrim" onClick={close} />}
-      <aside className={`sk-drawer ${drawer ? 'open' : ''}`} aria-hidden={!drawer} aria-label="SASUKE 選單">
-        <button type="button" className="sk-icon sk-drawer-close" onClick={close} aria-label="關閉選單"><Icon name="close" size={18} /></button>
-        {drawer && panel}
+      <aside ref={drawerPanel} id={drawerId} className={`sk-drawer ${drawer ? 'open' : ''}`} role={drawer ? 'dialog' : undefined} aria-modal={drawer || undefined} aria-hidden={!drawer} inert={!drawer} tabIndex={-1} aria-label="SASUKE 選單">
+        {drawer && <><button type="button" className="sk-icon sk-drawer-close" onClick={close} aria-label="關閉選單"><Icon name="close" size={18} /></button>
+        {panel}</>}
       </aside>
     </>
   );
