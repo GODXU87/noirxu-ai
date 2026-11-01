@@ -175,6 +175,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   const [enterHint, setEnterHint] = useState(false);
   const [menu, setMenu] = useState(false);
   const menuBox = useRef<HTMLDivElement>(null);
+  const menuOpener = useRef<HTMLButtonElement>(null);
   const [pending, setPending] = useState<string[]>([]);
   const feedEnd = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
@@ -446,7 +447,13 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   useEffect(() => {
     if (!menu) return;
     const close = (e: MouseEvent) => { if (menuBox.current && !menuBox.current.contains(e.target as Node)) setMenu(false); };
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenu(false); };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      // Restore keyboard focus before the focused settings control is unmounted.
+      // This is a non-modal popover: never steal focus from a control outside it.
+      if (menuBox.current?.contains(document.activeElement)) menuOpener.current?.focus();
+      setMenu(false);
+    };
     document.addEventListener('click', close);
     document.addEventListener('keydown', esc);
     return () => { document.removeEventListener('click', close); document.removeEventListener('keydown', esc); };
@@ -574,7 +581,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
             <textarea ref={input} value={text} onChange={e => { setText(e.target.value); setPaletteDismissed(false); }} rows={1} aria-label="訊息" onKeyDown={onKeyDown} onCompositionEnd={() => { composedAt.current = Date.now(); }} onInput={() => { armed.current = 0; setEnterHint(false); }} placeholder={placeholder} />
             <div className="sk-tools">
               <div className="sk-agent-menu" ref={menuBox}>
-                <button type="button" className="sk-agent" onClick={() => setMenu(m => !m)} aria-expanded={menu} aria-haspopup="dialog" data-tip="模型與回覆風格">
+                <button ref={menuOpener} type="button" className="sk-agent" onClick={() => setMenu(m => !m)} aria-expanded={menu} aria-haspopup="dialog" data-tip="模型與回覆風格">
                   <span className={ai ? 'sk-pulse' : 'sk-pulse off'} />SASUKE<Icon name="arrow" size={12} className="sk-agent-caret" />
                 </button>
                 {menu && (
