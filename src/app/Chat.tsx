@@ -159,6 +159,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   const mounted = useRef(true);
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
   const [uncertainDraft,setUncertainDraft]=useState(false);
+  const [failureNotice, setFailureNotice] = useState('');
   const failed = useRef(false);
   const [contextOpen, setContextOpen] = useState(false);
   const [paletteDismissed, setPaletteDismissed] = useState(false);
@@ -316,6 +317,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
     if (!message || sending.current) return;
     sending.current = true; failed.current = false; pendingDraft.current=message;
     setUncertainDraft(false);
+    setFailureNotice('');
     setBusy('正在送出');
     if (voice.listening) voice.stop();
     setText('');
@@ -340,6 +342,8 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   function preserveFailedDraft(message: string) {
     failed.current = true;
     setUncertainDraft(true);
+    // Announce a safe summary, never server details, request text or a stack trace.
+    setFailureNotice('本次處理未能確認完成。請先核對紀錄，避免重複操作；草稿仍保留。');
     setText(current => current || message);
   }
 
@@ -503,6 +507,10 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    // The input method owns candidate keys, even while the command palette is open.
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+    // Some browsers finish composition just before dispatching its confirming Enter.
+    if (e.key === 'Enter' && Date.now() - composedAt.current < 80) return;
     if (palette.length) {
       if (e.key === 'ArrowDown') { e.preventDefault(); setPaletteIndex(i => (i + 1) % palette.length); return; }
       if (e.key === 'ArrowUp') { e.preventDefault(); setPaletteIndex(i => (i - 1 + palette.length) % palette.length); return; }
@@ -515,8 +523,6 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
       if (e.key === 'Escape') { e.preventDefault(); setPaletteDismissed(true); return; }
     }
     if (e.key !== 'Enter' || e.shiftKey) { armed.current = 0; return; }
-    // Enter while an input method is composing (also Safari's keyCode 229 case) only confirms the text.
-    if (e.nativeEvent.isComposing || e.keyCode === 229 || Date.now() - composedAt.current < 80) return;
     e.preventDefault();
     // Phones send with one Enter. On a computer the first Enter can be the end of switching
     // input or typing numbers, so it takes a second Enter (or Cmd/Ctrl+Enter) to send.
@@ -629,10 +635,14 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
     </div>
   );
 
+  const outcomeNotice = uncertainDraft ? failureNotice || '上次處理結果尚未確認，請先核對紀錄再決定是否重新送出。草稿仍保留。' : '';
+
   return (
     <>
+      {/* Keep one live region mounted before async updates; history and error details are not live. */}
+      <span role="status" aria-live="polite" aria-atomic="true" style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clipPath: 'inset(50%)', whiteSpace: 'nowrap', border: 0 }}>{outcomeNotice}</span>
       <main className={empty ? 'feed home' : 'feed'} aria-label="對話內容">
-        {uncertainDraft && <p className="banner storage-warning" role="status">上次處理結果尚未確認，請先核對紀錄再決定是否重新送出。草稿仍保留。</p>}
+        {uncertainDraft && <p className="banner storage-warning">{outcomeNotice}</p>}
         {draftError && <p className="banner storage-warning" role="alert">草稿目前無法保存在此分頁，離開前請先自行保留文字。</p>}
         {storageError && <p className="banner storage-warning" role="alert">{storageError}</p>}
         {empty && sasuke && (
