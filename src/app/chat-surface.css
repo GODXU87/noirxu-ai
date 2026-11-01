@@ -1,19 +1,19 @@
 /* Chat-only editorial surface. Loaded after HUD so other tools retain their theme.
    Repeated ui-sasuke specificity deliberately outranks legacy HUD home selectors. */
-html.ui-sasuke:has(.chat-page) body { background:#101214; }
+html.ui-sasuke:has(.chat-page) body { background:#151617; }
 html.ui-sasuke:has(.chat-page) body::before,
 html.ui-sasuke:has(.chat-page) body::after { display:none; }
-.ui-sasuke.ui-sasuke .chat-page { --accent:#b6d7d1; --cyan:#b6d7d1; color:#e7e8e8; }
-.ui-sasuke.ui-sasuke .chat-page .feed { max-width:760px; gap:28px; padding-top:42px; }
+.ui-sasuke.ui-sasuke .chat-page { --accent:#d9d5ca; --cyan:#d9d5ca; --line:rgba(220,218,209,.12); --line-strong:rgba(220,218,209,.22); color:#e7e6e1; }
+.ui-sasuke.ui-sasuke .chat-page .feed { max-width:720px; gap:36px; padding-top:64px; }
 .ui-sasuke.ui-sasuke .chat-page .feed.home { min-height:0; align-items:stretch; justify-content:flex-start; padding-top:clamp(68px,12vh,120px); }
-.ui-sasuke.ui-sasuke .chat-page .sk-home { max-width:720px; width:100%; padding:0; }
+.ui-sasuke.ui-sasuke .chat-page .sk-home { max-width:680px; width:100%; padding:0; gap:0; }
 .ui-sasuke.ui-sasuke .chat-page .sk-home-name { color:#a4aeae; font-size:13px; letter-spacing:.08em; margin:0 0 14px; }
-.ui-sasuke.ui-sasuke .chat-page .sk-hello { color:#f1f1ed; font-size:clamp(29px,3.2vw,42px); font-weight:550; letter-spacing:.025em; line-height:1.35; text-shadow:none; margin:0 0 16px; }
-.ui-sasuke.ui-sasuke .chat-page .sk-ask { color:#a2aaaa; font-size:15px; line-height:1.8; letter-spacing:.025em; margin:0 0 32px; }
-.ui-sasuke.ui-sasuke .chat-page .composer { background:linear-gradient(transparent,#101214 30%); }
+.ui-sasuke.ui-sasuke .chat-page .sk-hello { color:#f1f1ed; font-size:clamp(32px,3.8vw,48px); font-weight:500; letter-spacing:-.035em; line-height:1.3; text-shadow:none; margin:0 0 16px; }
+.ui-sasuke.ui-sasuke .chat-page .sk-ask { color:#a2aaaa; font-size:15px; line-height:1.8; letter-spacing:.025em; margin:0 0 40px; }
+.ui-sasuke.ui-sasuke .chat-page .composer { background:linear-gradient(transparent,#151617 30%); }
 .ui-sasuke.ui-sasuke .chat-page .composer.docked-center { position:static; background:none; padding:0; margin:0; }
-.ui-sasuke.ui-sasuke .chat-page .composer form.sk-composer { border:0; border-radius:8px; background:#15191b; box-shadow:none; padding:14px 16px 8px; gap:4px; transition:background .18s ease; }
-.ui-sasuke.ui-sasuke .chat-page .composer form.sk-composer:focus-within { border:0; background:#202628; box-shadow:0 0 0 1px #809e98; }
+.ui-sasuke.ui-sasuke .chat-page .composer form.sk-composer { border:0; border-top:1px solid #515350; border-radius:0; background:transparent; box-shadow:none; padding:18px 0 8px; gap:12px; transition:border-color .18s ease; }
+.ui-sasuke.ui-sasuke .chat-page .composer form.sk-composer:focus-within { border:0; border-top:1px solid #e5dfd0; background:transparent; box-shadow:0 -1px 0 #e5dfd0; }
 .ui-sasuke.ui-sasuke .chat-page .composer form.sk-composer::before,
 .ui-sasuke.ui-sasuke .chat-page .composer form.sk-composer::after { display:none; }
 .ui-sasuke.ui-sasuke .chat-page .composer form.sk-composer textarea { min-height:28px; font-size:16px; line-height:1.65; letter-spacing:.015em; color:#f1f1ed; padding:0; }
@@ -21,18 +21,18 @@ html.ui-sasuke:has(.chat-page) body::after { display:none; }
 .ui-sasuke.ui-sasuke .chat-page .sk-tools { margin-top:0; gap:10px; }
 .ui-sasuke.ui-sasuke .chat-page button { box-shadow:none; text-shadow:none; }
 .ui-sasuke.ui-sasuke .chat-page .sk-agent { color:#b5bfbd; background:transparent; border:0; font-size:11px; letter-spacing:.08em; padding-left:0; }
-.ui-sasuke.ui-sasuke .chat-page .sk-send { width:40px; height:40px; border:0; background:#c2ded5; color:#15201d; box-shadow:none; }
+.ui-sasuke.ui-sasuke .chat-page .sk-send { width:40px; height:40px; border:0; background:#e1ddcf; color:#252623; box-shadow:none; }
 .ui-sasuke.ui-sasuke .chat-page .sk-send:disabled { background:#30383a; color:#82918e; opacity:1; }
-.ui-sasuke.ui-sasuke .chat-page .sk-send:not(:disabled):hover { background:#d9eee6; transform:translateY(-1px); }
+.ui-sasuke.ui-sasuke .chat-page .sk-send:not(:disabled):hover { background:#f4f0e4; transform:translateY(-1px); }
 .ui-sasuke.ui-sasuke .chat-page .sk-send:not(:disabled):active { transform:scale(.94); }
 .ui-sasuke.ui-sasuke .chat-page .home-context { margin-top:22px; border:0; background:none; }
 .ui-sasuke.ui-sasuke .chat-page .home-context summary { padding:12px 0; color:#9ca8a7; font-size:13px; }
-.ui-sasuke.ui-sasuke .chat-page .msg.user { background:none; border:0; border-right:2px solid #526a63; border-radius:0; box-shadow:none; color:#e5eae7; padding:4px 18px; font-size:16px; line-height:1.75; max-width:85%; }
-.ui-sasuke.ui-sasuke .chat-page .agent-turn { grid-template-columns:28px minmax(0,1fr); gap:16px; }
-.ui-sasuke.ui-sasuke .chat-page .agent-avatar { width:28px; height:28px; background:none; border:0; box-shadow:none; margin-top:5px; color:#b5d5ce; }
+.ui-sasuke.ui-sasuke .chat-page .msg.user { align-self:stretch; background:none; border:0; border-radius:0; box-shadow:none; color:#e9e6df; padding:0; font-size:20px; font-weight:450; line-height:1.7; max-width:100%; }
+.ui-sasuke.ui-sasuke .chat-page .agent-turn { grid-template-columns:20px minmax(0,1fr); gap:20px; }
+.ui-sasuke.ui-sasuke .chat-page .agent-avatar { width:20px; height:20px; background:none; border:0; box-shadow:none; margin-top:5px; color:#b5d5ce; }
 .ui-sasuke.ui-sasuke .chat-page .agent-body { min-width:0; }
 .ui-sasuke.ui-sasuke .chat-page .msg.assistant { background:none; border:0; box-shadow:none; padding:0; }
-.ui-sasuke.ui-sasuke .chat-page .rich { font-size:16px; line-height:1.9; letter-spacing:.015em; color:#d5dcda; }
+.ui-sasuke.ui-sasuke .chat-page .rich { font-size:17px; line-height:1.95; letter-spacing:.005em; color:#d0d0ca; }
 .ui-sasuke.ui-sasuke .chat-page .rich strong { color:#f0f2ee; text-shadow:none; font-weight:600; }
 .ui-sasuke.ui-sasuke .chat-page .msg-foot { border:0; color:#9caaa7; margin-top:18px; opacity:1; }
 .ui-sasuke.ui-sasuke .chat-page .sk-working { color:#b6c7c2; }
@@ -40,14 +40,14 @@ html.ui-sasuke:has(.chat-page) body::after { display:none; }
 .ui-sasuke.ui-sasuke .chat-page :is(button,a,summary,select):focus-visible { outline:2px solid #b6d7d1; outline-offset:4px; }
 @media(max-width:760px) {
  .ui-sasuke.ui-sasuke .chat-page .feed.home { padding-top:36px; }
- .ui-sasuke.ui-sasuke .chat-page .feed { padding-top:20px; gap:24px; }
- .ui-sasuke.ui-sasuke .chat-page .sk-hello { font-size:29px; letter-spacing:.015em; }
+ .ui-sasuke.ui-sasuke .chat-page .feed { padding-top:28px; gap:30px; }
+ .ui-sasuke.ui-sasuke .chat-page .sk-hello { font-size:32px; letter-spacing:-.03em; }
  .ui-sasuke.ui-sasuke .chat-page .sk-ask { font-size:14px; margin-bottom:26px; }
- .ui-sasuke.ui-sasuke .chat-page .composer form.sk-composer { padding:12px 12px 8px; border-radius:8px; }
- .ui-sasuke.ui-sasuke .chat-page .agent-turn { grid-template-columns:24px minmax(0,1fr); gap:10px; }
- .ui-sasuke.ui-sasuke .chat-page .agent-avatar { width:24px; height:24px; }
- .ui-sasuke.ui-sasuke .chat-page .msg.user { max-width:92%; padding:4px 14px; }
- .ui-sasuke.ui-sasuke .chat-page .rich { font-size:15px; line-height:1.85; }
+ .ui-sasuke.ui-sasuke .chat-page .composer form.sk-composer { padding:16px 0 8px; border-radius:0; }
+ .ui-sasuke.ui-sasuke .chat-page .agent-turn { grid-template-columns:16px minmax(0,1fr); gap:12px; }
+ .ui-sasuke.ui-sasuke .chat-page .agent-avatar { width:16px; height:16px; }
+ .ui-sasuke.ui-sasuke .chat-page .msg.user { max-width:100%; padding:0; font-size:18px; }
+ .ui-sasuke.ui-sasuke .chat-page .rich { font-size:16px; line-height:1.9; }
 }
 @media(prefers-reduced-motion:reduce) {
  .ui-sasuke.ui-sasuke .chat-page .composer form.sk-composer,.ui-sasuke.ui-sasuke .chat-page .sk-send { transition:none; transform:none; }
@@ -63,3 +63,47 @@ html.ui-sasuke:has(.chat-page) body::after { display:none; }
 .ui-sasuke.ui-sasuke .chat-page .msg-foot .msg-via { flex-shrink:0; white-space:nowrap; }
 .ui-sasuke.ui-sasuke .chat-page .msg-rate { min-width:0; }
 .ui-sasuke.ui-sasuke .chat-page .msg-rate-status { white-space:normal; overflow-wrap:anywhere; }
+
+/* A reading canvas, not stacked HUD panels. Semantic warnings retain their rail. */
+.ui-sasuke.ui-sasuke .chat-page .msg.user::before { content:"你"; display:block; margin-bottom:10px; font-size:12px; line-height:1.5; font-weight:500; letter-spacing:.12em; color:#a3a49e; }
+.ui-sasuke.ui-sasuke .chat-page .agent-avatar svg { width:100%; height:100%; filter:grayscale(1); opacity:.7; }
+.ui-sasuke.ui-sasuke .chat-page .rich p { margin-bottom:20px; }
+.ui-sasuke.ui-sasuke .chat-page .rich h4 { display:block; margin:28px 0 12px; font-size:18px; line-height:1.55; letter-spacing:0; font-weight:550; }
+.ui-sasuke.ui-sasuke .chat-page .rich h4::before { display:none; }
+.ui-sasuke.ui-sasuke .chat-page .rich :is(ul,ol) { margin-bottom:20px; }
+.ui-sasuke.ui-sasuke .chat-page .rich li { padding-left:3px; margin:7px 0; }
+.ui-sasuke.ui-sasuke .chat-page .rich-table { border:0; border-radius:0; background:none; margin:20px 0; }
+.ui-sasuke.ui-sasuke .chat-page .rich-table th { background:none; color:#b9bcb4; letter-spacing:.02em; }
+.ui-sasuke.ui-sasuke .chat-page .rich-table td { font-family:inherit; font-size:14px; }
+.ui-sasuke.ui-sasuke .chat-page .rich-note { background:none; border-radius:0; padding:2px 0 2px 16px; }
+.ui-sasuke.ui-sasuke .chat-page :is(.tool,.brief,.card,.panel,.tg-tile) { background:none; border:0; border-radius:0; box-shadow:none; }
+.ui-sasuke.ui-sasuke .chat-page :is(.tool,.brief,.card,.panel,.tg-tile,.proposal)::after { display:none; }
+.ui-sasuke.ui-sasuke .chat-page .tool { padding:0; gap:16px; }
+.ui-sasuke.ui-sasuke .chat-page .brief { padding:0; }
+.ui-sasuke.ui-sasuke .chat-page .proposal { background:none; border:0; border-left:2px solid var(--warn); border-radius:0; box-shadow:none; padding:6px 0 6px 20px; }
+.ui-sasuke.ui-sasuke .chat-page .proposal pre { background:none; padding:0; border-radius:0; }
+.ui-sasuke.ui-sasuke .chat-page .banner { width:100%; max-width:none; margin:0; padding:8px 0 8px 16px; border:0; border-left:2px solid var(--warn); border-radius:0; background:none; line-height:1.7; }
+.ui-sasuke.ui-sasuke .chat-page .msg.error { border-left:2px solid var(--danger); padding:4px 0 4px 16px; line-height:1.8; }
+.ui-sasuke.ui-sasuke .chat-page .msg.error .retry { min-height:44px; border-radius:4px; }
+.ui-sasuke.ui-sasuke .chat-page .msg-via::before { box-shadow:none; }
+.ui-sasuke.ui-sasuke .chat-page .composer-inner { max-width:720px; }
+.ui-sasuke.ui-sasuke .chat-page .sk-send { min-width:44px; min-height:44px; width:44px; height:44px; border-radius:50%; }
+html.ui-sasuke:has(.chat-page) .sk-top { background:#151617f2; border:0; box-shadow:none; }
+html.ui-sasuke:has(.chat-page) .sk-top-title { color:#dddcd4; letter-spacing:.14em; }
+html.ui-sasuke:has(.chat-page) .sk-head-btn { width:44px; height:44px; background:transparent; box-shadow:none; border:0; color:#c3c5bd; }
+html.ui-sasuke:has(.chat-page) .sk-head-btn:hover:not(:disabled) { background:#ffffff0a; }
+html.ui-sasuke:has(.chat-page) .sk-head-btn:focus-visible { outline:2px solid #d9d5ca; outline-offset:2px; }
+@media(max-width:760px) {
+ .ui-sasuke.ui-sasuke .chat-page .rich h4 { font-size:17px; margin-top:24px; }
+ .ui-sasuke.ui-sasuke .chat-page .rich p { margin-bottom:16px; }
+ .ui-sasuke.ui-sasuke .chat-page .proposal { padding-left:14px; }
+ html.ui-sasuke:has(.chat-page) .sk-water-slot { top:calc(5px + env(safe-area-inset-top)); right:8px; gap:2px; }
+}
+.ui-sasuke.ui-sasuke .chat-page .stats .stat { background:none; border:0; border-radius:0; padding:8px 0; box-shadow:none; }
+.ui-sasuke.ui-sasuke .chat-page .tool details { border:0; background:none; }
+.ui-sasuke.ui-sasuke .chat-page .tool details summary { color:#a6ada5; }
+.ui-sasuke.ui-sasuke .chat-page .tg-tile { padding:12px 0; border-top:1px solid var(--line); }
+.ui-sasuke.ui-sasuke .chat-page .tg-tile:hover:not(:disabled) { background:#ffffff05; }
+.ui-sasuke.ui-sasuke .chat-page .proposal .actions button { min-height:44px; border-radius:4px; }
+.ui-sasuke.ui-sasuke .chat-page .proposal .actions .primary { background:#e1ddcf; color:#252623; border:0; }
+.ui-sasuke.ui-sasuke .chat-page .proposal .actions .primary:hover:not(:disabled) { background:#f4f0e4; }
