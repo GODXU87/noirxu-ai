@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import '@fontsource-variable/inter';
 import './globals.css';
 import './hud.css';
+import './chat-surface.css';
 import { ServiceWorker } from './components/ServiceWorker';
 import { ViewportSync } from './components/ViewportSync';
 import { PushToast } from './components/PushToast';
