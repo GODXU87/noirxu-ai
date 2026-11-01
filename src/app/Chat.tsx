@@ -89,12 +89,6 @@ function currentStyle(fallback: ReplyStyle): ReplyStyle {
   try { const s = localStorage.getItem(STYLE_KEY) as ReplyStyle | null; return s && STYLES.some(([id]) => id === s) ? s : fallback; } catch { return fallback; }
 }
 
-/** The question under the greeting, by time of day (Taipei). */
-function askLine() {
-  const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Taipei', hour: '2-digit', hour12: false }).format(new Date()));
-  return hour < 5 ? '夜深了，還有什麼需要我處理的？' : hour < 11 ? '今天早上有什麼需要我處理的？' : hour < 14 ? '中午有什麼需要我處理的？' : hour < 18 ? '今天下午有什麼需要我處理的？' : '今晚有什麼需要我處理的？';
-}
-
 function greeting() {
   const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Taipei', hour: '2-digit', hour12: false }).format(new Date()));
   return hour < 5 ? '夜深了' : hour < 11 ? '早安' : hour < 14 ? '午安' : hour < 18 ? '午後好' : '晚上好';
@@ -175,6 +169,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   const [enterHint, setEnterHint] = useState(false);
   const [menu, setMenu] = useState(false);
   const menuBox = useRef<HTMLDivElement>(null);
+  const menuOpener = useRef<HTMLButtonElement>(null);
   const [pending, setPending] = useState<string[]>([]);
   const feedEnd = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
@@ -446,7 +441,13 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   useEffect(() => {
     if (!menu) return;
     const close = (e: MouseEvent) => { if (menuBox.current && !menuBox.current.contains(e.target as Node)) setMenu(false); };
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenu(false); };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      // Restore keyboard focus before the focused settings control is unmounted.
+      // This is a non-modal popover: never steal focus from a control outside it.
+      if (menuBox.current?.contains(document.activeElement)) menuOpener.current?.focus();
+      setMenu(false);
+    };
     document.addEventListener('click', close);
     document.addEventListener('keydown', esc);
     return () => { document.removeEventListener('click', close); document.removeEventListener('keydown', esc); };
@@ -552,7 +553,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   }
 
   const newConversation = () => { if (sasuke) { router.push(newConversationHref()); return; } setItems([]); setHistory([]); setNotes([]); };
-  const placeholder = !features.commands ? '交代我一件事…' : empty ? '交代我一件事，或輸入 / 使用快捷指令' : '繼續交代，或輸入 /';
+  const placeholder = sasuke ? (features.commands ? '輸入訊息 或 / 選指令' : empty ? '寫下你的問題或想法…' : '繼續對話…') : !features.commands ? '交代我一件事…' : empty ? '交代我一件事，或輸入 / 使用快捷指令' : '繼續交代，或輸入 /';
 
   const composer = (
     <div className={empty ? 'composer docked-center' : 'composer'}>
@@ -574,7 +575,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
             <textarea ref={input} value={text} onChange={e => { setText(e.target.value); setPaletteDismissed(false); }} rows={1} aria-label="訊息" onKeyDown={onKeyDown} onCompositionEnd={() => { composedAt.current = Date.now(); }} onInput={() => { armed.current = 0; setEnterHint(false); }} placeholder={placeholder} />
             <div className="sk-tools">
               <div className="sk-agent-menu" ref={menuBox}>
-                <button type="button" className="sk-agent" onClick={() => setMenu(m => !m)} aria-expanded={menu} aria-haspopup="dialog" data-tip="模型與回覆風格">
+                <button ref={menuOpener} type="button" className="sk-agent" onClick={() => setMenu(m => !m)} aria-expanded={menu} aria-haspopup="dialog" data-tip="模型與回覆風格">
                   <span className={ai ? 'sk-pulse' : 'sk-pulse off'} />SASUKE<Icon name="arrow" size={12} className="sk-agent-caret" />
                 </button>
                 {menu && (
@@ -610,15 +611,15 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
 
   return (
     <>
-      <main className={empty ? 'feed home' : 'feed'}>
+      <main className={empty ? 'feed home' : 'feed'} aria-label="對話內容">
         {uncertainDraft && <p className="banner storage-warning" role="status">上次處理結果尚未確認，請先核對紀錄再決定是否重新送出。草稿仍保留。</p>}
         {draftError && <p className="banner storage-warning" role="alert">草稿目前無法保存在此分頁，離開前請先自行保留文字。</p>}
         {storageError && <p className="banner storage-warning" role="alert">{storageError}</p>}
         {empty && sasuke && (
           <section className="sk-home">
-            <p className="sk-home-name">SASUKE · 個人助理</p>
-            <h1 className="sk-hello">{greeting()}，Sir。</h1>
-            <p className="sk-ask">{askLine()}</p>
+            <p className="sk-home-name">{greeting()} Sir</p>
+            <h1 className="sk-hello">今天想完成什麼</h1>
+            <p className="sk-ask">從一個問題開始 或把待辦交給我</p>
             {composer}
             <details className="home-context" onToggle={event => setContextOpen(event.currentTarget.open)}>
               <summary>天氣與身體<span aria-hidden="true">＋</span></summary>
