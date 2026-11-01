@@ -16,7 +16,7 @@ import { callTool, ProposalCard, RichText, ToolCard, type InvokeResult } from '.
 
 type Item =
   | { kind: 'user'; text: string }
-  | { kind: 'assistant'; text: string; via?: string; route?: string; rated?: 'up' | 'down' }
+  | { kind: 'assistant'; text: string; via?: string; route?: string; rated?: 'up' | 'down'; feedback?: 'pending' | 'unknown' | 'rejected' }
   | { kind: 'error'; text: string; retry?: string }
   | { kind: 'tool'; result: InvokeResult }
   | { kind: 'notice'; text: string }
@@ -129,14 +129,16 @@ function turns(items: Item[]) {
   return out;
 }
 
-function Rating({ rated, onRate }: { rated?: 'up' | 'down'; onRate: (rating: 'up' | 'down') => void }) {
+function Rating({ rated, feedback, onRate }: { rated?: 'up' | 'down'; feedback?: 'pending' | 'unknown' | 'rejected'; onRate: (rating: 'up' | 'down') => void }) {
   return (
     <span className="msg-rate" role="group" aria-label="評分這則回覆">
       {(['up', 'down'] as const).map(r => (
-        <button key={r} type="button" className={rated === r ? 'is-on' : undefined} disabled={Boolean(rated)} aria-pressed={rated === r} aria-label={r === 'up' ? '回覆有幫助' : '回覆不好'} onClick={() => onRate(r)}>
+        <button key={r} type="button" className={rated === r ? 'is-on' : undefined} disabled={Boolean(rated || (feedback && feedback !== 'rejected'))} aria-pressed={rated === r} aria-label={r === 'up' ? '回覆有幫助' : '回覆不好'} onClick={() => onRate(r)}>
           <Icon name={r === 'up' ? 'thumb-up' : 'thumb-down'} size={14} />
         </button>
       ))}
+      {feedback && <span role="status" className="msg-rate-status">{feedback === 'pending' ? '回饋傳送中' : feedback === 'rejected' ? '伺服器拒絕回饋 你可以稍後再試' : '無法確認回饋是否收到 為避免重複不會自動重送'}</span>}
+      {rated && <span role="status" className="msg-rate-status">回饋已收到</span>}
     </span>
   );
 }
@@ -170,6 +172,9 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   const [menu, setMenu] = useState(false);
   const menuBox = useRef<HTMLDivElement>(null);
   const menuOpener = useRef<HTMLButtonElement>(null);
+  const ratingLocks = useRef(new Set<number>());
+  const conversationGeneration = useRef(0);
+  useEffect(() => () => { conversationGeneration.current++; ratingLocks.current.clear(); }, []);
   const [pending, setPending] = useState<string[]>([]);
   const feedEnd = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
@@ -256,7 +261,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
     } else {
       saved = load();
     }
-    if (saved) { setItems(saved.items); setHistory(saved.history); setNotes(saved.notes); }
+    if (saved) { setItems(saved.items.map(item => item.kind === 'assistant' && item.feedback === 'pending' ? { ...item, feedback: 'unknown' } : item)); setHistory(saved.history); setNotes(saved.notes); }
     try { const s = localStorage.getItem(STYLE_KEY) as ReplyStyle | null; if (s && STYLES.some(([id]) => id === s)) setStyle(s); } catch { /* storage unavailable */ }
   }, []);
 
@@ -420,11 +425,26 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   /** 👍 / 👎 on a reply, for the quality self-check. One rating per reply. */
   async function rate(index: number, rating: 'up' | 'down') {
     const item = items[index];
-    if (item?.kind !== 'assistant' || item.rated) return;
-    setItems(prev => prev.map((it, i) => (i === index && it.kind === 'assistant' ? { ...it, rated: rating } : it)));
-    const response = await fetch('/api/quality', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rating, text: item.text.slice(0, 600), source: item.route }) }).catch(() => null);
-    if (!response?.ok) setItems(prev => prev.map((it, i) => (i === index && it.kind === 'assistant' ? { ...it, rated: undefined } : it)));
-    else if (rating === 'down') setItems(prev => [...prev, { kind: 'notice', text: '收到，Sir。這則已記下，週報的自我檢查會列出來；若方便，直接告訴我哪裡不對，我會修正。' }]);
+    if (item?.kind !== 'assistant' || item.rated || (item.feedback && item.feedback !== 'rejected') || ratingLocks.current.has(index)) return;
+    // Synchronous guard: React state alone cannot block two clicks in the same tick.
+    const generation = conversationGeneration.current;
+    ratingLocks.current.add(index);
+    setItems(prev => prev.map((it, i) => i === index && it.kind === 'assistant' ? { ...it, feedback: 'pending' } : it));
+    let confirmed = false;
+    let rejected = false;
+    try {
+      const response = await fetch('/api/quality', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rating, text: item.text.slice(0, 600), source: item.route }) });
+      rejected = response.status >= 400 && response.status < 500;
+      const result = await response.json().catch(() => null);
+      confirmed = response.ok && result?.ok === true;
+    } catch { /* Transport loss can happen after the server records the rating. */ }
+    if (conversationGeneration.current !== generation) return;
+    // Never advertise success or silently invite another write on an unknown outcome.
+    setItems(prev => prev.map((it, i) => i === index && it.kind === 'assistant'
+      ? confirmed ? { ...it, rated: rating, feedback: undefined } : { ...it, feedback: rejected ? 'rejected' : 'unknown' }
+      : it));
+    if (rejected) ratingLocks.current.delete(index);
+    if (confirmed && rating === 'down') setItems(prev => [...prev, { kind: 'notice', text: '收到，Sir。這則已記下，週報的自我檢查會列出來；若方便，直接告訴我哪裡不對，我會修正。' }]);
   }
 
   function retry(index: number, message: string) {
@@ -531,7 +551,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
             <div className="msg-foot">
               {item.via && <span className="msg-via">{item.via}</span>}
               {canSpeak && features.voice && <SpeakButton active={speakingAt === index && speech.speaking} onClick={() => speakItem(index, item.text)} />}
-              {features.quality && <Rating rated={item.rated} onRate={rating => rate(index, rating)} />}
+              {features.quality && <Rating rated={item.rated} feedback={item.feedback} onRate={rating => rate(index, rating)} />}
             </div>
           )}
         </div>
@@ -552,7 +572,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
     return <div key={index} className={`msg ${item.kind}`}>{item.text}</div>;
   }
 
-  const newConversation = () => { if (sasuke) { router.push(newConversationHref()); return; } setItems([]); setHistory([]); setNotes([]); };
+  const newConversation = () => { if (sasuke) { router.push(newConversationHref()); return; } conversationGeneration.current++; ratingLocks.current.clear(); setItems([]); setHistory([]); setNotes([]); };
   const placeholder = sasuke ? (features.commands ? '輸入訊息 或 / 選指令' : empty ? '寫下你的問題或想法…' : '繼續對話…') : !features.commands ? '交代我一件事…' : empty ? '交代我一件事，或輸入 / 使用快捷指令' : '繼續交代，或輸入 /';
 
   const composer = (

@@ -58,3 +58,8 @@ html.ui-sasuke:has(.chat-page) body::after { display:none; }
 .ui-sasuke.ui-sasuke .chat-page .msg-rate button svg { width:18px; height:18px; }
 .ui-sasuke.ui-sasuke .chat-page .msg-rate button:hover:not(:disabled) { color:#e4f0e9; background:transparent; }
 .ui-sasuke.ui-sasuke .chat-page .msg-rate button.is-on { color:#c2ded5; }
+.ui-sasuke.ui-sasuke .chat-page .msg-rate { flex-wrap:wrap; justify-content:flex-end; }
+.ui-sasuke.ui-sasuke .chat-page .msg-rate-status { flex-basis:100%; max-width:28em; color:#aabbb5; font-size:12px; line-height:1.6; text-align:right; }
+.ui-sasuke.ui-sasuke .chat-page .msg-foot .msg-via { flex-shrink:0; white-space:nowrap; }
+.ui-sasuke.ui-sasuke .chat-page .msg-rate { min-width:0; }
+.ui-sasuke.ui-sasuke .chat-page .msg-rate-status { white-space:normal; overflow-wrap:anywhere; }
