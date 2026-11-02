@@ -92,7 +92,10 @@ describe('ledger.expense.create', () => {
     db.rpcHandlers.ledger_save_transaction_v084 = () => ({ data: null, error: { code: '23503', message: 'INVALID_TRANSACTION_CATEGORY' } });
     const proposal = await executor.invoke('ledger.expense.create', { amount: 1, category_id: FOOD, occurred_on: '2026-10-21', payment_method: '現金' }, ctx);
     if (proposal.status !== 'confirmation_required') throw new Error('unreachable');
-    expect(await executor.confirm(proposal.proposalId, ctx)).toMatchObject({ status: 'failed', code: 'UPSTREAM_REJECTED', message: 'INVALID_TRANSACTION_CATEGORY' });
+    const result = await executor.confirm(proposal.proposalId, ctx);
+    expect(result).toMatchObject({ status: 'failed', code: 'UPSTREAM_REJECTED' });
+    expect(result).toHaveProperty('message', expect.stringContaining('來源系統拒絕'));
+    expect(JSON.stringify(result)).not.toContain('INVALID_TRANSACTION_CATEGORY');
   });
 
   it('a network failure during the write becomes outcome_unknown, not success or a silent retry', async () => {

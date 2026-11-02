@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { ToolError, safeUpstreamMessage } from '@/hub/errors';
+import { ToolError } from '@/hub/errors';
 import type { CredentialStore } from './credentials';
 
 export interface SupabaseProjectConfig {
@@ -112,7 +112,8 @@ function isNetworkFailure(error: PostgrestLikeError): boolean {
  */
 export function mapSupabaseError(error: PostgrestLikeError, mode: 'read' | 'write'): ToolError {
   const code = String(error.code ?? '');
-  const message = safeUpstreamMessage(error.message);
+  // Upstream diagnostics can echo input values, SQL details or external instructions.
+  // Classify them here, but never copy their text into UI/model-facing ToolErrors.
   if (isNetworkFailure(error)) {
     return mode === 'write'
       ? new ToolError('OUTCOME_UNKNOWN', '連線中斷，無法確認來源系統是否已寫入，請先到原網站確認，不要重複送出。')
@@ -120,7 +121,9 @@ export function mapSupabaseError(error: PostgrestLikeError, mode: 'read' | 'writ
   }
   if (code === '28000' || code === 'PGRST301' || code === 'PGRST302') return new ToolError('UNAUTHORIZED', '來源系統登入已失效，請重新連接。');
   if (code === '42501') return new ToolError('FORBIDDEN', '來源系統拒絕這個操作（權限不足）。');
-  if (code === 'P0002') return new ToolError('NOT_FOUND', message || '找不到指定的紀錄。');
-  if (/^(22|23|P0)/.test(code)) return new ToolError('UPSTREAM_REJECTED', message || '來源系統拒絕了這筆資料。', { upstreamCode: code });
-  return new ToolError(mode === 'write' ? 'OUTCOME_UNKNOWN' : 'UPSTREAM_UNAVAILABLE', message || '來源系統回傳錯誤。', { upstreamCode: code });
+  if (code === 'P0002') return new ToolError('NOT_FOUND', '找不到指定的紀錄。');
+  if (/^(22|23|P0)/.test(code)) return new ToolError('UPSTREAM_REJECTED', '來源系統拒絕了這筆資料，請檢查輸入內容與原網站的限制。', { upstreamCode: code });
+  return mode === 'write'
+    ? new ToolError('OUTCOME_UNKNOWN', '來源系統回傳錯誤，無法確認是否已寫入，請先到原網站確認，不要重複送出。', { upstreamCode: code })
+    : new ToolError('UPSTREAM_UNAVAILABLE', '來源系統暫時無法提供資料。', { upstreamCode: code });
 }
