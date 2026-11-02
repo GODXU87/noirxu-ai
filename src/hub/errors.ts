@@ -42,10 +42,3 @@ export function toToolError(error: unknown): ToolError {
   if (isToolError(error)) return error;
   return new ToolError('INTERNAL', '內部錯誤，操作未完成。');
 }
-
-// Upstream error text may echo request data; keep only a short, single-line code-like prefix.
-export function safeUpstreamMessage(value: unknown): string {
-  const raw = typeof value === 'string' ? value : (value as { message?: unknown })?.message;
-  const text = String(raw ?? '').replace(/\s+/g, ' ').trim();
-  return text.slice(0, 160);
-}
