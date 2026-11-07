@@ -280,8 +280,8 @@ export function SasukeNav() {
       <div className="sk-water-slot">
         {current === 'chat' && (
           <>
-            <button type="button" className="sk-head-btn" onClick={() => setHistory(true)} aria-label="對話紀錄" data-tip="對話紀錄"><Icon name="history" size={17} /></button>
-            <button type="button" className="sk-head-btn" onClick={() => router.push(newConversationHref())} aria-label="新對話" data-tip="新對話"><Icon name="plus" size={17} /></button>
+            <button type="button" className="sk-head-btn" onClick={() => setHistory(true)} aria-label="對話紀錄" data-tip="對話紀錄"><Icon name="history" size={17} /><span className="sk-head-label">對話紀錄</span></button>
+            <button type="button" className="sk-head-btn" onClick={() => router.push(newConversationHref())} aria-label="新對話" data-tip="新對話"><Icon name="plus" size={17} /><span className="sk-head-label">新對話</span></button>
           </>
         )}
         <Inbox />

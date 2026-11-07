@@ -141,7 +141,7 @@ export function Connections({ initial, gmailResult, redirectUri, garmin = false 
         <p className="section-label">通知</p>
         <section className="card"><Notifications /></section>
         <p className="section-label">語音</p>
-        <section className="card"><VoiceSettingsCard /></section>
+        <section className="card" id="voice-settings"><VoiceSettingsCard /></section>
       </div>
     </main>
   );
