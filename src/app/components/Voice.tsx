@@ -68,31 +68,51 @@ export const STOP_WORDS = /^(結束對話|結束|停止|停|不用了|先這樣|
 
 /* ---------- Listening ---------- */
 
-export function useVoiceInput(onText: (text: string) => void, onFinal?: (text: string) => void) {
+export function useVoiceInput(onText: (text: string) => void, onFinal?: (text: string) => void, onFailure?: () => void) {
   const [supported, setSupported] = useState(false);
   const [listening, setListening] = useState(false);
   const [error, setError] = useState('');
   const rec = useRef<Recognition | null>(null);
   const onTextRef = useRef(onText);
   const onFinalRef = useRef(onFinal);
+  const onFailureRef = useRef(onFailure);
+  const mounted = useRef(false);
   onTextRef.current = onText;
   onFinalRef.current = onFinal;
+  onFailureRef.current = onFailure;
 
-  useEffect(() => { setSupported(voiceSupport(window as never).recognition); }, []);
+  useEffect(() => {
+    mounted.current = true;
+    setSupported(voiceSupport(window as never).recognition);
+    return () => {
+      mounted.current = false;
+      const previous = rec.current;
+      rec.current = null;
+      previous?.abort();
+    };
+  }, []);
 
   const stop = useCallback(() => { rec.current?.stop(); }, []);
+  // Unlike stop(), cancel never finalizes a partial utterance.
+  const cancel = useCallback(() => {
+    const previous = rec.current;
+    rec.current = null;
+    if (mounted.current) setListening(false);
+    previous?.abort();
+  }, []);
   const start = useCallback((base: string) => {
+    if (!mounted.current) return false;
+    cancel();
     const w = window as unknown as { SpeechRecognition?: RecognitionCtor; webkitSpeechRecognition?: RecognitionCtor };
     const Ctor = w.SpeechRecognition ?? w.webkitSpeechRecognition;
-    if (!Ctor) { setError(voiceSupport(window as never).reason ?? '這個瀏覽器不支援語音輸入。'); return false; }
+    if (!Ctor) { setError(voiceSupport(window as never).reason ?? '這個瀏覽器不支援語音輸入。'); onFailureRef.current?.(); return false; }
     window.speechSynthesis?.cancel();
-    rec.current?.abort();
     const r = new Ctor();
     Object.assign(r, RECOGNITION_OPTIONS);
     const prefix = base.trim() ? `${base.trim()} ` : '';
     let heard = '';
-    let failed = false;
     r.onresult = e => {
+      if (rec.current !== r || !mounted.current) return;
       let finalText = '';
       let interim = '';
       for (let i = 0; i < e.results.length; i += 1) {
@@ -102,27 +122,36 @@ export function useVoiceInput(onText: (text: string) => void, onFinal?: (text: s
       heard = `${finalText}${interim}`;
       onTextRef.current(`${prefix}${heard}`);
     };
-    r.onerror = e => { if (e.error !== 'aborted') { failed = true; setError(ERRORS[e.error] ?? `語音辨識失敗（${e.error}）`); } };
-    r.onend = () => {
+    r.onerror = e => {
+      if (rec.current !== r || !mounted.current) return;
+      rec.current = null;
       setListening(false);
-      if (rec.current === r) rec.current = null;
+      if (e.error !== 'aborted') setError(ERRORS[e.error] ?? `語音辨識失敗（${e.error}）`);
+      onFailureRef.current?.();
+    };
+    r.onend = () => {
+      if (rec.current !== r || !mounted.current) return;
+      rec.current = null;
+      setListening(false);
       const text = `${prefix}${heard}`.trim();
-      if (!failed && heard.trim() && text) onFinalRef.current?.(text);
+      if (heard.trim() && text) onFinalRef.current?.(text);
+      else onFailureRef.current?.();
     };
     setError('');
     try {
-      r.start();
       rec.current = r;
       setListening(true);
+      r.start();
       return true;
     } catch {
+      cancel();
       setError('語音辨識沒有啟動，請按一下麥克風。');
+      onFailureRef.current?.();
       return false;
     }
-  }, []);
+  }, [cancel]);
 
-  useEffect(() => () => rec.current?.abort(), []);
-  return { supported, listening, error, start, stop, clearError: () => setError('') };
+  return { supported, listening, error, start, stop, cancel, clearError: () => setError('') };
 }
 
 /* ---------- Speaking ---------- */
@@ -149,55 +178,88 @@ export function speechChunks(text: string, max = 120): string[] {
 
 export function useSpeech() {
   const [speaking, setSpeaking] = useState(false);
+  const [error, setError] = useState('');
   const voiceRef = useRef<SpeechSynthesisVoice | undefined>(undefined);
   const run = useRef(0);
+  const mounted = useRef(false);
   useEffect(() => {
-    const synth = typeof window !== 'undefined' ? window.speechSynthesis : undefined;
-    if (!synth) return;
-    const load = () => { voiceRef.current = pickVoice(synth.getVoices()); };
+    mounted.current = true;
+    const synth = window.speechSynthesis;
+    const load = () => { voiceRef.current = pickVoice(synth?.getVoices() ?? []); };
     load();
-    synth.addEventListener?.('voiceschanged', load);
-    return () => { synth.removeEventListener?.('voiceschanged', load); synth.cancel(); };
+    synth?.addEventListener?.('voiceschanged', load);
+    return () => {
+      mounted.current = false;
+      run.current += 1;
+      synth?.removeEventListener?.('voiceschanged', load);
+      synth?.cancel();
+    };
   }, []);
 
   /** iOS only lets speech start from a tap: call this inside one before the first reply. */
   const unlock = useCallback(() => {
     const synth = window.speechSynthesis;
-    if (!synth || synth.speaking) return;
-    const u = new SpeechSynthesisUtterance(' ');
-    u.volume = 0;
-    synth.speak(u);
+    if (!mounted.current || !synth || synth.speaking) return;
+    try {
+      const u = new SpeechSynthesisUtterance(' ');
+      u.volume = 0;
+      synth.speak(u);
+    } catch { /* The actual reply reports a playback failure if it cannot speak. */ }
   }, []);
 
-  const speak = useCallback((text: string, options: { rate?: number; onEnd?: () => void } = {}) => {
-    const synth = window.speechSynthesis;
-    if (!synth) { options.onEnd?.(); return; }
-    synth.cancel();
+  const speak = useCallback((text: string, options: { rate?: number; onEnd?: () => void; onError?: () => void } = {}) => {
+    if (!mounted.current) return;
+    // Invalidate old callbacks before cancel(), which can synchronously emit errors.
     const id = ++run.current;
+    const synth = window.speechSynthesis;
+    synth?.cancel();
+    setSpeaking(false);
+    setError('');
+    const fail = () => {
+      if (!mounted.current || run.current !== id) return;
+      run.current += 1;
+      setSpeaking(false);
+      setError('朗讀未能完成，語音對話已停止。請查看文字回答，再按麥克風重試。');
+      synth?.cancel();
+      options.onError?.();
+    };
+    if (!synth) { fail(); return; }
     const parts = speechChunks(speakable(text, 600));
     if (!parts.length) { options.onEnd?.(); return; }
     setSpeaking(true);
-    parts.forEach((part, i) => {
-      const u = new SpeechSynthesisUtterance(part);
-      u.lang = 'zh-TW';
-      if (voiceRef.current) u.voice = voiceRef.current;
-      u.rate = options.rate ?? 1;
-      u.pitch = 1;
-      const last = i === parts.length - 1;
-      u.onend = () => { if (last && run.current === id) { setSpeaking(false); options.onEnd?.(); } };
-      u.onerror = () => { if (run.current === id) { setSpeaking(false); if (last) options.onEnd?.(); } };
-      synth.speak(u);
-    });
+    try {
+      for (let i = 0; i < parts.length && run.current === id; i += 1) {
+        const u = new SpeechSynthesisUtterance(parts[i]);
+        u.lang = 'zh-TW';
+        if (voiceRef.current) u.voice = voiceRef.current;
+        u.rate = options.rate ?? 1;
+        u.pitch = 1;
+        const last = i === parts.length - 1;
+        u.onend = () => {
+          if (last && mounted.current && run.current === id) {
+            run.current += 1;
+            setSpeaking(false);
+            options.onEnd?.();
+          }
+        };
+        u.onerror = fail;
+        synth.speak(u);
+      }
+    } catch { fail(); }
   }, []);
-  const stop = useCallback(() => { run.current += 1; window.speechSynthesis?.cancel(); setSpeaking(false); }, []);
-  return { speaking, speak, stop, unlock };
+  const stop = useCallback(() => {
+    run.current += 1;
+    window.speechSynthesis?.cancel();
+    if (mounted.current) setSpeaking(false);
+  }, []);
+  return { speaking, error, speak, stop, unlock, clearError: () => setError('') };
 }
 
 /* ---------- Controls ---------- */
 
 export function MicButton({ listening, conversation, disabled, onClick }: { listening: boolean; conversation?: boolean; disabled?: boolean; onClick: () => void }) {
   return (
-    <button type="button" className={`sk-mic${listening ? ' is-listening' : ''}${conversation ? ' is-conversation' : ''}`} onClick={onClick} disabled={disabled} aria-pressed={listening} aria-label={listening ? '停止收音' : '語音輸入'} data-tip={listening ? '說完會自動送出；按一下停止' : conversation ? '對話模式：說完我會回答並繼續聽' : '語音輸入'}>
+    <button type="button" className={`sk-mic${listening ? ' is-listening' : ''}${conversation ? ' is-conversation' : ''}`} onClick={onClick} disabled={disabled} aria-pressed={listening} aria-label={conversation ? '結束語音對話' : listening ? '停止收音' : '語音輸入'} data-tip={conversation ? '結束語音對話，不再收音或自動送出' : listening ? '按一下結束收音' : '語音輸入'}>
       <Icon name="mic" size={18} />
     </button>
   );
