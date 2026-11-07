@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { parseCommand, type CommandName } from '@/assistant/commands';
 import type { FeatureFlags } from '@/lib/features';
 import { MicButton, SpeakButton, STOP_WORDS, useSpeech, useVoiceInput, useVoiceSettings } from './components/Voice';
@@ -179,6 +179,8 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   const [pending, setPending] = useState<string[]>([]);
   const feedEnd = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
+  const composerBox = useRef<HTMLDivElement>(null);
+  const [composerHeight, setComposerHeight] = useState(0);
   // Voice: the words fill the composer as Sir speaks and, by default, go out when he stops.
   // A turn started by voice is read aloud; in conversation mode SASUKE then listens again.
   // Saying 「結束」 or tapping the mic ends it. Settings live on 設定與連線 (per device).
@@ -284,6 +286,17 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
     toggleMic();
   }
   const empty = items.length === 0;
+  useEffect(() => {
+    if (!sasuke || empty) return;
+    const box = composerBox.current;
+    if (!box) return;
+    const measure = () => setComposerHeight(Math.ceil(box.getBoundingClientRect().height));
+    measure();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    observer?.observe(box);
+    window.addEventListener('resize', measure);
+    return () => { observer?.disconnect(); window.removeEventListener('resize', measure); };
+  }, [sasuke, empty]);
   // The SASUKE home uses the light per-source glance; the full briefing only on the classic home.
   const brief = useBrief(empty && features.briefings && !sasuke);
   const today = useToday(empty && sasuke && contextOpen, false);
@@ -645,7 +658,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   const placeholder = sasuke ? (features.commands ? '輸入訊息 或 / 選指令' : empty ? '寫下你的問題或想法…' : '繼續對話…') : !features.commands ? '交代我一件事…' : empty ? '交代我一件事，或輸入 / 使用快捷指令' : '繼續交代，或輸入 /';
 
   const composer = (
-    <div className={empty ? 'composer docked-center' : 'composer'}>
+    <div ref={composerBox} className={empty ? 'composer docked-center' : 'composer'}>
       <div className="composer-inner">
         {palette.length > 0 && (
           <ul className="palette" role="listbox" aria-label="快捷指令">
@@ -698,6 +711,10 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
             <button className="primary" type="submit" disabled={Boolean(busy) || !text.trim()} aria-label="送出"><Icon name="send" size={18} /></button>
           </form>
         )}
+        {sasuke && <div className="composer-caption">
+          <span className="composer-key-hint">Enter 兩次送出 · Shift + Enter 換行</span>
+          {features.voice && <a href="/connections#voice-settings">語音設定<Icon name="arrow" size={12} /></a>}
+        </div>}
       </div>
     </div>
   );
@@ -708,7 +725,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
     <>
       {/* Keep one live region mounted before async updates; history and error details are not live. */}
       <span role="status" aria-live="polite" aria-atomic="true" style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clipPath: 'inset(50%)', whiteSpace: 'nowrap', border: 0 }}>{outcomeNotice}</span>
-      <main className={empty ? 'feed home' : 'feed'} aria-label="對話內容">
+      <main className={empty ? 'feed home' : 'feed'} style={sasuke && !empty && composerHeight > 0 ? { '--composer-height': `${composerHeight}px` } as CSSProperties : undefined} aria-label="對話內容">
         {uncertainDraft && <p className="banner storage-warning">{outcomeNotice}</p>}
         {draftError && <p className="banner storage-warning" role="alert">草稿目前無法保存在此分頁，離開前請先自行保留文字。</p>}
         {storageError && <p className="banner storage-warning" role="alert">{storageError}</p>}
@@ -716,7 +733,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
           <section className="sk-home">
             <p className="sk-home-name">{greeting()} Sir</p>
             <h1 className="sk-hello">今天想完成什麼</h1>
-            <p className="sk-ask">從一個問題開始 或把待辦交給我</p>
+            <p className="sk-ask">從一個問題開始，把想做的事交給我。</p>
             {composer}
             <details className="home-context" onToggle={event => setContextOpen(event.currentTarget.open)}>
               <summary>天氣與身體<span aria-hidden="true">＋</span></summary>
@@ -781,7 +798,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
               : <p className="working" aria-live="polite">{busy}<span className="typing"><span /><span /><span /></span></p>}</div>
           </div>
         )}
-        <div ref={feedEnd} />
+        <div ref={feedEnd} className="feed-end" />
       </main>
       {!empty && composer}
     </>

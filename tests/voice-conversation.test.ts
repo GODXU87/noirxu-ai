@@ -282,3 +282,47 @@ it('retains stop-only playback when browser recognition is unavailable', async (
   expect(interrupt()).toBeUndefined(); expect(host.querySelector('.sk-stop-speak')).not.toBeNull();
   expect(BrowserRecognition.instances).toHaveLength(0);
 });
+
+it('shows a visible voice action and updates it when ending the active conversation', async () => {
+  await mount();
+  expect(mic().textContent?.trim()).toBe(mic().getAttribute('aria-label'));
+  expect(mic().textContent?.trim()).not.toBe('');
+  await clickMic();
+  expect(mic().textContent).toContain('結束');
+  await clickMic();
+  expect(mic().textContent?.trim()).toBe(mic().getAttribute('aria-label'));
+  expect(posts).toHaveLength(0);
+});
+it('shows stop-capture text for single-utterance input without advertising a live call', async () => {
+  localStorage.setItem('sasuke:voice:v1', JSON.stringify({ conversation: false }));
+  await mount(); await clickMic();
+  expect(mic().textContent).toContain('停止收音');
+  expect(mic().textContent).not.toContain('通話');
+});
+
+it('reserves the measured fixed composer height after leaving home and when voice rows resize', async () => {
+  let height = 240;
+  let resized: (() => void) | undefined;
+  const disconnect = vi.fn();
+  vi.stubGlobal('ResizeObserver', class {
+    constructor(callback: () => void) { resized = callback; }
+    observe() {}
+    disconnect = disconnect;
+  });
+  const bounds = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+    return { height: this.classList.contains('composer') ? height : 0 } as DOMRect;
+  });
+  try {
+    await mount();
+    expect(host.querySelector<HTMLElement>('.feed')!.style.getPropertyValue('--composer-height')).toBe('');
+    await utter();
+    const feed = host.querySelector<HTMLElement>('.feed')!;
+    expect(feed.style.getPropertyValue('--composer-height')).toBe('240px');
+    height = 410;
+    await act(async () => resized?.());
+    expect(feed.style.getPropertyValue('--composer-height')).toBe('410px');
+    await act(async () => root.render(createElement(Chat, { connected: {}, variant: 'classic', features: loadFeatureFlags(), ai: null })));
+    expect(feed.style.getPropertyValue('--composer-height')).toBe('');
+    expect(disconnect).toHaveBeenCalledOnce();
+  } finally { bounds.mockRestore(); }
+});

@@ -258,9 +258,10 @@ export function useSpeech() {
 /* ---------- Controls ---------- */
 
 export function MicButton({ listening, conversation, disabled, onClick }: { listening: boolean; conversation?: boolean; disabled?: boolean; onClick: () => void }) {
+  const label = conversation ? '結束語音對話' : listening ? '停止收音' : '語音輸入';
   return (
-    <button type="button" className={`sk-mic${listening ? ' is-listening' : ''}${conversation ? ' is-conversation' : ''}`} onClick={onClick} disabled={disabled} aria-pressed={listening} aria-label={conversation ? '結束語音對話' : listening ? '停止收音' : '語音輸入'} data-tip={conversation ? '結束語音對話，不再收音或自動送出' : listening ? '按一下結束收音' : '語音輸入'}>
-      <Icon name="mic" size={18} />
+    <button type="button" className={`sk-mic${listening ? ' is-listening' : ''}${conversation ? ' is-conversation' : ''}`} onClick={onClick} disabled={disabled} aria-pressed={listening} aria-label={label} data-tip={conversation ? '結束語音對話，不再收音或自動送出' : listening ? '按一下結束收音' : '語音輸入'}>
+      <Icon name="mic" size={18} /><span>{label}</span>
     </button>
   );
 }
