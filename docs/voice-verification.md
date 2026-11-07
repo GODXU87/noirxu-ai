@@ -39,3 +39,14 @@ Hardware speech quality, mobile autoplay permissions, real browser recognition s
 - Independent review found three important keyboard/session-state races. Added regression tests reproduced them, then passed after the fixes. No critical or minor findings were reported.
 - Skipped suites need an explicit live-model run (paid external calls) or a real test PostgreSQL database. Neither was enabled for this task.
 - No production login, microphone permission, real spoken audio, GitHub push, PR, merge, or deployment was performed. Production voice readiness is still unverified.
+
+## Tap-to-interrupt follow-up — 2026-11-07
+While a reply is being read aloud, `打斷並說話` stops that playback and starts a fresh utterance with one tap. `停止朗讀` remains available to stop without opening the microphone. This is an explicit tap, not automatic detection of a person speaking over the assistant. Recognition stays off while playback runs.
+
+The new action follows the existing auto-send and conversation settings. It is unavailable without browser recognition and disabled while another request is pending; it does not cancel or roll back server actions. Existing screen confirmation requirements remain unchanged.
+
+Local automated coverage adds 9 Chat interaction cases: normal interruption followed by another reply, repeated taps, stale completion/error callbacks, permission failure, ending the new utterance, single-utterance behavior, auto-send off, typed draft preservation, pending-request protection and unsupported browsers. One case covers several callback checks. The full suite passes 578 tests with 19 skipped. These are simulated browser/HTTP boundaries, not real audio.
+
+Before claiming this control works on a phone, test it during a long spoken reply, tap twice quickly, deny microphone access, and confirm `停止朗讀` never opens the microphone. Check the wrapping controls on a narrow screen. Production sign-in, actual microphone capture, acoustic echo behavior and mobile autoplay are still unverified.
+
+Independent review found no Critical, Important or Minor issues in this scoped change. The reviewer independently passed 53 voice tests in an isolated copy, including six additional failure/race cases. TypeScript and production build checks passed. Device audio and rendered mobile layout were not verified.

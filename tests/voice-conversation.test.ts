@@ -193,3 +193,92 @@ it('an edited voice draft with auto-send off is sent once, read aloud and can re
   await act(async () => synth.utterances.at(-1)!.onend?.()); await advance();
   expect(BrowserRecognition.instances).toHaveLength(2);
 });
+
+const interrupt = () => Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === '打斷並說話');
+async function clickInterrupt() {
+  expect(interrupt()).toBeDefined();
+  await act(async () => interrupt()!.click());
+  return BrowserRecognition.instances.at(-1)!;
+}
+it('interrupts playback in one tap and sends a fresh turn without old callbacks restarting capture', async () => {
+  await mount(); await utter(); await reply();
+  const oldPlayback = synth.utterances.at(-1)!;
+  synth.cancelEmitsError = true;
+  const next = await clickInterrupt();
+  expect(BrowserRecognition.instances).toHaveLength(2);
+  expect(mic().getAttribute('aria-pressed')).toBe('true'); expect(interrupt()).toBeUndefined();
+  await act(async () => { oldPlayback.onend?.(); oldPlayback.onerror?.(); }); await advance();
+  expect(BrowserRecognition.instances).toHaveLength(2); expect(host.querySelector('[role="alert"]')).toBeNull();
+  await act(async () => { next.result('改問下一個問題'); next.finish(); });
+  expect(posts).toHaveLength(2); expect(JSON.parse(posts[1].init.body as string).text).toBe('改問下一個問題');
+  await reply('下一個答案。');
+  expect(synth.utterances.at(-1)!.text).toBe('下一個答案。');
+  await act(async () => synth.utterances.at(-1)!.onend?.()); await advance();
+  expect(BrowserRecognition.instances).toHaveLength(3);
+});
+it('two same-tick interruption taps start only one new recognition run', async () => {
+  await mount(); await utter(); await reply();
+  const button = interrupt(); expect(button).toBeDefined();
+  await act(async () => { button!.click(); button!.click(); });
+  expect(BrowserRecognition.instances).toHaveLength(2); expect(posts).toHaveLength(1);
+  expect(BrowserRecognition.instances[1].aborted).toBe(false);
+});
+it('a denied microphone after interruption stops the session and permits a later explicit retry', async () => {
+  await mount(); await utter(); await reply();
+  const oldPlayback = synth.utterances.at(-1)!;
+  const next = await clickInterrupt();
+  await act(async () => { next.fail('not-allowed'); oldPlayback.onend?.(); }); await advance();
+  expect(mic().getAttribute('aria-pressed')).toBe('false');
+  expect(host.querySelector('[role="alert"]')!.textContent).toContain('麥克風');
+  expect(BrowserRecognition.instances).toHaveLength(2); expect(posts).toHaveLength(1);
+  await clickMic(); expect(BrowserRecognition.instances).toHaveLength(3);
+});
+it('ending the fresh interrupted utterance never sends its canceled draft', async () => {
+  await mount(); await utter(); await reply();
+  const next = await clickInterrupt();
+  await act(async () => next.result('還沒講完', false));
+  const end = next.onend!;
+  await clickMic(); await act(async () => end()); await advance();
+  expect(posts).toHaveLength(1); expect(next.aborted).toBe(true);
+  expect(host.querySelector('textarea')!.value).toBe('還沒講完');
+});
+it('interruption respects single-utterance mode and never auto-resumes after the next answer', async () => {
+  localStorage.setItem('sasuke:voice:v1', JSON.stringify({ conversation: false }));
+  await mount(); await utter(); await reply(); const next = await clickInterrupt();
+  await act(async () => { next.result('單次插話'); next.finish(); }); await reply();
+  await act(async () => synth.utterances.at(-1)!.onend?.()); await advance();
+  expect(posts).toHaveLength(2); expect(BrowserRecognition.instances).toHaveLength(2);
+});
+it('interruption with auto-send off preserves a draft for explicit review', async () => {
+  await mount(); await utter(); await reply();
+  await act(async () => {
+    localStorage.setItem('sasuke:voice:v1', JSON.stringify({ conversation: true, autoSend: false }));
+    window.dispatchEvent(new Event('sasuke-voice-settings'));
+  });
+  const next = await clickInterrupt();
+  await act(async () => { next.result('先確認再送'); next.finish(); }); await advance();
+  expect(posts).toHaveLength(1); expect(host.querySelector('textarea')!.value).toBe('先確認再送');
+});
+it('interruption preserves a typed draft when taking over manual read-aloud', async () => {
+  await mount(); await utter(); await reply(); await fill('原有草稿');
+  await act(async () => host.querySelector<HTMLButtonElement>('.msg-speak')!.click());
+  const next = await clickInterrupt();
+  await act(async () => { next.result('加上補充'); next.finish(); });
+  expect(JSON.parse(posts[1].init.body as string).text).toBe('原有草稿 加上補充');
+});
+it('cannot interrupt a manual read-aloud into microphone capture while another request is pending', async () => {
+  await mount(); await utter(); await reply(); await fill('等待中的新問題');
+  await act(async () => host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  await act(async () => host.querySelector<HTMLButtonElement>('.msg-speak')!.click());
+  expect(interrupt()).toBeDefined(); expect(interrupt()!.disabled).toBe(true);
+  await act(async () => interrupt()!.click());
+  expect(BrowserRecognition.instances).toHaveLength(1); expect(posts).toHaveLength(2);
+});
+it('retains stop-only playback when browser recognition is unavailable', async () => {
+  vi.stubGlobal('SpeechRecognition', undefined); vi.stubGlobal('webkitSpeechRecognition', undefined);
+  await mount(); await fill('鍵盤問題');
+  await act(async () => host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  await reply(); await act(async () => host.querySelector<HTMLButtonElement>('.msg-speak')!.click());
+  expect(interrupt()).toBeUndefined(); expect(host.querySelector('.sk-stop-speak')).not.toBeNull();
+  expect(BrowserRecognition.instances).toHaveLength(0);
+});

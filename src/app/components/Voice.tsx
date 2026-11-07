@@ -290,7 +290,7 @@ export function VoiceSettingsCard() {
       {support && !support.recognition && <p className="hint">{support.reason ?? '這個瀏覽器不支援語音輸入。'}</p>}
       {toggle('autoSend', '說完自動送出', '停頓後直接送出；關閉時文字會留在輸入框，讓您確認後再送。')}
       {toggle('readAloud', '朗讀回答', '用語音提問時，SASUKE 會把回答唸出來。')}
-      {toggle('conversation', '對話模式', '唸完回答後自動繼續聽，像通話一樣；說「結束」或按麥克風即可停止。')}
+      {toggle('conversation', '對話模式', '唸完回答後自動繼續聽；朗讀中可按「打斷並說話」。說「結束」或按麥克風即可停止。')}
       <div className="voice-rate">
         <span>語速</span>
         {[0.9, 1, 1.15, 1.3].map(r => <button key={r} type="button" className={settings.rate === r ? 'on' : undefined} aria-pressed={settings.rate === r} onClick={() => update({ rate: r })}>{r === 1 ? '標準' : `${r}×`}</button>)}

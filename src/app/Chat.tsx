@@ -195,6 +195,9 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
     if (voiceSettings.autoSend) void send(heard, true);
   }, () => stopVoice());
   const speech = useSpeech();
+  // Synchronous claim prevents repeated taps before React has rendered listening state.
+  const interruptReady = useRef(false);
+  interruptReady.current = speech.speaking && !voice.listening;
   const voiceTurn = useRef(false);
   const conversationOn = useRef(false);
   const [conversationActive, setConversationActive] = useState(false);
@@ -202,6 +205,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   const voiceDraftPending = useRef(false);
   const resumeVoice = useRef<ReturnType<typeof setTimeout> | null>(null);
   function stopVoice() {
+    interruptReady.current = false;
     conversationOn.current = false;
     if (mounted.current) setConversationActive(false);
     voiceTurn.current = false;
@@ -271,6 +275,13 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
     conversationOn.current = voiceSettings.conversation;
     setConversationActive(voiceSettings.conversation);
     if (!voice.start(textRef.current)) stopVoice();
+  }
+  function interruptPlayback() {
+    if (!mounted.current || !voiceOn || sending.current || !interruptReady.current) return;
+    // End old playback/resume ownership before requesting a fresh utterance.
+    stopVoice();
+    setSpeakingAt(null);
+    toggleMic();
   }
   const empty = items.length === 0;
   // The SASUKE home uses the light per-source glance; the full briefing only on the classic home.
@@ -650,6 +661,11 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
         {sasuke ? (
           <form className="sk-composer" onSubmit={event => { event.preventDefault(); void send(text); }}>
             {(voice.error || speech.error) && <p className="sk-voice-error" role="alert">{voice.error || speech.error}<button type="button" onClick={() => { voice.clearError(); speech.clearError(); }} aria-label="關閉">×</button></p>}
+            {speech.speaking && <div className="sk-voice-controls">
+              <span role="status">朗讀中</span>
+              {voiceOn && <button type="button" className="sk-interrupt-speak" disabled={Boolean(busy)} onClick={interruptPlayback}>打斷並說話</button>}
+              <button type="button" className="sk-stop-speak" onClick={stopVoice}>停止朗讀</button>
+            </div>}
             <textarea ref={input} value={text} onChange={e => editText(e.target.value)} rows={1} aria-label="訊息" onKeyDown={onKeyDown} onCompositionEnd={() => { composedAt.current = Date.now(); }} onInput={() => { armed.current = 0; setEnterHint(false); }} placeholder={placeholder} />
             <div className="sk-tools">
               <div className="sk-agent-menu" ref={menuBox}>
@@ -671,7 +687,6 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
               </div>
               {enterHint && <span className="sk-enter-hint" role="status">再按一次 Enter 送出</span>}
               {voice.listening && <span className="sk-enter-hint" role="status">{voiceSettings.autoSend ? '聆聽中…說完會自動送出' : '聆聽中…說完按一下麥克風'}</span>}
-              {speech.speaking && <button type="button" className="sk-stop-speak" onClick={stopVoice}>停止朗讀</button>}
               {voiceOn && <MicButton listening={voice.listening} conversation={conversationActive} disabled={Boolean(busy) && !conversationActive} onClick={toggleMic} />}
               <button className="sk-send" type="submit" disabled={Boolean(busy) || !text.trim()} aria-label="送出"><Icon name="up" size={18} /></button>
             </div>
