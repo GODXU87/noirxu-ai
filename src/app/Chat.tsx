@@ -183,36 +183,67 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   // A turn started by voice is read aloud; in conversation mode SASUKE then listens again.
   // Saying 「結束」 or tapping the mic ends it. Settings live on 設定與連線 (per device).
   const { settings: voiceSettings } = useVoiceSettings();
-  const voice = useVoiceInput(spoken => setText(spoken), heard => {
+  const voice = useVoiceInput(spoken => {
+    voiceDraftPending.current = Boolean(spoken.trim());
+    setText(spoken);
+  }, heard => {
     if (conversationOn.current && STOP_WORDS.test(heard.trim())) {
-      conversationOn.current = false; voiceTurn.current = false; setText('');
+      stopVoice(); setText('');
       speech.speak('好的，Sir。有需要隨時叫我。', { rate: voiceSettings.rate });
       return;
     }
-    if (voiceSettings.autoSend) void send(heard);
-  });
+    if (voiceSettings.autoSend) void send(heard, true);
+  }, () => stopVoice());
   const speech = useSpeech();
   const voiceTurn = useRef(false);
   const conversationOn = useRef(false);
+  const [conversationActive, setConversationActive] = useState(false);
+  // A reviewed/edited transcript still counts as a voice-origin turn when submitted.
+  const voiceDraftPending = useRef(false);
+  const resumeVoice = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function stopVoice() {
+    conversationOn.current = false;
+    if (mounted.current) setConversationActive(false);
+    voiceTurn.current = false;
+    voiceDraftPending.current = false;
+    if (resumeVoice.current !== null) clearTimeout(resumeVoice.current);
+    resumeVoice.current = null;
+    voice.cancel();
+    speech.stop();
+  }
+  useEffect(() => {
+    const onVisibilityChange = () => { if (document.visibilityState === 'hidden') stopVoice(); };
+    const onPageHide = () => stopVoice();
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('pagehide', onPageHide);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('pagehide', onPageHide);
+      stopVoice();
+    };
+  }, [voice.cancel, speech.stop]);
   const [canSpeak, setCanSpeak] = useState(false);
   const [speakingAt, setSpeakingAt] = useState<number | null>(null);
   useEffect(() => { setCanSpeak(typeof window !== 'undefined' && 'speechSynthesis' in window); }, []);
   /** After a voice turn: read the reply (if wanted), then listen again in conversation mode. */
   function voiceReply(reply: string) {
-    if (!voiceTurn.current) return;
+    if (!mounted.current || !voiceTurn.current) return;
     voiceTurn.current = false;
     const again = () => {
-      if (!conversationOn.current) return;
-      window.setTimeout(() => {
-        if (!conversationOn.current) return;
+      if (!mounted.current || !conversationOn.current) return;
+      if (resumeVoice.current !== null) clearTimeout(resumeVoice.current);
+      resumeVoice.current = setTimeout(() => {
+        resumeVoice.current = null;
+        if (!mounted.current || !conversationOn.current) return;
         voiceTurn.current = true;
-        if (!voice.start('')) { conversationOn.current = false; voiceTurn.current = false; }
+        if (!voice.start('')) stopVoice();
       }, 350);
     };
-    if (voiceSettings.readAloud && reply) speech.speak(reply, { rate: voiceSettings.rate, onEnd: again });
+    if (voiceSettings.readAloud && reply) speech.speak(reply, { rate: voiceSettings.rate, onEnd: again, onError: stopVoice });
     else again();
   }
   function speakItem(index: number, text: string) {
+    stopVoice();
     if (speakingAt === index && speech.speaking) { speech.stop(); setSpeakingAt(null); return; }
     setSpeakingAt(index);
     speech.speak(text, { rate: voiceSettings.rate, onEnd: () => setSpeakingAt(null) });
@@ -223,17 +254,23 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   textRef.current = text;
   const voiceOn = sasuke && features.voice && voice.supported;
   function toggleMic() {
-    if (voice.listening || conversationOn.current) {
-      // A tap while listening (or between turns in conversation mode) ends the conversation.
-      conversationOn.current = false; voiceTurn.current = false;
-      voice.stop(); speech.stop();
+    if (conversationOn.current) {
+      stopVoice();
+      return;
+    }
+    if (sending.current) return;
+    if (voice.listening) {
+      // A single-utterance stop finalizes; ending conversation mode cancels instead.
+      voice.stop();
       return;
     }
     speech.stop();
+    speech.clearError();
     speech.unlock();
     voiceTurn.current = true;
     conversationOn.current = voiceSettings.conversation;
-    voice.start(textRef.current);
+    setConversationActive(voiceSettings.conversation);
+    if (!voice.start(textRef.current)) stopVoice();
   }
   const empty = items.length === 0;
   // The SASUKE home uses the light per-source glance; the full briefing only on the classic home.
@@ -312,14 +349,28 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
     try { localStorage.setItem(STYLE_KEY, next); } catch { /* storage unavailable */ }
   }
 
-  async function send(message: string) {
+  function editText(value: string) {
+    const wasVoiceDraft = voiceDraftPending.current;
+    // Keyboard editing owns the composer immediately, before another browser event arrives.
+    stopVoice();
+    voiceDraftPending.current = wasVoiceDraft && Boolean(value.trim());
+    setText(value);
+    setPaletteDismissed(false);
+  }
+
+  async function send(message: string, fromVoice = false) {
     message = message.trim();
     if (!message || sending.current) return;
+    const voiceSubmission = fromVoice || voiceDraftPending.current;
+    stopVoice();
+    voiceTurn.current = voiceSubmission;
+    conversationOn.current = voiceSubmission && voiceSettings.conversation;
+    setConversationActive(conversationOn.current);
     sending.current = true; failed.current = false; pendingDraft.current=message;
     setUncertainDraft(false);
     setFailureNotice('');
     setBusy('正在送出');
-    if (voice.listening) voice.stop();
+    voice.cancel();
     setText('');
     setItems(prev => [...prev, { kind: 'user', text: message }]); scroll();
     try {
@@ -335,7 +386,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
       sending.current = false; pendingDraft.current='';
       if(mounted.current && sasuke && conversationId) setDraftError(!saveDraft(conversationId,textRef.current,failed.current));
       setBusy(null); scroll();
-      if (failed.current) { voiceTurn.current = false; conversationOn.current = false; }
+      if (failed.current) stopVoice();
     }
   }
 
@@ -420,7 +471,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
         : { kind: 'error', text: '連線中斷，無法確認處理結果。請先核對紀錄，避免重複操作。', retry: message }]);
     } finally {
       // A voice turn that ended in an error also ends the conversation.
-      if (voiceTurn.current) { voiceTurn.current = false; conversationOn.current = false; }
+      if (voiceTurn.current) stopVoice();
       setLive('');
       setBusy(null); scroll();
     }
@@ -501,6 +552,7 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
   }, [sasuke, conversationId]);
 
   function pick(value: string, run: boolean) {
+    stopVoice();
     if (run) { void send(value); return; }
     setText(value);
     input.current?.focus();
@@ -597,8 +649,8 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
         )}
         {sasuke ? (
           <form className="sk-composer" onSubmit={event => { event.preventDefault(); void send(text); }}>
-            {voice.error && <p className="sk-voice-error" role="alert">{voice.error}<button type="button" onClick={voice.clearError} aria-label="關閉">×</button></p>}
-            <textarea ref={input} value={text} onChange={e => { setText(e.target.value); setPaletteDismissed(false); }} rows={1} aria-label="訊息" onKeyDown={onKeyDown} onCompositionEnd={() => { composedAt.current = Date.now(); }} onInput={() => { armed.current = 0; setEnterHint(false); }} placeholder={placeholder} />
+            {(voice.error || speech.error) && <p className="sk-voice-error" role="alert">{voice.error || speech.error}<button type="button" onClick={() => { voice.clearError(); speech.clearError(); }} aria-label="關閉">×</button></p>}
+            <textarea ref={input} value={text} onChange={e => editText(e.target.value)} rows={1} aria-label="訊息" onKeyDown={onKeyDown} onCompositionEnd={() => { composedAt.current = Date.now(); }} onInput={() => { armed.current = 0; setEnterHint(false); }} placeholder={placeholder} />
             <div className="sk-tools">
               <div className="sk-agent-menu" ref={menuBox}>
                 <button ref={menuOpener} type="button" className="sk-agent" onClick={() => setMenu(m => !m)} aria-expanded={menu} aria-haspopup="dialog" data-tip="模型與回覆風格">
@@ -619,15 +671,15 @@ export function Chat({ connected, features, variant = 'classic', ai = null }: { 
               </div>
               {enterHint && <span className="sk-enter-hint" role="status">再按一次 Enter 送出</span>}
               {voice.listening && <span className="sk-enter-hint" role="status">{voiceSettings.autoSend ? '聆聽中…說完會自動送出' : '聆聽中…說完按一下麥克風'}</span>}
-              {speech.speaking && <button type="button" className="sk-stop-speak" onClick={speech.stop}>停止朗讀</button>}
-              {voiceOn && <MicButton listening={voice.listening} conversation={voiceSettings.conversation} disabled={Boolean(busy) && !conversationOn.current} onClick={toggleMic} />}
+              {speech.speaking && <button type="button" className="sk-stop-speak" onClick={stopVoice}>停止朗讀</button>}
+              {voiceOn && <MicButton listening={voice.listening} conversation={conversationActive} disabled={Boolean(busy) && !conversationActive} onClick={toggleMic} />}
               <button className="sk-send" type="submit" disabled={Boolean(busy) || !text.trim()} aria-label="送出"><Icon name="up" size={18} /></button>
             </div>
           </form>
         ) : (
           <form onSubmit={event => { event.preventDefault(); void send(text); }}>
             {!empty && <button type="button" className="icon-button" onClick={newConversation} aria-label="開新對話" title="開新對話"><Icon name="plus" size={18} /></button>}
-            <textarea ref={input} value={text} onChange={e => { setText(e.target.value); setPaletteDismissed(false); }} rows={1} aria-label="訊息" onKeyDown={onKeyDown} onCompositionEnd={() => { composedAt.current = Date.now(); }} onInput={() => { armed.current = 0; setEnterHint(false); }} placeholder={placeholder} />
+            <textarea ref={input} value={text} onChange={e => editText(e.target.value)} rows={1} aria-label="訊息" onKeyDown={onKeyDown} onCompositionEnd={() => { composedAt.current = Date.now(); }} onInput={() => { armed.current = 0; setEnterHint(false); }} placeholder={placeholder} />
             <button className="primary" type="submit" disabled={Boolean(busy) || !text.trim()} aria-label="送出"><Icon name="send" size={18} /></button>
           </form>
         )}
